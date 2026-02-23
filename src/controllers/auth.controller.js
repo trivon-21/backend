@@ -127,29 +127,37 @@ exports.forgotPassword = async (req, res) => {
 
     const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:4200"}/reset-password/${rawToken}`;
 
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-      });
+    // Development fallback: always log reset URL to console
+    console.log("\n=== PASSWORD RESET LINK ===");
+    console.log(resetUrl);
+    console.log("===========================\n");
 
-      await transporter.sendMail({
-        from: `AirLux <${process.env.EMAIL_USER}>`,
-        to: user.email,
-        subject: "AirLux — Password Reset Request",
-        html: `
-          <p>Hi ${user.fullName},</p>
-          <p>You requested a password reset. Click the link below to reset your password:</p>
-          <p><a href="${resetUrl}">${resetUrl}</a></p>
-          <p>This link expires in <strong>1 hour</strong>.</p>
-          <p>If you did not request this, please ignore this email.</p>
-        `
-      });
-    } else {
-      // Development fallback: log reset URL to console
-      console.log("\n=== PASSWORD RESET LINK (dev mode) ===");
-      console.log(resetUrl);
-      console.log("======================================\n");
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 10000
+        });
+
+        await transporter.sendMail({
+          from: `AirLux <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: "AirLux — Password Reset Request",
+          html: `
+            <p>Hi ${user.fullName},</p>
+            <p>You requested a password reset. Click the link below to reset your password:</p>
+            <p><a href="${resetUrl}">${resetUrl}</a></p>
+            <p>This link expires in <strong>1 hour</strong>.</p>
+            <p>If you did not request this, please ignore this email.</p>
+          `
+        });
+      } catch (emailErr) {
+        console.error("Failed to send reset email:", emailErr.message);
+        // Continue — token is saved; user can still use the reset link from console logs
+      }
     }
 
     return res.json({ message: "If that email is registered, a reset link has been sent." });
