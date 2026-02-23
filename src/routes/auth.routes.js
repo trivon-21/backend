@@ -36,6 +36,10 @@ router.post(
   forgotPassword
 );
 
+router.get("/forgot-password", (req, res) =>
+  res.status(405).json({ message: "Method not allowed. Use POST to request a password reset." })
+);
+
 router.post(
   "/reset-password/:token",
   [
@@ -48,6 +52,10 @@ router.post(
   ],
   validate,
   resetPassword
+);
+
+router.get("/reset-password/:token", (req, res) =>
+  res.status(405).json({ message: "Method not allowed. Use POST to submit your new password." })
 );
 
 module.exports = router;
