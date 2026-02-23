@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
-const { signup, login } = require("../controllers/auth.controller");
+const { signup, login, forgotPassword, resetPassword } = require("../controllers/auth.controller");
 const { validate } = require("../middleware/auth.middleware");
 
 router.post(
@@ -8,7 +8,12 @@ router.post(
   [
     body("fullName").isLength({ min: 3 }).withMessage("Full name must be at least 3 characters"),
     body("email").isEmail().withMessage("Valid email required"),
-    body("password").isLength({ min: 6 }).withMessage("Password must be at least 6 characters")
+    body("password")
+      .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
+      .matches(/[A-Z]/).withMessage("Password must contain at least one uppercase letter")
+      .matches(/[a-z]/).withMessage("Password must contain at least one lowercase letter")
+      .matches(/[0-9]/).withMessage("Password must contain at least one number")
+      .matches(/[^A-Za-z0-9]/).withMessage("Password must contain at least one special character")
   ],
   validate,
   signup
@@ -22,6 +27,27 @@ router.post(
   ],
   validate,
   login
+);
+
+router.post(
+  "/forgot-password",
+  [body("email").isEmail().withMessage("Valid email required")],
+  validate,
+  forgotPassword
+);
+
+router.post(
+  "/reset-password/:token",
+  [
+    body("password")
+      .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
+      .matches(/[A-Z]/).withMessage("Password must contain at least one uppercase letter")
+      .matches(/[a-z]/).withMessage("Password must contain at least one lowercase letter")
+      .matches(/[0-9]/).withMessage("Password must contain at least one number")
+      .matches(/[^A-Za-z0-9]/).withMessage("Password must contain at least one special character")
+  ],
+  validate,
+  resetPassword
 );
 
 module.exports = router;

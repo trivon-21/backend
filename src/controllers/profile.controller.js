@@ -1,3 +1,4 @@
+const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 
 // GET /api/user/profile
@@ -105,6 +106,54 @@ exports.deleteAccount = async (req, res) => {
   try {
     await User.findByIdAndDelete(req.user._id);
     return res.json({ message: "Account deleted successfully" });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// POST /api/user/profile/change-password
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current and new password are required" });
+    }
+
+    const user = await User.findById(req.user._id);
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) return res.status(401).json({ message: "Current password is incorrect" });
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+
+    await User.findByIdAndUpdate(req.user._id, { $set: { passwordHash } });
+    return res.json({ message: "Password changed successfully" });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// PUT /api/user/profile/photo
+exports.uploadPhoto = async (req, res) => {
+  try {
+    const { photo } = req.body;
+    if (!photo) return res.status(400).json({ message: "Photo data is required" });
+
+    // Accept base64 data URLs (e.g. "data:image/jpeg;base64,...")
+    if (!photo.startsWith("data:image/")) {
+      return res.status(400).json({ message: "Invalid image format. Must be a base64 data URL." });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: { profilePhoto: photo } },
+      { returnDocument: "after" }
+    ).select("-passwordHash");
+
+    return res.json({
+      message: "Profile photo updated",
+      profilePhoto: user.profilePhoto
+    });
   } catch (err) {
     return res.status(500).json({ message: "Server error", error: err.message });
   }

@@ -5,7 +5,9 @@ const {
   updateProfile,
   addEmail,
   removeEmail,
-  deleteAccount
+  deleteAccount,
+  changePassword,
+  uploadPhoto
 } = require("../controllers/profile.controller");
 
 router.use(protect);
@@ -15,5 +17,7 @@ router.put("/", updateProfile);
 router.post("/emails", addEmail);
 router.delete("/emails/:emailId", removeEmail);
 router.delete("/account", deleteAccount);
+router.post("/change-password", changePassword);
+router.put("/photo", uploadPhoto);
 
 module.exports = router;

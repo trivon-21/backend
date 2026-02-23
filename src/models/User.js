@@ -20,7 +20,11 @@ const userSchema = new mongoose.Schema(
         email: { type: String, lowercase: true, trim: true },
         addedAt: { type: Date, default: Date.now }
       }
-    ]
+    ],
+    loginAttempts: { type: Number, default: 0 },
+    lockUntil: { type: Date },
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date }
   },
   { timestamps: true }
 );
