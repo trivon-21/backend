@@ -18,12 +18,19 @@ exports.getDashboard = async (req, res) => {
     const pendingPayment = orders.filter(o => o.status === "Pending").length;
     const completed      = orders.filter(o => o.status === "Completed").length;
 
-    const srOngoing   = serviceRequests.filter(s => s.status === "Ongoing").length;
-    const srAddressed = serviceRequests.filter(s => s.status === "Addressed").length;
-    const srClosed    = serviceRequests.filter(s => s.status === "Closed").length;
+    // Map new statuses: Pending/Assigned/In Progress → Ongoing, Completed → Addressed, Cancelled → Closed
+    const srOngoing   = serviceRequests.filter(s =>
+      ["Pending", "Assigned", "In Progress", "Ongoing"].includes(s.status)
+    ).length;
+    const srAddressed = serviceRequests.filter(s =>
+      ["Completed", "Addressed"].includes(s.status)
+    ).length;
+    const srClosed    = serviceRequests.filter(s =>
+      ["Cancelled", "Closed"].includes(s.status)
+    ).length;
 
     const iqOngoing   = inquiries.filter(i => i.status === "Ongoing").length;
-    const iqAddressed = inquiries.filter(i => i.status === "Addressed").length;
+    const iqAddressed = inquiries.filter(i => ["Addressed", "Closed"].includes(i.status)).length;
 
     return res.json({
       stats: { totalPurchases, returnOrders, pendingPayment, completed },
