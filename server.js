@@ -5,6 +5,7 @@ require("dotenv").config();
 const connectDB = require("./src/config/db");
 const authRoutes = require("./src/routes/auth.routes");
 const profileRoutes = require("./src/routes/profile.routes");
+const dashboardRoutes = require("./src/routes/dashboard.routes");
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.get("/", (req, res) => res.send("AirLux API running..."));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user/profile", profileRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 const PORT = process.env.PORT || 5000;
 
