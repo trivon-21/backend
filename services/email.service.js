@@ -1,6 +1,6 @@
 const nodemailer = require("nodemailer");
 
-console.log("EMAIL_USER:", process.env.EMAIL_USER);  // for debugging
+console.log("EMAIL_USER:", process.env.EMAIL_USER);
 console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "****" : "MISSING");
 
 const transporter = nodemailer.createTransport({
@@ -31,26 +31,3 @@ const sendRejectionEmail = async (email, orderId, reason) => {
 };
 
 module.exports = { sendRejectionEmail };
-/*const nodemailer = require("nodemailer");
-
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-exports.sendRejectionEmail = async (to, orderId, reason) => {
-  await transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to,
-    subject: `Payment Rejected - Order ${orderId}`,
-    html: `
-      <h3>Your Payment Was Rejected</h3>
-      <p>Order ID: <b>${orderId}</b></p>
-      <p>Reason: ${reason}</p>
-      <p>Please reupload your payment slip.</p>
-    `,
-  });
-};*/

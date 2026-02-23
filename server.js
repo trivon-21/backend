@@ -1,7 +1,5 @@
 require("dotenv").config();
-console.log("🚀 THIS SERVER FILE IS RUNNING");
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
 
 const connectDB = require("./config/db");
@@ -20,12 +18,8 @@ connectDB();
 app.use("/api/payments", paymentRoutes);
 
 // Health check
-app.get("/api/health", (req, res) => {
-  res.json({ message: "API is running" });
-});
+app.get("/api/health", (req, res) => res.json({ message: "API is running" }));
 
 // Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
