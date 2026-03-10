@@ -21,6 +21,9 @@ const userSchema = new mongoose.Schema(
         addedAt: { type: Date, default: Date.now }
       }
     ],
+    emailVerified: { type: Boolean, default: false },
+    emailOtp: { type: String },
+    emailOtpExpires: { type: Date },
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date },
     resetPasswordToken: { type: String },

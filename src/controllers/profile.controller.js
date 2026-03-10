@@ -16,6 +16,7 @@ exports.getProfile = async (req, res) => {
       phoneNumber: user.phoneNumber,
       profilePhoto: user.profilePhoto,
       additionalEmails: user.additionalEmails,
+      emailVerified: user.emailVerified || false,
       createdAt: user.createdAt
     });
   } catch (err) {
@@ -54,6 +55,7 @@ exports.updateProfile = async (req, res) => {
         phoneNumber: user.phoneNumber,
         profilePhoto: user.profilePhoto,
         additionalEmails: user.additionalEmails,
+        emailVerified: user.emailVerified || false,
         createdAt: user.createdAt
       }
     });

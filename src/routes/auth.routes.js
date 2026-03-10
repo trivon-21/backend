@@ -1,7 +1,8 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
-const { signup, login, forgotPassword, resetPassword } = require("../controllers/auth.controller");
+const { signup, login, forgotPassword, resetPassword, verifyEmail, resendOtp } = require("../controllers/auth.controller");
 const { validate } = require("../middleware/auth.middleware");
+const { protect } = require("../middleware/protect");
 
 router.post(
   "/signup",
@@ -57,5 +58,8 @@ router.post(
 router.get("/reset-password/:token", (req, res) =>
   res.status(405).json({ message: "Method not allowed. Use POST to submit your new password." })
 );
+
+router.post("/verify-email", protect, verifyEmail);
+router.post("/resend-otp", protect, resendOtp);
 
 module.exports = router;

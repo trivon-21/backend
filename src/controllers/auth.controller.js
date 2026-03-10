@@ -15,6 +15,33 @@ function signToken(user, rememberMe = true) {
   );
 }
 
+async function sendOtpEmail(transporter, toEmail, userName, otp) {
+  await transporter.sendMail({
+    from: `AirLux <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: "AirLux — Verify Your Email",
+    html: `
+      <p>Hi ${userName},</p>
+      <p>Your email verification code is:</p>
+      <h2 style="letter-spacing:6px;font-size:32px;">${otp}</h2>
+      <p>This code expires in <strong>10 minutes</strong>.</p>
+      <p>If you did not create an AirLux account, please ignore this email.</p>
+    `
+  });
+}
+
+async function generateAndSaveOtp(userId) {
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+  await User.findByIdAndUpdate(userId, {
+    $set: {
+      emailOtp: hashedOtp,
+      emailOtpExpires: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+    }
+  });
+  return otp;
+}
+
 // POST /api/auth/signup
 exports.signup = async (req, res) => {
   try {
@@ -33,12 +60,40 @@ exports.signup = async (req, res) => {
       role: "CUSTOMER"
     });
 
+    const otp = await generateAndSaveOtp(user._id);
+
+    // Development fallback: always log OTP to console
+    console.log("\n=== EMAIL VERIFICATION OTP ===");
+    console.log(`OTP for ${user.email}: ${otp}`);
+    console.log("==============================\n");
+
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 10000
+        });
+        await sendOtpEmail(transporter, user.email, user.fullName, otp);
+      } catch (emailErr) {
+        console.error("Failed to send OTP email:", emailErr.message);
+      }
+    }
+
     const token = signToken(user);
 
     return res.status(201).json({
       message: "Signup successful",
       token,
-      user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role }
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        emailVerified: false
+      }
     });
   } catch (err) {
     return res.status(500).json({ message: "Server error", error: err.message });
@@ -94,7 +149,7 @@ exports.login = async (req, res) => {
     return res.json({
       message: "Login successful",
       token,
-      user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role }
+      user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role, emailVerified: user.emailVerified || false }
     });
   } catch (err) {
     return res.status(500).json({ message: "Server error", error: err.message });
@@ -194,6 +249,78 @@ exports.resetPassword = async (req, res) => {
     });
 
     return res.json({ message: "Password reset successfully. You can now log in." });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// POST /api/auth/verify-email  (protected)
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    if (!otp) return res.status(400).json({ message: "OTP is required" });
+
+    const user = req.user;
+
+    if (user.emailVerified) {
+      return res.status(400).json({ message: "Email is already verified." });
+    }
+
+    if (!user.emailOtp || !user.emailOtpExpires) {
+      return res.status(400).json({ message: "No OTP found. Please request a new one." });
+    }
+
+    if (user.emailOtpExpires < Date.now()) {
+      return res.status(400).json({ message: "OTP has expired. Please request a new one." });
+    }
+
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+    if (user.emailOtp !== hashedOtp) {
+      return res.status(400).json({ message: "Invalid OTP." });
+    }
+
+    await User.findByIdAndUpdate(user._id, {
+      $set: { emailVerified: true },
+      $unset: { emailOtp: "", emailOtpExpires: "" }
+    });
+
+    return res.json({ message: "Email verified successfully." });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// POST /api/auth/resend-otp  (protected)
+exports.resendOtp = async (req, res) => {
+  try {
+    const user = req.user;
+
+    if (user.emailVerified) {
+      return res.status(400).json({ message: "Email is already verified." });
+    }
+
+    const otp = await generateAndSaveOtp(user._id);
+
+    console.log("\n=== EMAIL VERIFICATION OTP (RESEND) ===");
+    console.log(`OTP for ${user.email}: ${otp}`);
+    console.log("=======================================\n");
+
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 10000
+        });
+        await sendOtpEmail(transporter, user.email, user.fullName, otp);
+      } catch (emailErr) {
+        console.error("Failed to send OTP email:", emailErr.message);
+      }
+    }
+
+    return res.json({ message: "A new OTP has been sent to your email." });
   } catch (err) {
     return res.status(500).json({ message: "Server error", error: err.message });
   }
