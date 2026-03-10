@@ -105,7 +105,15 @@ exports.login = async (req, res) => {
   try {
     const { email, password, rememberMe } = req.body;
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = email.toLowerCase();
+
+    // Try primary email first, then verified additional emails
+    let user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      user = await User.findOne({
+        additionalEmails: { $elemMatch: { email: normalizedEmail, verified: true } }
+      });
+    }
     if (!user) return res.status(401).json({ message: "Invalid email or password" });
 
     // Check if account is locked

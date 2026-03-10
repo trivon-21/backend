@@ -18,7 +18,10 @@ const userSchema = new mongoose.Schema(
     additionalEmails: [
       {
         email: { type: String, lowercase: true, trim: true },
-        addedAt: { type: Date, default: Date.now }
+        addedAt: { type: Date, default: Date.now },
+        verified: { type: Boolean, default: false },
+        otp: { type: String },
+        otpExpires: { type: Date }
       }
     ],
     emailVerified: { type: Boolean, default: false },

@@ -5,6 +5,8 @@ const {
   updateProfile,
   addEmail,
   removeEmail,
+  verifyAdditionalEmail,
+  resendAdditionalEmailOtp,
   deleteAccount,
   changePassword,
   uploadPhoto
@@ -16,6 +18,8 @@ router.get("/", getProfile);
 router.put("/", updateProfile);
 router.post("/emails", addEmail);
 router.delete("/emails/:emailId", removeEmail);
+router.post("/emails/:emailId/verify", verifyAdditionalEmail);
+router.post("/emails/:emailId/resend-otp", resendAdditionalEmailOtp);
 router.delete("/account", deleteAccount);
 router.post("/change-password", changePassword);
 router.put("/photo", uploadPhoto);
