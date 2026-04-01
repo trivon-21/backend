@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const User = require("../models/User");
+const { sendPhoneOtp } = require("../config/twilio");
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -155,7 +156,7 @@ exports.signup = async (req, res) => {
           email: user.email,
           role: user.role,
           emailVerified: false,
-          authType: "email"
+          authMethods: ['email']
         }
       });
     }
@@ -185,13 +186,17 @@ exports.signup = async (req, res) => {
 
       const otp = await generateAndSavePhoneOtp(user._id);
 
-      // Development fallback: log OTP to console
-      console.log("\n=== PHONE VERIFICATION OTP ===");
-      console.log(`OTP for ${user.phoneNumber}: ${otp}`);
-      console.log("==============================\n");
-
-      // Note: In production, integrate Firebase here to send SMS
-      // For now, just log to console for development
+      // Send OTP via Twilio SMS
+      try {
+        await sendPhoneOtp(user.phoneNumber, otp);
+        console.log(`✅ SMS OTP sent to ${user.phoneNumber}`);
+      } catch (smsErr) {
+        console.error("Failed to send SMS:", smsErr.message);
+        // For development: still log OTP to console if SMS fails
+        console.log("\n=== PHONE VERIFICATION OTP (CONSOLE FALLBACK) ===");
+        console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+        console.log("=================================================\n");
+      }
 
       const token = signToken(user);
 
@@ -204,7 +209,7 @@ exports.signup = async (req, res) => {
           phoneNumber: user.phoneNumber,
           role: user.role,
           phoneVerified: false,
-          authType: "phone"
+          authMethods: ['phone']
         }
       });
     }
@@ -284,7 +289,14 @@ exports.login = async (req, res) => {
       return res.json({
         message: "Login successful",
         token,
-        user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role, emailVerified: user.emailVerified || false }
+        user: {
+          id: user._id,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          emailVerified: user.emailVerified || false,
+          authMethods: user.authMethods || ['email']
+        }
       });
     }
 
@@ -331,21 +343,25 @@ exports.login = async (req, res) => {
         });
       }
 
-      // For phone login, send OTP first
-      const otp = await generateAndSavePhoneOtp(user._id);
+      // Successful login — clear lock fields
+      await User.findByIdAndUpdate(user._id, {
+        $set: { loginAttempts: 0 },
+        $unset: { lockUntil: "" }
+      });
 
-      console.log("\n=== PHONE VERIFICATION OTP (LOGIN) ===");
-      console.log(`OTP for ${user.phoneNumber}: ${otp}`);
-      console.log("========================================\n");
-
-      // Note: In production, integrate Firebase here to send SMS
-      // For now, just log to console for development
+      const token = signToken(user, rememberMe !== false);
 
       return res.json({
-        message: "OTP sent to your phone number",
-        sessionId: user._id.toString(), // Use user ID as session ID
-        requiringPhoneVerification: true,
-        authType: "phone"
+        message: "Login successful",
+        token,
+        user: {
+          id: user._id,
+          fullName: user.fullName,
+          phoneNumber: user.phoneNumber,
+          role: user.role,
+          phoneVerified: user.phoneVerified || false,
+          authMethods: user.authMethods || ['phone']
+        }
       });
     }
   } catch (err) {
@@ -543,7 +559,17 @@ exports.verifyPhone = async (req, res) => {
       return res.status(400).json({ message: "OTP has expired. Please request a new one." });
     }
 
-    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+    // Trim OTP to remove any whitespace
+    const trimmedOtp = otp.toString().trim();
+    const hashedOtp = crypto.createHash("sha256").update(trimmedOtp).digest("hex");
+
+    console.log("\n=== OTP VERIFICATION ===");
+    console.log(`Received OTP: "${trimmedOtp}"`);
+    console.log(`Stored hash: ${user.phoneOtp}`);
+    console.log(`Generated hash: ${hashedOtp}`);
+    console.log(`Match: ${user.phoneOtp === hashedOtp}`);
+    console.log("=======================\n");
+
     if (user.phoneOtp !== hashedOtp) {
       return res.status(400).json({ message: "Invalid OTP." });
     }
@@ -570,12 +596,17 @@ exports.resendOtpPhone = async (req, res) => {
 
     const otp = await generateAndSavePhoneOtp(user._id);
 
-    console.log("\n=== PHONE VERIFICATION OTP (RESEND) ===");
-    console.log(`OTP for ${user.phoneNumber}: ${otp}`);
-    console.log("========================================\n");
-
-    // Note: In production, integrate Firebase here to send SMS
-    // For now, just log to console for development
+    // Send OTP via Twilio SMS
+    try {
+      await sendPhoneOtp(user.phoneNumber, otp);
+      console.log(`✅ SMS OTP resent to ${user.phoneNumber}`);
+    } catch (smsErr) {
+      console.error("Failed to send SMS:", smsErr.message);
+      // For development: still log OTP to console if SMS fails
+      console.log("\n=== PHONE VERIFICATION OTP (CONSOLE FALLBACK) ===");
+      console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+      console.log("=================================================\n");
+    }
 
     return res.json({ message: "A new OTP has been sent to your phone number." });
   } catch (err) {

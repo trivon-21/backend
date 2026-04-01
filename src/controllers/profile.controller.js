@@ -70,6 +70,8 @@ exports.getProfile = async (req, res) => {
       profilePhoto: user.profilePhoto,
       additionalEmails: user.additionalEmails,
       emailVerified: user.emailVerified || false,
+      phoneVerified: user.phoneVerified || false,
+      authMethods: user.authMethods || ['email'],
       createdAt: user.createdAt
     });
   } catch (err) {
@@ -109,6 +111,8 @@ exports.updateProfile = async (req, res) => {
         profilePhoto: user.profilePhoto,
         additionalEmails: user.additionalEmails,
         emailVerified: user.emailVerified || false,
+        phoneVerified: user.phoneVerified || false,
+        authMethods: user.authMethods || ['email'],
         createdAt: user.createdAt
       }
     });
