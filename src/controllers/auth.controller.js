@@ -42,59 +42,172 @@ async function generateAndSaveOtp(userId) {
   return otp;
 }
 
+// Helper: Identify if input is email or phone
+function identifyAuthType(identifier) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const phoneRegex = /^0\d{9}$/; // Sri Lankan format: 0XXXXXXXXX (10 digits)
+
+  if (emailRegex.test(identifier)) {
+    return "email";
+  } else if (phoneRegex.test(identifier)) {
+    return "phone";
+  }
+  return "invalid";
+}
+
+// Helper: Validate phone number format (Sri Lankan: 0XXXXXXXXX)
+function validatePhoneFormat(phoneNumber) {
+  const phoneRegex = /^0\d{9}$/;
+  return phoneRegex.test(phoneNumber.trim());
+}
+
+// Helper: Normalize phone number (convert 0XXXXXXXXX to +94XXXXXXXXX)
+function normalizePhoneNumber(phoneNumber) {
+  const cleaned = phoneNumber.trim();
+  // Remove any spaces or dashes
+  const withoutSpaces = cleaned.replace(/[\s\-]/g, "");
+  // Convert 0XXXXXXXXX to +94XXXXXXXXX
+  if (withoutSpaces.startsWith("0")) {
+    return "+94" + withoutSpaces.substring(1);
+  }
+  return withoutSpaces;
+}
+
+// Helper: Generate and save phone OTP
+async function generateAndSavePhoneOtp(userId) {
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+  await User.findByIdAndUpdate(userId, {
+    $set: {
+      phoneOtp: hashedOtp,
+      phoneOtpExpires: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+    }
+  });
+  return otp;
+}
+
 // POST /api/auth/signup
 exports.signup = async (req, res) => {
   try {
-    const { fullName, email, password } = req.body;
+    const { fullName, email, password, identifier, phoneNumber } = req.body;
 
-    const existing = await User.findOne({ email: email.toLowerCase() });
-    if (existing) return res.status(409).json({ message: "Email already registered" });
+    // Support both old format (email field) and new format (identifier field)
+    const authInput = identifier || email || phoneNumber;
 
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-
-    const user = await User.create({
-      fullName,
-      email: email.toLowerCase(),
-      passwordHash,
-      role: "CUSTOMER"
-    });
-
-    const otp = await generateAndSaveOtp(user._id);
-
-    // Development fallback: always log OTP to console
-    console.log("\n=== EMAIL VERIFICATION OTP ===");
-    console.log(`OTP for ${user.email}: ${otp}`);
-    console.log("==============================\n");
-
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      try {
-        const transporter = nodemailer.createTransport({
-          service: "gmail",
-          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-          connectionTimeout: 10000,
-          greetingTimeout: 10000,
-          socketTimeout: 10000
-        });
-        await sendOtpEmail(transporter, user.email, user.fullName, otp);
-      } catch (emailErr) {
-        console.error("Failed to send OTP email:", emailErr.message);
-      }
+    if (!authInput || !password || !fullName) {
+      return res.status(400).json({ message: "fullName, password, and identifier (email or phone) are required" });
     }
 
-    const token = signToken(user);
+    const authType = identifyAuthType(authInput);
+    if (authType === "invalid") {
+      return res.status(400).json({ message: "Invalid email or phone number format" });
+    }
 
-    return res.status(201).json({
-      message: "Signup successful",
-      token,
-      user: {
-        id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        emailVerified: false
+    // SIGNUP WITH EMAIL
+    if (authType === "email") {
+      const normalizedEmail = authInput.toLowerCase();
+      const existing = await User.findOne({ email: normalizedEmail });
+      if (existing) {
+        return res.status(409).json({ message: "Email already registered" });
       }
-    });
+
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
+
+      const user = await User.create({
+        fullName,
+        email: normalizedEmail,
+        passwordHash,
+        role: "CUSTOMER",
+        authMethods: ["email"]
+      });
+
+      const otp = await generateAndSaveOtp(user._id);
+
+      // Development fallback: always log OTP to console
+      console.log("\n=== EMAIL VERIFICATION OTP ===");
+      console.log(`OTP for ${user.email}: ${otp}`);
+      console.log("==============================\n");
+
+      if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        try {
+          const transporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 10000
+          });
+          await sendOtpEmail(transporter, user.email, user.fullName, otp);
+        } catch (emailErr) {
+          console.error("Failed to send OTP email:", emailErr.message);
+        }
+      }
+
+      const token = signToken(user);
+
+      return res.status(201).json({
+        message: "Signup successful",
+        token,
+        user: {
+          id: user._id,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          emailVerified: false,
+          authType: "email"
+        }
+      });
+    }
+
+    // SIGNUP WITH PHONE
+    if (authType === "phone") {
+      if (!validatePhoneFormat(authInput)) {
+        return res.status(400).json({ message: "Invalid phone number format" });
+      }
+
+      const normalizedPhone = normalizePhoneNumber(authInput);
+      const existing = await User.findOne({ phoneNumber: normalizedPhone });
+      if (existing) {
+        return res.status(409).json({ message: "Phone number already registered" });
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
+
+      const user = await User.create({
+        fullName,
+        phoneNumber: normalizedPhone,
+        passwordHash,
+        role: "CUSTOMER",
+        authMethods: ["phone"]
+      });
+
+      const otp = await generateAndSavePhoneOtp(user._id);
+
+      // Development fallback: log OTP to console
+      console.log("\n=== PHONE VERIFICATION OTP ===");
+      console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+      console.log("==============================\n");
+
+      // Note: In production, integrate Firebase here to send SMS
+      // For now, just log to console for development
+
+      const token = signToken(user);
+
+      return res.status(201).json({
+        message: "Signup successful. Please verify your phone number.",
+        token,
+        user: {
+          id: user._id,
+          fullName: user.fullName,
+          phoneNumber: user.phoneNumber,
+          role: user.role,
+          phoneVerified: false,
+          authType: "phone"
+        }
+      });
+    }
   } catch (err) {
     return res.status(500).json({ message: "Server error", error: err.message });
   }
@@ -103,62 +216,138 @@ exports.signup = async (req, res) => {
 // POST /api/auth/login
 exports.login = async (req, res) => {
   try {
-    const { email, password, rememberMe } = req.body;
+    const { email, password, rememberMe, identifier, phoneNumber } = req.body;
 
-    const normalizedEmail = email.toLowerCase();
+    // Support both old format (email field) and new format (identifier field)
+    const authInput = identifier || email || phoneNumber;
 
-    // Try primary email first, then verified additional emails
-    let user = await User.findOne({ email: normalizedEmail });
-    if (!user) {
-      user = await User.findOne({
-        additionalEmails: { $elemMatch: { email: normalizedEmail, verified: true } }
-      });
-    }
-    if (!user) return res.status(401).json({ message: "Invalid email or password" });
-
-    // Check if account is locked
-    if (user.lockUntil && user.lockUntil > Date.now()) {
-      const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
-      return res.status(423).json({
-        message: `Account locked due to too many failed attempts. Try again in ${minutesLeft} minute${minutesLeft > 1 ? "s" : ""}.`
-      });
+    if (!authInput || !password) {
+      return res.status(400).json({ message: "identifier (email or phone) and password are required" });
     }
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
+    const authType = identifyAuthType(authInput);
+    if (authType === "invalid") {
+      return res.status(400).json({ message: "Invalid email or phone number format" });
+    }
 
-    if (!ok) {
-      const newAttempts = (user.loginAttempts || 0) + 1;
-      const updates = { loginAttempts: newAttempts };
+    // LOGIN WITH EMAIL
+    if (authType === "email") {
+      const normalizedEmail = authInput.toLowerCase();
 
-      if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
-        updates.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
-        updates.loginAttempts = 0;
-        await User.findByIdAndUpdate(user._id, { $set: updates });
+      // Try primary email first, then verified additional emails
+      let user = await User.findOne({ email: normalizedEmail });
+      if (!user) {
+        user = await User.findOne({
+          additionalEmails: { $elemMatch: { email: normalizedEmail, verified: true } }
+        });
+      }
+      if (!user) return res.status(401).json({ message: "Invalid email or password" });
+
+      // Check if account is locked
+      if (user.lockUntil && user.lockUntil > Date.now()) {
+        const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
         return res.status(423).json({
-          message: "Account locked for 15 minutes due to too many failed login attempts."
+          message: `Account locked due to too many failed attempts. Try again in ${minutesLeft} minute${minutesLeft > 1 ? "s" : ""}.`
         });
       }
 
-      await User.findByIdAndUpdate(user._id, { $set: updates });
-      const remaining = MAX_LOGIN_ATTEMPTS - newAttempts;
-      return res.status(401).json({
-        message: `Invalid email or password. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining before account lock.`
+      const ok = await bcrypt.compare(password, user.passwordHash);
+
+      if (!ok) {
+        const newAttempts = (user.loginAttempts || 0) + 1;
+        const updates = { loginAttempts: newAttempts };
+
+        if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
+          updates.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
+          updates.loginAttempts = 0;
+          await User.findByIdAndUpdate(user._id, { $set: updates });
+          return res.status(423).json({
+            message: "Account locked for 15 minutes due to too many failed login attempts."
+          });
+        }
+
+        await User.findByIdAndUpdate(user._id, { $set: updates });
+        const remaining = MAX_LOGIN_ATTEMPTS - newAttempts;
+        return res.status(401).json({
+          message: `Invalid email or password. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining before account lock.`
+        });
+      }
+
+      // Successful login — clear lock fields
+      await User.findByIdAndUpdate(user._id, {
+        $set: { loginAttempts: 0 },
+        $unset: { lockUntil: "" }
+      });
+
+      const token = signToken(user, rememberMe !== false);
+
+      return res.json({
+        message: "Login successful",
+        token,
+        user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role, emailVerified: user.emailVerified || false }
       });
     }
 
-    // Successful login — clear lock fields
-    await User.findByIdAndUpdate(user._id, {
-      $set: { loginAttempts: 0 },
-      $unset: { lockUntil: "" }
-    });
+    // LOGIN WITH PHONE
+    if (authType === "phone") {
+      if (!validatePhoneFormat(authInput)) {
+        return res.status(400).json({ message: "Invalid phone number format" });
+      }
 
-    const token = signToken(user, rememberMe !== false);
+      const normalizedPhone = normalizePhoneNumber(authInput);
+      const user = await User.findOne({ phoneNumber: normalizedPhone });
 
-    return res.json({
-      message: "Login successful",
-      token,
-      user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role, emailVerified: user.emailVerified || false }
-    });
+      if (!user) {
+        return res.status(401).json({ message: "Invalid phone number or password" });
+      }
+
+      // Check if account is locked
+      if (user.lockUntil && user.lockUntil > Date.now()) {
+        const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
+        return res.status(423).json({
+          message: `Account locked due to too many failed attempts. Try again in ${minutesLeft} minute${minutesLeft > 1 ? "s" : ""}.`
+        });
+      }
+
+      const ok = await bcrypt.compare(password, user.passwordHash);
+
+      if (!ok) {
+        const newAttempts = (user.loginAttempts || 0) + 1;
+        const updates = { loginAttempts: newAttempts };
+
+        if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
+          updates.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
+          updates.loginAttempts = 0;
+          await User.findByIdAndUpdate(user._id, { $set: updates });
+          return res.status(423).json({
+            message: "Account locked for 15 minutes due to too many failed login attempts."
+          });
+        }
+
+        await User.findByIdAndUpdate(user._id, { $set: updates });
+        const remaining = MAX_LOGIN_ATTEMPTS - newAttempts;
+        return res.status(401).json({
+          message: `Invalid phone number or password. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining before account lock.`
+        });
+      }
+
+      // For phone login, send OTP first
+      const otp = await generateAndSavePhoneOtp(user._id);
+
+      console.log("\n=== PHONE VERIFICATION OTP (LOGIN) ===");
+      console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+      console.log("========================================\n");
+
+      // Note: In production, integrate Firebase here to send SMS
+      // For now, just log to console for development
+
+      return res.json({
+        message: "OTP sent to your phone number",
+        sessionId: user._id.toString(), // Use user ID as session ID
+        requiringPhoneVerification: true,
+        authType: "phone"
+      });
+    }
   } catch (err) {
     return res.status(500).json({ message: "Server error", error: err.message });
   }
@@ -329,6 +518,66 @@ exports.resendOtp = async (req, res) => {
     }
 
     return res.json({ message: "A new OTP has been sent to your email." });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// POST /api/auth/verify-phone  (protected)
+exports.verifyPhone = async (req, res) => {
+  try {
+    const { otp, sessionId } = req.body;
+    if (!otp) return res.status(400).json({ message: "OTP is required" });
+
+    const user = req.user;
+
+    if (user.phoneVerified) {
+      return res.status(400).json({ message: "Phone number is already verified." });
+    }
+
+    if (!user.phoneOtp || !user.phoneOtpExpires) {
+      return res.status(400).json({ message: "No OTP found. Please request a new one." });
+    }
+
+    if (user.phoneOtpExpires < Date.now()) {
+      return res.status(400).json({ message: "OTP has expired. Please request a new one." });
+    }
+
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+    if (user.phoneOtp !== hashedOtp) {
+      return res.status(400).json({ message: "Invalid OTP." });
+    }
+
+    await User.findByIdAndUpdate(user._id, {
+      $set: { phoneVerified: true },
+      $unset: { phoneOtp: "", phoneOtpExpires: "" }
+    });
+
+    return res.json({ message: "Phone number verified successfully." });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// POST /api/auth/resend-otp-phone  (protected)
+exports.resendOtpPhone = async (req, res) => {
+  try {
+    const user = req.user;
+
+    if (user.phoneVerified) {
+      return res.status(400).json({ message: "Phone number is already verified." });
+    }
+
+    const otp = await generateAndSavePhoneOtp(user._id);
+
+    console.log("\n=== PHONE VERIFICATION OTP (RESEND) ===");
+    console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+    console.log("========================================\n");
+
+    // Note: In production, integrate Firebase here to send SMS
+    // For now, just log to console for development
+
+    return res.json({ message: "A new OTP has been sent to your phone number." });
   } catch (err) {
     return res.status(500).json({ message: "Server error", error: err.message });
   }

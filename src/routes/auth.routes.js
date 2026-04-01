@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
-const { signup, login, forgotPassword, resetPassword, verifyEmail, resendOtp } = require("../controllers/auth.controller");
+const { signup, login, forgotPassword, resetPassword, verifyEmail, resendOtp, verifyPhone, resendOtpPhone } = require("../controllers/auth.controller");
 const { validate } = require("../middleware/auth.middleware");
 const { protect } = require("../middleware/protect");
 
@@ -8,13 +8,20 @@ router.post(
   "/signup",
   [
     body("fullName").isLength({ min: 3 }).withMessage("Full name must be at least 3 characters"),
-    body("email").isEmail().withMessage("Valid email required"),
     body("password")
       .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
       .matches(/[A-Z]/).withMessage("Password must contain at least one uppercase letter")
       .matches(/[a-z]/).withMessage("Password must contain at least one lowercase letter")
       .matches(/[0-9]/).withMessage("Password must contain at least one number")
-      .matches(/[^A-Za-z0-9]/).withMessage("Password must contain at least one special character")
+      .matches(/[^A-Za-z0-9]/).withMessage("Password must contain at least one special character"),
+    // Accept either email or phone (identifier, email, or phoneNumber)
+    body().custom((value, { req }) => {
+      const { identifier, email, phoneNumber } = req.body;
+      if (!identifier && !email && !phoneNumber) {
+        throw new Error("identifier (email or phone) is required");
+      }
+      return true;
+    })
   ],
   validate,
   signup
@@ -23,8 +30,15 @@ router.post(
 router.post(
   "/login",
   [
-    body("email").isEmail().withMessage("Valid email required"),
-    body("password").notEmpty().withMessage("Password is required")
+    body("password").notEmpty().withMessage("Password is required"),
+    // Accept either email or phone (identifier, email, or phoneNumber)
+    body().custom((value, { req }) => {
+      const { identifier, email, phoneNumber } = req.body;
+      if (!identifier && !email && !phoneNumber) {
+        throw new Error("identifier (email or phone) is required");
+      }
+      return true;
+    })
   ],
   validate,
   login
@@ -61,5 +75,7 @@ router.get("/reset-password/:token", (req, res) =>
 
 router.post("/verify-email", protect, verifyEmail);
 router.post("/resend-otp", protect, resendOtp);
+router.post("/verify-phone", protect, verifyPhone);
+router.post("/resend-otp-phone", protect, resendOtpPhone);
 
 module.exports = router;

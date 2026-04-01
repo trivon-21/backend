@@ -4,7 +4,7 @@ const userSchema = new mongoose.Schema(
   {
     fullName: { type: String, required: true, trim: true },
     lastName: { type: String, trim: true, default: "" },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    email: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
     role: {
       type: String,
@@ -13,7 +13,7 @@ const userSchema = new mongoose.Schema(
     },
     gender: { type: String, enum: ["Male", "Female", "Other", ""], default: "" },
     address: { type: String, trim: true, default: "" },
-    phoneNumber: { type: String, trim: true, default: "" },
+    phoneNumber: { type: String, unique: true, sparse: true, trim: true },
     profilePhoto: { type: String, default: "" },
     additionalEmails: [
       {
@@ -27,6 +27,10 @@ const userSchema = new mongoose.Schema(
     emailVerified: { type: Boolean, default: false },
     emailOtp: { type: String },
     emailOtpExpires: { type: Date },
+    phoneVerified: { type: Boolean, default: false },
+    phoneOtp: { type: String },
+    phoneOtpExpires: { type: Date },
+    authMethods: { type: [String], enum: ["email", "phone"], default: ["email"] },
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date },
     resetPasswordToken: { type: String },
