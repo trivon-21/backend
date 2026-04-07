@@ -288,17 +288,17 @@ exports.changePassword = async (req, res) => {
 // PUT /api/user/profile/photo
 exports.uploadPhoto = async (req, res) => {
   try {
-    const { photo } = req.body;
-    if (!photo) return res.status(400).json({ message: "Photo data is required" });
+    const { profilePhoto } = req.body;
+    if (!profilePhoto) return res.status(400).json({ message: "Photo data is required" });
 
     // Accept base64 data URLs (e.g. "data:image/jpeg;base64,...")
-    if (!photo.startsWith("data:image/")) {
+    if (!profilePhoto.startsWith("data:image/")) {
       return res.status(400).json({ message: "Invalid image format. Must be a base64 data URL." });
     }
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { $set: { profilePhoto: photo } },
+      { $set: { profilePhoto: profilePhoto } },
       { returnDocument: "after" }
     ).select("-passwordHash");
 
