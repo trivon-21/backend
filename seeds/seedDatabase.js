@@ -45,19 +45,6 @@ async function seedUsers() {
 
   const users = [
     {
-      fullName: "Admin",
-      lastName: "Super",
-      email: "admin@airlux.com",
-      phoneNumber: "0770000000",
-      passwordHash: hashedPassword,
-      gender: "Male",
-      address: "Admin Office, Colombo",
-      role: "SUPER_ADMIN",
-      emailVerified: true,
-      phoneVerified: true,
-      authMethods: ["email"]
-    },
-    {
       fullName: "John",
       lastName: "Doe",
       email: "john@example.com",
@@ -438,11 +425,7 @@ async function seedDatabase() {
     const feedback = await seedFeedback(users, orders, serviceRequests);
 
     console.log("\n✓ Database seeded successfully!\n");
-    console.log("Super Admin Credentials:");
-    console.log("- Email: admin@airlux.com (Phone: 0770000000)");
-    console.log("- Password: Test@123456");
-    console.log("- Role: SUPER_ADMIN");
-    console.log("\nCustomer Credentials:");
+    console.log("Customer Credentials:");
     console.log("- Email: john@example.com (Phone: 0771234567)");
     console.log("- Email: sarah@example.com (Phone: 0772345678)");
     console.log("- Email: michael@example.com (Phone: 0773456789)");

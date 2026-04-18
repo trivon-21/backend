@@ -1,6 +1,6 @@
 /**
  * Order Service (Shared)
- * Used by Customer, CSA, Manager, Super-Admin roles
+ * Used by Customer, CSA, Manager roles
  */
 const Order = require("../../../models/Order");
 

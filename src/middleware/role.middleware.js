@@ -1,6 +1,6 @@
 /**
  * Authorization middleware for role-based access control
- * Usage: router.post("/endpoint", authorize(['SUPER_ADMIN', 'MANAGER']), controllerFunc);
+ * Usage: router.post("/endpoint", authorize(['MANAGER', 'CSA']), controllerFunc);
  */
 const authorize = (requiredRoles = []) => {
   return (req, res, next) => {
