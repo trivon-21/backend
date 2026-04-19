@@ -198,10 +198,12 @@ exports.signup = async (authInput, fullName, password) => {
       console.log(`✅ SMS OTP sent to ${user.phoneNumber}`);
     } catch (smsErr) {
       console.error("Failed to send SMS:", smsErr.message);
-      console.log("\n=== PHONE VERIFICATION OTP (CONSOLE FALLBACK) ===");
-      console.log(`OTP for ${user.phoneNumber}: ${otp}`);
-      console.log("=================================================\n");
     }
+
+    // Always log OTP for development/testing (in case SMS delivery fails)
+    console.log("\n=== PHONE VERIFICATION OTP ===");
+    console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+    console.log("===============================\n");
 
     const token = signToken(user);
 
@@ -519,8 +521,10 @@ exports.resendPhoneOtp = async (userId) => {
     console.log(`✅ SMS OTP resent to ${user.phoneNumber}`);
   } catch (smsErr) {
     console.error("Failed to send SMS:", smsErr.message);
-    console.log("\n=== PHONE VERIFICATION OTP (CONSOLE FALLBACK) ===");
-    console.log(`OTP for ${user.phoneNumber}: ${otp}`);
-    console.log("=================================================\n");
   }
+
+  // Always log OTP for development/testing (in case SMS delivery fails)
+  console.log("\n=== PHONE VERIFICATION OTP ===");
+  console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+  console.log("===============================\n");
 };

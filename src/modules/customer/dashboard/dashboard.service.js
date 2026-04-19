@@ -8,9 +8,9 @@ const Inquiry = require("../../../models/Inquiry");
 exports.getDashboard = async (userId) => {
   try {
     const [orders, serviceRequests, inquiries] = await Promise.all([
-      Order.find({ customerId: userId }).sort({ createdAt: -1 }),
-      ServiceRequest.find({ customerId: userId }),
-      Inquiry.find({ customerId: userId })
+      Order.find({ customer: userId }).sort({ createdAt: -1 }),
+      ServiceRequest.find({ customer: userId }),
+      Inquiry.find({ customer: userId })
     ]);
 
     const totalPurchases = orders.length;

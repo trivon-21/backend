@@ -1,6 +1,6 @@
 /**
  * Customer Module - Routes Aggregator
- * Combines profile, dashboard, and order routes
+ * Combines profile, dashboard, order, service-request, and inquiry routes
  */
 
 const router = require("express").Router();
@@ -11,6 +11,10 @@ const profileRoutes = require("./profile/profile.routes");
 const dashboardRoutes = require("./dashboard/dashboard.routes");
 const orderRoutes = require("./order/order.routes");
 
+// Import shared routes (these should be available at /api/customer/*)
+const serviceRequestRoutes = require("../../routes/service-request.routes");
+const inquiryRoutes = require("../../routes/inquiry.routes");
+
 // All customer routes require authentication
 router.use(protect);
 
@@ -18,5 +22,7 @@ router.use(protect);
 router.use("/profile", profileRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/orders", orderRoutes);
+router.use("/service-requests", serviceRequestRoutes);
+router.use("/inquiries", inquiryRoutes);
 
 module.exports = router;

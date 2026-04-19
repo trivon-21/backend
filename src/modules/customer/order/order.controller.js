@@ -3,7 +3,7 @@ const orderService = require("../../shared/order/order.service");
 exports.getOrders = async (req, res) => {
   try {
     const result = await orderService.getUserOrders(req.user._id);
-    return res.json(result);
+    return res.json(result.orders);
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }

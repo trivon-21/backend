@@ -7,7 +7,7 @@ const Order = require("../../../models/Order");
 exports.getUserOrders = async (userId, filters = {}, pagination = {}) => {
   try {
     const { limit = 10, skip = 0 } = pagination;
-    const query = { customerId: userId, ...filters };
+    const query = { customer: userId, ...filters };
 
     const orders = await Order.find(query)
       .skip(skip)
@@ -62,7 +62,7 @@ exports.trackOrderPublic = async (orderRef, phone, email) => {
 
 exports.cancelOrder = async (orderId, userId) => {
   try {
-    const order = await Order.findOne({ _id: orderId, customerId: userId });
+    const order = await Order.findOne({ _id: orderId, customer: userId });
     if (!order) throw new Error("Order not found or unauthorized");
 
     // Only allow cancellation for specific statuses
@@ -85,7 +85,7 @@ exports.cancelOrder = async (orderId, userId) => {
 
 exports.reuploadPayment = async (orderId, userId, paymentSlipUrl) => {
   try {
-    const order = await Order.findOne({ _id: orderId, customerId: userId });
+    const order = await Order.findOne({ _id: orderId, customer: userId });
     if (!order) throw new Error("Order not found or unauthorized");
 
     const updated = await Order.findByIdAndUpdate(
