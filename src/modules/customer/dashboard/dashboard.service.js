@@ -16,6 +16,7 @@ exports.getDashboard = async (userId) => {
     const totalPurchases = orders.length;
     const returnOrders = orders.filter(o => o.status === "Returned").length;
     const pendingPayment = orders.filter(o => o.status === "Pending").length;
+    const rejectedPayment = orders.filter(o => o.status === "Rejected").length;
     const completed = orders.filter(o => o.status === "Completed").length;
 
     const srOngoing = serviceRequests.filter(s =>
@@ -32,7 +33,7 @@ exports.getDashboard = async (userId) => {
     const iqAddressed = inquiries.filter(i => ["Addressed", "Closed"].includes(i.status)).length;
 
     return {
-      stats: { totalPurchases, returnOrders, pendingPayment, completed },
+      stats: { totalPurchases, returnOrders, pendingPayment, rejectedPayment, completed },
       orders: orders.map(o => ({
         id: o._id,
         itemName: o.itemName,

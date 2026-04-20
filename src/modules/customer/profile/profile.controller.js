@@ -98,3 +98,12 @@ exports.uploadPhoto = async (req, res) => {
     return res.status(400).json({ message: err.message });
   }
 };
+
+exports.removePhoto = async (req, res) => {
+  try {
+    const result = await profileService.removePhoto(req.user._id);
+    return res.json(result);
+  } catch (err) {
+    return res.status(400).json({ message: err.message });
+  }
+};

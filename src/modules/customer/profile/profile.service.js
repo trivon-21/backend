@@ -238,3 +238,18 @@ exports.uploadPhoto = async (userId, { profilePhoto }) => {
     profilePhoto: user.profilePhoto
   };
 };
+
+exports.removePhoto = async (userId) => {
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { $unset: { profilePhoto: "" } },
+    { returnDocument: "after" }
+  ).select("-passwordHash");
+
+  if (!user) throw new Error("User not found");
+
+  return {
+    message: "Profile photo removed",
+    profilePhoto: null
+  };
+};

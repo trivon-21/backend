@@ -1,15 +1,16 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
-const { 
-  getProfile, 
-  updateProfile, 
-  addEmail, 
-  removeEmail, 
-  verifyAdditionalEmail, 
+const {
+  getProfile,
+  updateProfile,
+  addEmail,
+  removeEmail,
+  verifyAdditionalEmail,
   resendAdditionalEmailOtp,
-  deleteAccount, 
-  changePassword, 
-  uploadPhoto 
+  deleteAccount,
+  changePassword,
+  uploadPhoto,
+  removePhoto
 } = require("./profile.controller");
 const { validate } = require("../../../middleware/auth.middleware");
 
@@ -65,5 +66,8 @@ router.post(
 
 // PUT upload profile photo
 router.put("/photo", uploadPhoto);
+
+// DELETE remove profile photo
+router.delete("/photo", removePhoto);
 
 module.exports = router;
