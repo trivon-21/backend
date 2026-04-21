@@ -5,6 +5,7 @@
 
 const authRoutes = require("../modules/auth/auth.routes");
 const customerRoutes = require("../modules/customer/customer.routes");
+const superAdminRoutes = require("../modules/super-admin/super-admin.routes");
 
 // Stub role routes with placeholders (to be expanded)
 const technicianRoutes = require("../modules/technician/technician.routes");
@@ -23,6 +24,9 @@ const managerRoutes = require("../modules/manager/manager.routes");
 function initializeRoutes(app) {
   // Public/Auth routes (no auth required for signup, forgot-password)
   app.use("/api/auth", authRoutes);
+
+  // Super Admin routes (protected - super admin only)
+  app.use("/api/super-admin", superAdminRoutes);
 
   // Customer routes (protected - customers only)
   app.use("/api/customer", customerRoutes);
