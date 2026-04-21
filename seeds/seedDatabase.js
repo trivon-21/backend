@@ -45,10 +45,23 @@ async function seedUsers() {
 
   const users = [
     {
+      fullName: "Super",
+      lastName: "Admin",
+      email: "admin@example.com",
+      phoneNumber: "+94770000000",
+      passwordHash: hashedPassword,
+      gender: "Male",
+      address: "Admin Office, Colombo",
+      role: "SUPER_ADMIN",
+      emailVerified: true,
+      phoneVerified: true,
+      authMethods: ["email"]
+    },
+    {
       fullName: "John",
       lastName: "Doe",
       email: "john@example.com",
-      phoneNumber: "0771234567",
+      phoneNumber: "+94771234567",
       passwordHash: hashedPassword,
       gender: "Male",
       address: "123 Main Street, Colombo",
@@ -61,7 +74,7 @@ async function seedUsers() {
       fullName: "Sarah",
       lastName: "Johnson",
       email: "sarah@example.com",
-      phoneNumber: "0772345678",
+      phoneNumber: "+94772345678",
       passwordHash: hashedPassword,
       gender: "Female",
       address: "456 Oak Avenue, Kandy",
@@ -81,7 +94,7 @@ async function seedUsers() {
       fullName: "Michael",
       lastName: "Smith",
       email: "michael@example.com",
-      phoneNumber: "0773456789",
+      phoneNumber: "+94773456789",
       passwordHash: hashedPassword,
       gender: "Male",
       address: "789 Pine Road, Galle",
@@ -100,7 +113,7 @@ async function seedUsers() {
 async function seedOrders(users) {
   const orders = [
     {
-      customer: users[0]._id,
+      customer: users[1]._id,
       itemName: "Daikin 1.5 Ton Air Conditioner",
       productImage: "https://via.placeholder.com/300x300?text=Daikin",
       quantity: 1,
@@ -115,7 +128,7 @@ async function seedOrders(users) {
       amcStatus: "Active"
     },
     {
-      customer: users[0]._id,
+      customer: users[1]._id,
       itemName: "LG 2 Ton Window AC",
       productImage: "https://via.placeholder.com/300x300?text=LG",
       quantity: 2,
@@ -127,7 +140,7 @@ async function seedOrders(users) {
       paymentSlipUrl: "https://via.placeholder.com/300x300?text=Receipt"
     },
     {
-      customer: users[1]._id,
+      customer: users[2]._id,
       itemName: "Hitachi 1 Ton Split AC",
       productImage: "https://via.placeholder.com/300x300?text=Hitachi",
       quantity: 1,
@@ -142,7 +155,7 @@ async function seedOrders(users) {
       amcStatus: "Expired"
     },
     {
-      customer: users[1]._id,
+      customer: users[2]._id,
       itemName: "Voltas 1.5 Ton AC Unit",
       productImage: "https://via.placeholder.com/300x300?text=Voltas",
       quantity: 1,
@@ -153,7 +166,7 @@ async function seedOrders(users) {
       status: "Pending"
     },
     {
-      customer: users[2]._id,
+      customer: users[3]._id,
       itemName: "Samsung 1.5 Ton Inverter AC",
       productImage: "https://via.placeholder.com/300x300?text=Samsung",
       quantity: 1,
@@ -177,7 +190,7 @@ async function seedOrders(users) {
 async function seedServiceRequests(users, orders) {
   const serviceRequests = [
     {
-      customer: users[0]._id,
+      customer: users[1]._id,
       acUnitModel: "Daikin FTKA50TV",
       acUnitSerial: "DK001234567",
       acWarrantyStatus: "Active",
@@ -191,7 +204,7 @@ async function seedServiceRequests(users, orders) {
       status: "Assigned"
     },
     {
-      customer: users[0]._id,
+      customer: users[1]._id,
       acUnitModel: "LG LSA3NK",
       acUnitSerial: "LG567890123",
       acWarrantyStatus: "Active",
@@ -205,7 +218,7 @@ async function seedServiceRequests(users, orders) {
       status: "Pending"
     },
     {
-      customer: users[1]._id,
+      customer: users[2]._id,
       acUnitModel: "Hitachi RMAS512HBEA",
       acUnitSerial: "HT111222333",
       acWarrantyStatus: "Expired",
@@ -219,7 +232,7 @@ async function seedServiceRequests(users, orders) {
       status: "In Progress"
     },
     {
-      customer: users[2]._id,
+      customer: users[3]._id,
       acUnitModel: "Samsung AR18NV3HEWK",
       acUnitSerial: "SM444555666",
       acWarrantyStatus: "Active",
@@ -233,7 +246,7 @@ async function seedServiceRequests(users, orders) {
       status: "Pending"
     },
     {
-      customer: users[2]._id,
+      customer: users[3]._id,
       acUnitModel: "Voltas 185 DXM",
       acUnitSerial: "VT777888999",
       acWarrantyStatus: "Unknown",
@@ -256,7 +269,7 @@ async function seedServiceRequests(users, orders) {
 async function seedInquiries(users) {
   const inquiries = [
     {
-      customer: users[0]._id,
+      customer: users[1]._id,
       name: "John Doe",
       email: "john@example.com",
       phone: "0771234567",
@@ -283,7 +296,7 @@ async function seedInquiries(users) {
       ]
     },
     {
-      customer: users[1]._id,
+      customer: users[2]._id,
       name: "Sarah Johnson",
       email: "sarah@example.com",
       phone: "0772345678",
@@ -302,7 +315,7 @@ async function seedInquiries(users) {
       ]
     },
     {
-      customer: users[2]._id,
+      customer: users[3]._id,
       name: "Michael Smith",
       email: "michael@example.com",
       phone: "0773456789",
@@ -329,7 +342,7 @@ async function seedInquiries(users) {
       ]
     },
     {
-      customer: users[0]._id,
+      customer: users[1]._id,
       name: "John Doe",
       email: "john@example.com",
       phone: "0771234567",
@@ -357,7 +370,7 @@ async function seedInquiries(users) {
 async function seedFeedback(users, orders, serviceRequests) {
   const feedback = [
     {
-      customer: users[0]._id,
+      customer: users[1]._id,
       feedbackFor: "Order",
       referenceId: orders[0]._id,
       referenceLabel: orders[0].orderRef,
@@ -368,7 +381,7 @@ async function seedFeedback(users, orders, serviceRequests) {
       imageUrl: "https://via.placeholder.com/300x300?text=Review"
     },
     {
-      customer: users[0]._id,
+      customer: users[1]._id,
       feedbackFor: "Installation",
       referenceId: orders[0]._id,
       referenceLabel: orders[0].orderRef,
@@ -378,7 +391,7 @@ async function seedFeedback(users, orders, serviceRequests) {
       imageUrl: "https://via.placeholder.com/300x300?text=Installation"
     },
     {
-      customer: users[0]._id,
+      customer: users[1]._id,
       feedbackFor: "Service",
       referenceId: serviceRequests[0]._id,
       referenceLabel: serviceRequests[0].serviceRequestRef,
@@ -387,7 +400,7 @@ async function seedFeedback(users, orders, serviceRequests) {
       comment: "Good service. Technician identified the noise issue and fixed it quickly."
     },
     {
-      customer: users[1]._id,
+      customer: users[2]._id,
       feedbackFor: "Order",
       referenceId: orders[2]._id,
       referenceLabel: orders[2].orderRef,
@@ -398,7 +411,7 @@ async function seedFeedback(users, orders, serviceRequests) {
       imageUrl: "https://via.placeholder.com/300x300?text=Satisfied"
     },
     {
-      customer: users[2]._id,
+      customer: users[3]._id,
       feedbackFor: "AMC Service Visit",
       referenceId: serviceRequests[3]._id,
       referenceLabel: serviceRequests[3].serviceRequestRef,
@@ -425,11 +438,17 @@ async function seedDatabase() {
     const feedback = await seedFeedback(users, orders, serviceRequests);
 
     console.log("\n✓ Database seeded successfully!\n");
-    console.log("Customer Credentials:");
+    console.log("═══════════════════════════════════════════════════════════");
+    console.log("SUPER ADMIN CREDENTIALS:");
+    console.log("- Email: admin@example.com");
+    console.log("- Password: Test@123456");
+    console.log("═══════════════════════════════════════════════════════════");
+    console.log("\nCUSTOMER CREDENTIALS:");
     console.log("- Email: john@example.com (Phone: 0771234567)");
     console.log("- Email: sarah@example.com (Phone: 0772345678)");
     console.log("- Email: michael@example.com (Phone: 0773456789)");
     console.log("- Password: Test@123456 (all users)");
+    console.log("═══════════════════════════════════════════════════════════");
     console.log("\nAll collections populated with sample data!");
 
     process.exit(0);
