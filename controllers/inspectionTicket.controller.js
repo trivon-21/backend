@@ -1,0 +1,419 @@
+const mongoose  = require("mongoose");
+const cron      = require("node-cron");
+const InspectionTicket = require("../models/InspectionTicket.model");
+const { sendRejectionEmail, sendApprovalEmail, sendSchedulingEmail, sendReminderEmail } = require("../services/email.service");
+
+const SLOTS_PER_DAY  = 4;
+const FRONTEND_URL   = process.env.FRONTEND_URL || "http://localhost:4200";
+
+const getOrderModel = () => {
+  try { return mongoose.model("Order"); }
+  catch {
+    const s = new mongoose.Schema({
+      orderRef: String, customer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      itemName: String, quantity: Number, amount: Number, orderType: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("Order", s);
+  }
+};
+
+const getUserModel = () => {
+  try { return mongoose.model("User"); }
+  catch {
+    const s = new mongoose.Schema({
+      fullName: String, lastName: String, email: String,
+      phoneNumber: String, role: String, address: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("User", s);
+  }
+};
+
+// Public holidays YYYY-MM-DD
+const PUBLIC_HOLIDAYS = [
+  "2026-04-13", "2026-04-14", "2026-05-01",
+  "2026-05-22", "2026-06-30",
+];
+
+// ── GET or CREATE ticket ──────────────────────────────────────────────────────
+exports.getOrCreateTicket = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const Order = getOrderModel();
+    const User  = getUserModel();
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    if (order.orderType !== "Buy & Install")
+      return res.status(400).json({ message: "This order does not require inspection" });
+    const user   = await User.findById(order.customer);
+    let   ticket = await InspectionTicket.findOne({ orderId: order._id });
+    if (!ticket) {
+      ticket = await InspectionTicket.create({
+        orderId:       order._id,
+        customerId:    order.customer,
+        status:        "PENDING_PAYMENT",
+        inspectionFee: 5000,
+      });
+    }
+    res.json({
+      ticket,
+      order: {
+        orderId:       order.orderRef || order._id,
+        customerName:  user ? `${user.fullName} ${user.lastName}`.trim() : "Customer",
+        customerEmail: user?.email || "",
+        itemName:      order.itemName,
+        items:         [order.itemName],
+        quantity:      order.quantity,
+        amount:        order.amount,
+        orderType:     order.orderType,
+      },
+      bankDetails: {
+        bankName:      "Commercial Bank",
+        branchName:    "Colombo 03",
+        accountName:   "AirLux Pvt Ltd",
+        accountNo:     "1234567890",
+        inspectionFee: ticket.inspectionFee,
+      },
+    });
+  } catch (error) {
+    console.error("getOrCreateTicket error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// ── UPLOAD slip ───────────────────────────────────────────────────────────────
+exports.uploadSlip = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { slipUrl  } = req.body;
+    if (!slipUrl) return res.status(400).json({ message: "No slip data received" });
+    const ticket = await InspectionTicket.findById(ticketId);
+    if (!ticket)  return res.status(404).json({ message: "Ticket not found" });
+    if (!["PENDING_PAYMENT","PAYMENT_REJECTED"].includes(ticket.status))
+      return res.status(400).json({ message: `Cannot upload at stage: ${ticket.status}` });
+    ticket.slipUrl        = slipUrl;
+    ticket.status         = "PAYMENT_UNDER_REVIEW";
+    ticket.rejectionReason = null;
+    ticket.slipUploadedAt  = new Date();
+    await ticket.save();
+    res.json({ message: "Slip uploaded. Payment is under review.", ticket });
+  } catch (error) {
+    console.error("uploadSlip error:", error);
+    res.status(500).json({ message: "Upload failed", error: error.message });
+  }
+};
+
+// ── GET pending verification ──────────────────────────────────────────────────
+exports.getPendingVerification = async (req, res) => {
+  try {
+    const tickets = await InspectionTicket.find({ status: "PAYMENT_UNDER_REVIEW" }).sort({ updatedAt: -1 });
+    const Order = getOrderModel();
+    const User  = getUserModel();
+    const formatted = await Promise.all(tickets.map(async (t) => {
+      const order = await Order.findById(t.orderId);
+      const user  = await User.findById(t.customerId);
+      return {
+        _id:           t._id,
+        orderId:       order?.orderRef || t.orderId,
+        ticketId:      `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customerName:  user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
+        customerEmail: user?.email || "",
+        amount:        t.inspectionFee,
+        slipUrl:       t.slipUrl,
+        status:        t.status,
+        date:          t.slipUploadedAt || t.updatedAt,
+        createdAt:     t.createdAt,
+        updatedAt:     t.updatedAt,
+      };
+    }));
+    res.json(formatted);
+  } catch (error) {
+    console.error("getPendingVerification error:", error);
+    res.status(500).json({ message: "Failed to fetch tickets", error: error.message });
+  }
+};
+
+// ── APPROVE payment ───────────────────────────────────────────────────────────
+exports.approvePayment = async (req, res) => {
+  try {
+    const ticket = await InspectionTicket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+    const Order = getOrderModel();
+    const User  = getUserModel();
+    const order = await Order.findById(ticket.orderId);
+    const user  = await User.findById(ticket.customerId);
+    ticket.status          = "PAYMENT_CONFIRMED";
+    ticket.rejectionReason = null;
+    ticket.approvedAt      = new Date();
+    await ticket.save();
+    if (user?.email) {
+      const schedulingLink = `${FRONTEND_URL}/inspection-scheduling?ticketId=${ticket._id}`;
+      await sendApprovalEmail(user.email, order?.orderRef || ticket.orderId, user.fullName || "Customer", schedulingLink);
+    }
+    res.json({ message: "Inspection payment approved successfully", ticket });
+  } catch (error) {
+    console.error("approvePayment error:", error);
+    res.status(500).json({ message: "Approval failed", error: error.message });
+  }
+};
+
+// ── REJECT payment ────────────────────────────────────────────────────────────
+exports.rejectPayment = async (req, res) => {
+  try {
+    const { rejectionReason } = req.body;
+    if (!rejectionReason) return res.status(400).json({ message: "Rejection reason required" });
+    const ticket = await InspectionTicket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+    const Order = getOrderModel();
+    const User  = getUserModel();
+    const order = await Order.findById(ticket.orderId);
+    const user  = await User.findById(ticket.customerId);
+    ticket.status          = "PAYMENT_REJECTED";
+    ticket.rejectionReason = rejectionReason;
+    ticket.rejectedAt      = new Date();
+    await ticket.save();
+    if (user?.email) {
+      const reuploadLink = `${FRONTEND_URL}/inspection-payment?orderId=${ticket.orderId}`;
+      await sendRejectionEmail(user.email, order?.orderRef || ticket.orderId.toString(), rejectionReason, reuploadLink);
+    }
+    res.json({ message: "Payment rejected and email sent", ticket });
+  } catch (error) {
+    console.error("rejectPayment error:", error);
+    res.status(500).json({ message: "Rejection failed", error: error.message });
+  }
+};
+
+// ── GET verified payments ─────────────────────────────────────────────────────
+exports.getVerifiedPayments = async (req, res) => {
+  try {
+    const tickets = await InspectionTicket.find({
+      status: { $in: ["PAYMENT_CONFIRMED","INSPECTION_SCHEDULED","INSPECTED"] }
+    }).sort({ approvedAt: -1 });
+    const Order = getOrderModel();
+    const User  = getUserModel();
+    const formatted = await Promise.all(tickets.map(async (t) => {
+      const order = await Order.findById(t.orderId);
+      const user  = await User.findById(t.customerId);
+      return {
+        _id:           t._id,
+        orderId:       order?.orderRef || t.orderId,
+        ticketId:      `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customerName:  user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
+        customerEmail: user?.email || "",
+        amount:        t.inspectionFee,
+        slipUrl:       t.slipUrl,
+        status:        t.status,
+        updatedAt:     t.approvedAt || t.updatedAt,
+      };
+    }));
+    res.json(formatted);
+  } catch (error) {
+    console.error("getVerifiedPayments error:", error);
+    res.status(500).json({ message: "Failed to fetch verified payments", error: error.message });
+  }
+};
+
+// ── GET rejected payments ─────────────────────────────────────────────────────
+exports.getRejectedPayments = async (req, res) => {
+  try {
+    const tickets = await InspectionTicket.find({ status: "PAYMENT_REJECTED" }).sort({ rejectedAt: -1 });
+    const Order = getOrderModel();
+    const User  = getUserModel();
+    const formatted = await Promise.all(tickets.map(async (t) => {
+      const order = await Order.findById(t.orderId);
+      const user  = await User.findById(t.customerId);
+      return {
+        _id:             t._id,
+        orderId:         order?.orderRef || t.orderId,
+        ticketId:        `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customerName:    user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
+        customerEmail:   user?.email || "",
+        amount:          t.inspectionFee,
+        slipUrl:         t.slipUrl,
+        status:          t.status,
+        rejectionReason: t.rejectionReason,
+        updatedAt:       t.rejectedAt || t.updatedAt,
+      };
+    }));
+    res.json(formatted);
+  } catch (error) {
+    console.error("getRejectedPayments error:", error);
+    res.status(500).json({ message: "Failed to fetch rejected payments", error: error.message });
+  }
+};
+
+// ── GET available dates for scheduling ───────────────────────────────────────
+exports.getAvailableDates = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const ticket = await InspectionTicket.findById(ticketId);
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+    if (ticket.status !== "PAYMENT_CONFIRMED")
+      return res.status(400).json({ message: "Payment not confirmed yet" });
+
+    // Start from tomorrow
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() + 1);
+
+    const end = new Date(start);
+    end.setDate(end.getDate() + 30);
+
+    // Count bookings per day
+    const bookings = await InspectionTicket.find({
+      status:        { $in: ["INSPECTION_SCHEDULED", "ONGOING", "REPORT_RECORDED", "INSPECTED"] },
+      scheduledDate: { $gte: start, $lte: end },
+    });
+
+    const bookingCounts={};
+    bookings.forEach((b) => {
+      if (b.scheduledDate) {
+        const dateKey = new Date(b.scheduledDate).toISOString().split("T")[0];
+        bookingCounts[dateKey] = (bookingCounts[dateKey] || 0) + 1;
+      }
+    });
+
+    const calendar = [];
+    const current  = new Date(start);
+
+    while (current <= end) {
+      const dateKey      = current.toISOString().split("T")[0];
+      const dayOfWeek    = current.getDay();
+      const isHoliday    = PUBLIC_HOLIDAYS.includes(dateKey);
+      const isWeekend    = dayOfWeek === 0 || dayOfWeek === 6;
+      const bookingCount = bookingCounts[dateKey] || 0;
+      const isFullyBooked = bookingCount >= SLOTS_PER_DAY;
+
+      let status = "available";
+      if (isHoliday)      status = "holiday";
+      else if (isWeekend) status = "unavailable";
+      else if (isFullyBooked) status = "fully_booked";
+
+      calendar.push({
+        date:          dateKey,
+        status,
+        bookingCount,
+        slotsLeft:     Math.max(0, SLOTS_PER_DAY - bookingCount),
+        isHoliday,
+        isWeekend,
+        isFullyBooked,
+      });
+
+      current.setDate(current.getDate() + 1);
+    }
+
+    res.json({
+      calendar,
+      ticketId: ticket._id,
+      alreadyScheduled: ticket.scheduledDate
+        ? new Date(ticket.scheduledDate).toISOString().split("T")[0]
+        : null,
+    });
+  } catch (error) {
+    console.error("getAvailableDates error:", error);
+    res.status(500).json({ message: "Failed to get dates", error: error.message });
+  }
+};
+
+// ── CONFIRM scheduling ────────────────────────────────────────────────────────
+exports.confirmScheduling = async (req, res) => {
+  try {
+    const { ticketId  } = req.params;
+    const { selectedDate } = req.body;
+
+    if (!selectedDate)
+      return res.status(400).json({ message: "Selected date is required" });
+
+    const ticket = await InspectionTicket.findById(ticketId);
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+    if (ticket.status !== "PAYMENT_CONFIRMED")
+      return res.status(400).json({ message: "Cannot schedule at this stage" });
+
+    // Check slots available
+    const dateStart = new Date(selectedDate);
+    dateStart.setHours(0, 0, 0, 0);
+    const dateEnd = new Date(selectedDate);
+    dateEnd.setHours(23, 59, 59, 999);
+
+    const existingBookings = await InspectionTicket.countDocuments({
+      status:        { $in: ["INSPECTION_SCHEDULED", "INSPECTED"] },
+      scheduledDate: { $gte: dateStart, $lte: dateEnd },
+    });
+
+    if (existingBookings >= SLOTS_PER_DAY)
+      return res.status(400).json({ message: "This date is fully booked. Please choose another date." });
+
+    // Check holiday
+    if (PUBLIC_HOLIDAYS.includes(selectedDate))
+      return res.status(400).json({ message: "This date is a public holiday." });
+
+    const day = new Date(selectedDate).getDay();
+    if (day === 0 || day === 6)
+      return res.status(400).json({ message: "Weekends are not available for inspection." });
+
+    ticket.scheduledDate = new Date(selectedDate);
+    ticket.status        = "INSPECTION_SCHEDULED";
+    ticket.scheduledAt   = new Date();
+    await ticket.save();
+
+    const Order = getOrderModel();
+    const User  = getUserModel();
+    const order = await Order.findById(ticket.orderId);
+    const user  = await User.findById(ticket.customerId);
+
+    // Send scheduling confirmation email
+    if (user?.email) {
+      await sendSchedulingEmail(
+        user.email,
+        user.fullName || "Customer",
+        order?.orderRef || ticket.orderId.toString(),
+        selectedDate
+      );
+    }
+
+    res.json({ message: "Inspection scheduled successfully", ticket });
+  } catch (error) {
+    console.error("confirmScheduling error:", error);
+    res.status(500).json({ message: "Scheduling failed", error: error.message });
+  }
+};
+
+// ── CRON: send reminder email 1 day before ────────────────────────────────────
+// Runs every day at 8:00 AM
+cron.schedule("0 8 * * *", async () => {
+  try {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+
+    const dayEnd = new Date(tomorrow);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const tickets = await InspectionTicket.find({
+      status:        "INSPECTION_SCHEDULED",
+      scheduledDate: { $gte: tomorrow, $lte: dayEnd },
+      reminderSent:  false,
+    });
+
+    const User  = getUserModel();
+    const Order = getOrderModel();
+
+    for (const ticket of tickets) {
+      const user  = await User.findById(ticket.customerId);
+      const order = await Order.findById(ticket.orderId);
+
+      if (user?.email) {
+        await sendReminderEmail(
+          user.email,
+          user.fullName || "Customer",
+          order?.orderRef || ticket.orderId.toString(),
+          ticket.scheduledDate.toISOString().split("T")[0]
+        );
+        ticket.reminderSent = true;
+        await ticket.save();
+        console.log(`Reminder sent to ${user.email} for ${ticket.scheduledDate}`);
+      }
+    }
+  } catch (error) {
+    console.error("Cron reminder error:", error);
+  }
+});

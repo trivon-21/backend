@@ -1,124 +1,167 @@
-const Payment = require("../models/Payment.model");
-const FinanceReview = require("../models/FinanceReview");
-const ApprovalLog = require("../models/ApprovalLog");
-const { sendRejectionEmail } = require("../services/email.service");
+const mongoose = require("mongoose");
+const { sendBuyOnlyRejectionEmail, sendBuyOnlyApprovalEmail } = require("../services/email.service");
 
-// Create payment
-exports.createPayment = async (req, res) => {
-  try {
-    const payment = await Payment.create(req.body);
-    res.status(201).json(payment);
-  } catch (err) {
-    res.status(500).json({ message: "Create failed", error: err.message });
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
+
+// Lazy-load Order model (created by another team)
+const getOrderModel = () => {
+  try { return mongoose.model("Order"); }
+  catch {
+    const s = new mongoose.Schema({
+      orderRef: String,
+      customer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      itemName: String, quantity: Number, amount: Number,
+      orderType: String, paymentStatus: String,
+      paymentSlipUrl: String, status: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("Order", s);
   }
 };
 
-// Get pending
+const getUserModel = () => {
+  try { return mongoose.model("User"); }
+  catch {
+    const s = new mongoose.Schema({
+      fullName: String, lastName: String,
+      email: String, phoneNumber: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("User", s);
+  }
+};
+
+// Helper: format an Order doc into payment shape
+const formatOrder = async (order) => {
+  const User = getUserModel();
+  const user = await User.findById(order.customer);
+  return {
+    _id:             order._id,
+    orderId:         order.orderRef || order._id.toString(),
+    itemName:        order.itemName || "",
+    customerName:    user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() : "Unknown",
+    customerEmail:   user?.email || "",
+    amount:          order.amount || 0,
+    slipUrl:         order.paymentSlipUrl || null,
+    paymentType:     "BUY_ONLY",
+    status:          order.paymentStatus === "Under Review" ? "PENDING"
+                   : order.paymentStatus === "Approved"     ? "APPROVED"
+                   : order.paymentStatus === "Rejected"     ? "REJECTED"
+                   : "PENDING",
+    rejectionReason: order.rejectionReason || null,
+    updatedAt:       order.updatedAt,
+    createdAt:       order.createdAt,
+  };
+};
+
+// GET pending — orders with paymentStatus "Under Review" and orderType "Buy Only"
 exports.getPendingPayments = async (req, res) => {
   try {
-    const payments = await Payment.find({ status: "PENDING" });
-    res.json(payments);
+    const Order = getOrderModel();
+    const orders = await Order.find({
+      orderType: "Buy Only",
+      paymentStatus: "Under Review",
+    }).sort({ updatedAt: -1 });
+
+    const formatted = await Promise.all(orders.map(formatOrder));
+    res.json(formatted);
   } catch (error) {
+    console.error("getPendingPayments error:", error);
     res.status(500).json({ message: "Failed to fetch pending payments", error: error.message });
   }
 };
 
-// Approve
+// APPROVE — set paymentStatus to Approved + send email
 exports.approvePayment = async (req, res) => {
   try {
-    const payment = await Payment.findById(req.params.id);
-    if (!payment) return res.status(404).json({ message: "Payment not found" });
+    const Order = getOrderModel();
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: "Order not found" });
 
-    payment.status = "APPROVED";
-    payment.rejectionReason = null;
-    await payment.save();
+    order.paymentStatus = "Approved";
+    order.rejectionReason = null;
+    await order.save();
 
-    await ApprovalLog.create({
-      paymentId: payment._id,
-      action: "APPROVED",
-      performedBy: "Finance Officer",
-    });
+    const User = getUserModel();
+    const user = await User.findById(order.customer);
+    if (user?.email) {
+      await sendBuyOnlyApprovalEmail(
+        user.email,
+        user.fullName || "Customer",
+        order.orderRef || order._id.toString()
+      );
+    }
 
-    res.status(200).json({ message: "Payment approved successfully" });
+    res.json({ message: "Payment approved and email sent" });
   } catch (error) {
-    console.error(error);
+    console.error("approvePayment error:", error);
     res.status(500).json({ message: "Approval failed", error: error.message });
   }
 };
 
-// Reject
+// REJECT — set paymentStatus to Rejected + send email with checkout link
 exports.rejectPayment = async (req, res) => {
   try {
     const { rejectionReason } = req.body;
-    const payment = await Payment.findById(req.params.id);
-    if (!payment) return res.status(404).json({ message: "Payment not found" });
+    if (!rejectionReason) return res.status(400).json({ message: "Rejection reason required" });
 
-    payment.status = "REJECTED";
-    payment.rejectionReason = rejectionReason;
-    await payment.save();
+    const Order = getOrderModel();
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: "Order not found" });
 
-    await FinanceReview.create({
-      paymentId: payment._id,
-      reviewedBy: "Finance Officer",
-      action: "Rejected",
-      comment: rejectionReason,
-    });
+    order.paymentStatus = "Rejected";
+    order.rejectionReason = rejectionReason;
+    await order.save();
 
-    await ApprovalLog.create({
-      paymentId: payment._id,
-      action: "REJECTED",
-      performedBy: "Finance Officer",
-    });
+    const User = getUserModel();
+    const user = await User.findById(order.customer);
 
-    await sendRejectionEmail(payment.customerEmail, payment.orderId, rejectionReason);
+    // Checkout/reupload link — same page used for original slip upload
+    const reuploadLink = `${FRONTEND_URL}/checkout?orderId=${order._id}`;
 
-    res.json({ message: "Payment rejected + email sent successfully" });
+    if (user?.email) {
+      await sendBuyOnlyRejectionEmail(
+        user.email,
+        user.fullName || "Customer",
+        order.orderRef || order._id.toString(),
+        order.itemName || "",
+        rejectionReason,
+        reuploadLink
+      );
+    }
+
+    res.json({ message: "Payment rejected and email sent" });
   } catch (error) {
-    console.error(error);
+    console.error("rejectPayment error:", error);
     res.status(500).json({ message: "Rejection failed", error: error.message });
   }
 };
 
-// Reupload slip (auto reset REJECTED → PENDING)
-exports.reuploadSlip = async (req, res) => {
-  try {
-    const { slipUrl } = req.body;
-    const payment = await Payment.findById(req.params.id);
-    if (!payment) return res.status(404).json({ message: "Payment not found" });
-
-    payment.slipUrl = slipUrl;
-    payment.status = "PENDING";        // Reset status
-    payment.rejectionReason = null;    // Clear rejection
-    await payment.save();
-
-    await ApprovalLog.create({
-      paymentId: payment._id,
-      action: "REUPLOADED",
-      performedBy: "Customer",
-    });
-
-    res.json({ message: "Slip reuploaded successfully", payment });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Reupload failed", error: error.message });
-  }
-};
-
-// Get approved payments
+// GET approved payments
 exports.getApprovedPayments = async (req, res) => {
   try {
-    const payments = await Payment.find({ status: "APPROVED" }).sort({ updatedAt: -1 });
-    res.json(payments);
+    const Order = getOrderModel();
+    const orders = await Order.find({
+      orderType: "Buy Only",
+      paymentStatus: "Approved",
+    }).sort({ updatedAt: -1 });
+
+    const formatted = await Promise.all(orders.map(formatOrder));
+    res.json(formatted);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch approved payments", error: error.message });
   }
 };
 
-// Get rejected payments
+// GET rejected payments
 exports.getRejectedPayments = async (req, res) => {
   try {
-    const payments = await Payment.find({ status: "REJECTED" }).sort({ updatedAt: -1 });
-    res.json(payments);
+    const Order = getOrderModel();
+    const orders = await Order.find({
+      orderType: "Buy Only",
+      paymentStatus: "Rejected",
+    }).sort({ updatedAt: -1 });
+
+    const formatted = await Promise.all(orders.map(formatOrder));
+    res.json(formatted);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch rejected payments", error: error.message });
   }
