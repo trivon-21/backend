@@ -14,6 +14,15 @@ exports.protect = async (req, res, next) => {
     const user = await User.findById(decoded.id).select("-passwordHash");
     if (!user) return res.status(401).json({ message: "User not found" });
 
+    // Check if user account is deactivated
+    if (!user.isActive) {
+      return res.status(403).json({
+        code: "ACCOUNT_DEACTIVATED",
+        message: "This account has been deactivated",
+        deactivationReason: user.deactivationReason || ""
+      });
+    }
+
     req.user = user;
     next();
   } catch (err) {

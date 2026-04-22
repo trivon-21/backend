@@ -168,3 +168,114 @@ exports.deleteUser = async (req, res) => {
     return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
+/**
+ * Deactivate user
+ * PATCH /api/super-admin/users/:userId/deactivate
+ * Body: { reason }
+ */
+exports.deactivateUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { reason } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ message: "User ID is required" });
+    }
+
+    const user = await service.deactivateUser(userId, reason || "");
+
+    return res.json({
+      message: "User deactivated successfully. Email sent.",
+      user
+    });
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Get reactivation requests
+ * GET /api/super-admin/reactivation-requests
+ * Query params: page, limit, status
+ */
+exports.getReactivationRequests = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status = "pending" } = req.query;
+
+    const result = await service.getReactivationRequests({
+      page,
+      limit,
+      status
+    });
+
+    return res.json({
+      message: "Reactivation requests retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Handle reactivation request (approve/reject)
+ * PATCH /api/super-admin/reactivation-requests/:userId
+ * Body: { approve, adminResponse }
+ */
+exports.handleReactivationRequest = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { approve, adminResponse = "" } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ message: "User ID is required" });
+    }
+
+    if (approve === undefined || approve === null) {
+      return res.status(400).json({ message: "approve field is required (true/false)" });
+    }
+
+    const result = await service.handleReactivationRequest(userId, approve, adminResponse);
+
+    return res.json(result);
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    if (err.message.includes("No pending")) {
+      return res.status(400).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Submit reactivation request (user-accessible)
+ * POST /api/user/reactivation-request
+ * Body: { email, userReason }
+ */
+exports.submitReactivationRequest = async (req, res) => {
+  try {
+    const { email, userReason } = req.body;
+
+    if (!email || !userReason) {
+      return res.status(400).json({ message: "Email and userReason are required" });
+    }
+
+    const result = await service.submitReactivationRequest(email, userReason);
+
+    return res.json(result);
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    if (err.message.includes("already active")) {
+      return res.status(400).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};

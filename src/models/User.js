@@ -34,7 +34,20 @@ const userSchema = new mongoose.Schema(
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date },
     resetPasswordToken: { type: String },
-    resetPasswordExpires: { type: Date }
+    resetPasswordExpires: { type: Date },
+    isActive: { type: Boolean, default: true },
+    deactivatedAt: { type: Date, default: null },
+    deactivationReason: { type: String, default: "" },
+    reactivatedAt: { type: Date, default: null },
+    reactivationRequests: [
+      {
+        requestedAt: { type: Date, default: Date.now },
+        userReason: { type: String, required: true },
+        status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
+        respondedAt: { type: Date },
+        adminResponse: { type: String }
+      }
+    ]
   },
   { timestamps: true }
 );

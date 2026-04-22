@@ -242,6 +242,16 @@ exports.login = async (authInput, password, rememberMe = true) => {
     }
     if (!user) throw new Error("Invalid email or password");
 
+    // Check if account is deactivated
+    if (!user.isActive) {
+      throw {
+        code: "ACCOUNT_DEACTIVATED",
+        message: "This account has been deactivated",
+        deactivationReason: user.deactivationReason || "",
+        canReactivate: true
+      };
+    }
+
     // Check if account is locked
     if (user.lockUntil && user.lockUntil > Date.now()) {
       const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
@@ -298,6 +308,16 @@ exports.login = async (authInput, password, rememberMe = true) => {
 
     if (!user) {
       throw new Error("Invalid phone number or password");
+    }
+
+    // Check if account is deactivated
+    if (!user.isActive) {
+      throw {
+        code: "ACCOUNT_DEACTIVATED",
+        message: "This account has been deactivated",
+        deactivationReason: user.deactivationReason || "",
+        canReactivate: true
+      };
     }
 
     // Check if account is locked

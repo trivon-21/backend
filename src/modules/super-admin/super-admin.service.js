@@ -159,7 +159,7 @@ exports.createUser = async (data) => {
     await sendSmsOtp(phoneNumberNormalized, phoneOtp);
   }
 
-  return this.formatUserResponse(user);
+  return formatUserResponse(user);
 };
 
 /**
@@ -224,7 +224,7 @@ exports.updateUser = async (userId, data) => {
 
   await user.save();
 
-  return this.formatUserResponse(user);
+  return formatUserResponse(user);
 };
 
 /**
@@ -259,7 +259,7 @@ exports.getUserById = async (userId) => {
   if (!user) {
     throw new Error("User not found");
   }
-  return this.formatUserResponse(user);
+  return formatUserResponse(user);
 };
 
 /**
@@ -319,7 +319,7 @@ exports.listUsers = async (options = {}) => {
   ]);
 
   return {
-    data: users.map(user => this.formatUserResponse(user)),
+    data: users.map(user => formatUserResponse(user)),
     pagination: {
       total,
       page: pageNum,
@@ -330,23 +330,185 @@ exports.listUsers = async (options = {}) => {
 };
 
 /**
+ * Send deactivation email to user
+ */
+async function sendDeactivationEmail(toEmail, userName, reason, reactivationLink) {
+  await transporter.sendMail({
+    from: `AirLux <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: "AirLux — Account Deactivated",
+    html: `
+      <p>Hi ${userName},</p>
+      <p>Your account has been deactivated due to the following reason:</p>
+      <p><strong>${reason}</strong></p>
+      <p>If you believe this is an error or would like to request reactivation, please click the button below:</p>
+      <p><a href="${reactivationLink}" style="display:inline-block;padding:10px 20px;background-color:#1f5b45;color:white;text-decoration:none;border-radius:8px;font-weight:600;">Request Reactivation</a></p>
+      <p>Or copy this link: <a href="${reactivationLink}">${reactivationLink}</a></p>
+      <p>Thank you,<br>AirLux Team</p>
+    `
+  });
+  console.log(`[DEV] Deactivation email sent to ${toEmail}`);
+}
+
+/**
+ * Deactivate user account
+ */
+exports.deactivateUser = async (userId, reason) => {
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  user.isActive = false;
+  user.deactivatedAt = new Date();
+  user.deactivationReason = reason || "";
+  await user.save();
+
+  // Send deactivation email
+  if (user.email) {
+    const reactivationLink = `${process.env.FRONTEND_URL}/reactivation-request?email=${encodeURIComponent(user.email)}`;
+    await sendDeactivationEmail(user.email, user.fullName, reason, reactivationLink);
+  }
+
+  return formatUserResponse(user);
+};
+
+/**
+ * Submit reactivation request
+ */
+exports.submitReactivationRequest = async (email, userReason) => {
+  const user = await User.findOne({ email: email.toLowerCase() });
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  if (user.isActive) {
+    throw new Error("Account is already active");
+  }
+
+  // Add reactivation request
+  user.reactivationRequests.push({
+    requestedAt: new Date(),
+    userReason,
+    status: "pending"
+  });
+
+  await user.save();
+
+  return {
+    message: "Reactivation request submitted successfully",
+    status: "pending"
+  };
+};
+
+/**
+ * Get pending reactivation requests
+ */
+exports.getReactivationRequests = async (options = {}) => {
+  const { page = 1, limit = 10, status = "pending" } = options;
+
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  const query = {
+    reactivationRequests: { $elemMatch: { status } }
+  };
+
+  const [users, total] = await Promise.all([
+    User.find(query)
+      .select("-passwordHash -emailOtp -phoneOtp")
+      .skip(skip)
+      .limit(limitNum)
+      .sort({ "reactivationRequests.requestedAt": -1 }),
+    User.countDocuments(query)
+  ]);
+
+  // Format response
+  const requests = [];
+  users.forEach(user => {
+    const userRequests = user.reactivationRequests.filter(req => req.status === status);
+    userRequests.forEach(req => {
+      requests.push({
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        deactivationReason: user.deactivationReason,
+        requestedAt: req.requestedAt,
+        userReason: req.userReason,
+        requestStatus: req.status
+      });
+    });
+  });
+
+  return {
+    data: requests,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum)
+    }
+  };
+};
+
+/**
+ * Approve or reject reactivation request
+ */
+exports.handleReactivationRequest = async (userId, approve, adminResponse = "") => {
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  // Find the most recent pending request
+  const pendingRequest = user.reactivationRequests.find(req => req.status === "pending");
+  if (!pendingRequest) {
+    throw new Error("No pending reactivation request found");
+  }
+
+  const now = new Date();
+  pendingRequest.status = approve ? "approved" : "rejected";
+  pendingRequest.respondedAt = now;
+  pendingRequest.adminResponse = adminResponse;
+
+  if (approve) {
+    user.isActive = true;
+    user.reactivatedAt = now;
+  }
+
+  await user.save();
+
+  return {
+    message: approve ? "User reactivated successfully" : "Reactivation request rejected",
+    approved: approve
+  };
+};
+
+/**
  * Format user response (exclude sensitive fields)
  */
-exports.formatUserResponse = (user) => {
+function formatUserResponse(user) {
   return {
     _id: user._id,
     fullName: user.fullName,
-    lastName: user.lastName || "",
-    email: user.email || null,
-    phoneNumber: user.phoneNumber || null,
+    email: user.email,
+    phoneNumber: user.phoneNumber,
     role: user.role,
-    gender: user.gender || "",
-    address: user.address || "",
-    profilePhoto: user.profilePhoto || "",
-    emailVerified: user.emailVerified || false,
-    phoneVerified: user.phoneVerified || false,
-    authMethods: user.authMethods || [],
+    emailVerified: user.emailVerified,
+    phoneVerified: user.phoneVerified,
+    authMethods: user.authMethods,
+    isActive: user.isActive,
+    deactivatedAt: user.deactivatedAt,
+    deactivationReason: user.deactivationReason,
+    reactivatedAt: user.reactivatedAt,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   };
-};
+}
+
+/**
+ * Export formatUserResponse to be accessible as exports.formatUserResponse
+ */
+exports.formatUserResponse = formatUserResponse;

@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
 const { signup, login, forgotPassword, resetPassword, verifyEmail, resendOtp, verifyPhone, resendOtpPhone } = require("./auth.controller");
+const { submitReactivationRequest } = require("../super-admin/super-admin.controller");
 const { validate } = require("../../middleware/auth.middleware");
 const { protect } = require("../../middleware/protect");
 
@@ -75,5 +76,15 @@ router.post("/verify-email", protect, verifyEmail);
 router.post("/resend-otp", protect, resendOtp);
 router.post("/verify-phone", protect, verifyPhone);
 router.post("/resend-otp-phone", protect, resendOtpPhone);
+
+router.post(
+  "/reactivation-request",
+  [
+    body("email").isEmail().withMessage("Valid email required"),
+    body("userReason").trim().notEmpty().withMessage("Reason for reactivation is required")
+  ],
+  validate,
+  submitReactivationRequest
+);
 
 module.exports = router;

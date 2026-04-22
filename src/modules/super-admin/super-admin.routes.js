@@ -31,4 +31,20 @@ router.put("/users/:userId", controller.updateUser);
 // DELETE /api/super-admin/users/:userId?hardDelete=true
 router.delete("/users/:userId", controller.deleteUser);
 
+/**
+ * User Deactivation & Reactivation Routes
+ */
+
+// Deactivate user
+// PATCH /api/super-admin/users/:userId/deactivate
+router.patch("/users/:userId/deactivate", controller.deactivateUser);
+
+// Get pending reactivation requests
+// GET /api/super-admin/reactivation-requests
+router.get("/reactivation-requests", controller.getReactivationRequests);
+
+// Handle reactivation request (approve/reject)
+// PATCH /api/super-admin/reactivation-requests/:userId
+router.patch("/reactivation-requests/:userId", controller.handleReactivationRequest);
+
 module.exports = router;
