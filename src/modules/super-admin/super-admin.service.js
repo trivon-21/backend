@@ -351,6 +351,40 @@ async function sendDeactivationEmail(toEmail, userName, reason, reactivationLink
 }
 
 /**
+ * Send reactivation decision email to user
+ */
+async function sendReactivationDecisionEmail(toEmail, userName, approved, adminResponse) {
+  const subject = approved
+    ? "AirLux — Your Account Has Been Reactivated"
+    : "AirLux — Reactivation Request Status";
+
+  const html = approved
+    ? `
+      <p>Hi ${userName},</p>
+      <p>Great news! Your account reactivation request has been <strong>APPROVED</strong>.</p>
+      <p>Your account is now active and you can login immediately.</p>
+      ${adminResponse ? `<p><strong>Message from our team:</strong> ${adminResponse}</p>` : ""}
+      <p>You can now access your account at: <a href="${process.env.FRONTEND_URL || "http://localhost:4200"}/login">Login Here</a></p>
+      <p>Thank you,<br>AirLux Team</p>
+    `
+    : `
+      <p>Hi ${userName},</p>
+      <p>Thank you for your reactivation request. Unfortunately, it has been <strong>REJECTED</strong> at this time.</p>
+      ${adminResponse ? `<p><strong>Reason:</strong> ${adminResponse}</p>` : ""}
+      <p>If you believe this is incorrect or would like to know more, please contact our support team.</p>
+      <p>Thank you,<br>AirLux Team</p>
+    `;
+
+  await transporter.sendMail({
+    from: `AirLux <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject,
+    html,
+  });
+  console.log(`[DEV] Reactivation decision email (${approved ? "approved" : "rejected"}) sent to ${toEmail}`);
+}
+
+/**
  * Deactivate user account
  */
 exports.deactivateUser = async (userId, reason) => {
@@ -476,12 +510,23 @@ exports.handleReactivationRequest = async (userId, approve, adminResponse = "") 
   if (approve) {
     user.isActive = true;
     user.reactivatedAt = now;
+    await user.save();
+  } else {
+    // Hard delete user when request is rejected
+    await User.findByIdAndDelete(userId);
   }
 
-  await user.save();
+  // Send email notification to user (only if approved or before deletion for rejected)
+  if (user.email) {
+    try {
+      await sendReactivationDecisionEmail(user.email, user.fullName, approve, adminResponse);
+    } catch (emailErr) {
+      console.error("Failed to send reactivation decision email:", emailErr.message);
+    }
+  }
 
   return {
-    message: approve ? "User reactivated successfully" : "Reactivation request rejected",
+    message: approve ? "User reactivated successfully" : "Reactivation request rejected and user deleted",
     approved: approve
   };
 };
