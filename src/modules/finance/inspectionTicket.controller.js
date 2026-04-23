@@ -287,8 +287,10 @@ exports.getAvailableDates = async (req, res) => {
     const { ticketId } = req.params;
     const ticket = await InspectionTicket.findById(ticketId);
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-    if (ticket.status !== "PAYMENT_CONFIRMED")
-      return res.status(400).json({ message: "Payment not confirmed yet" });
+    
+    // Allow both initial scheduling and rescheduling
+    if (!["PAYMENT_CONFIRMED", "INSPECTION_SCHEDULED"].includes(ticket.status))
+      return res.status(400).json({ message: "Cannot schedule at this time" });
 
     // Start from tomorrow
     const start = new Date();
@@ -400,13 +402,16 @@ exports.confirmScheduling = async (req, res) => {
     const order = await Order.findById(ticket.orderId);
     const user  = await User.findById(ticket.customerId);
 
-    // Send scheduling confirmation email
+    // Send scheduling confirmation email with reschedule link
     if (user?.email) {
+      const rescheduleLink = `${FRONTEND_URL}/inspection-scheduling?ticketId=${ticket._id}&mode=reschedule`;
       await sendSchedulingEmail(
         user.email,
         user.fullName || "Customer",
         order?.orderRef || ticket.orderId.toString(),
-        selectedDate
+        selectedDate,
+        ticket._id,
+        rescheduleLink
       );
     }
 
@@ -457,3 +462,107 @@ cron.schedule("0 8 * * *", async () => {
     console.error("Cron reminder error:", error);
   }
 });
+
+// ── RESCHEDULE inspection ─────────────────────────────────────────────────────
+// Customer can reschedule up to 1 day before the scheduled inspection
+exports.rescheduleInspection = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { newDate } = req.body;
+
+    if (!newDate) {
+      return res.status(400).json({ message: "New date is required" });
+    }
+
+    const ticket = await InspectionTicket.findById(ticketId);
+    if (!ticket) {
+      return res.status(404).json({ message: "Ticket not found" });
+    }
+
+    if (ticket.status !== "INSPECTION_SCHEDULED") {
+      return res.status(400).json({ message: "Can only reschedule INSPECTION_SCHEDULED inspections" });
+    }
+
+    // Check if reschedule is allowed (must be at least 1 day before scheduled inspection)
+    const now = new Date();
+    const scheduledDate = new Date(ticket.scheduledDate);
+    const hoursUntilInspection = (scheduledDate - now) / (1000 * 60 * 60);
+
+    if (hoursUntilInspection < 24) {
+      return res.status(400).json({
+        message: "You can only reschedule at least 1 day before the inspection date",
+        hoursRemaining: Math.max(0, Math.floor(hoursUntilInspection))
+      });
+    }
+
+    // Validate new date (same checks as initial scheduling)
+    const newDateStart = new Date(newDate);
+    newDateStart.setHours(0, 0, 0, 0);
+    const newDateEnd = new Date(newDate);
+    newDateEnd.setHours(23, 59, 59, 999);
+
+    const existingBookings = await InspectionTicket.countDocuments({
+      _id:           { $ne: ticket._id }, // Don't count current ticket
+      status:        { $in: ["INSPECTION_SCHEDULED", "INSPECTED"] },
+      scheduledDate: { $gte: newDateStart, $lte: newDateEnd },
+    });
+
+    if (existingBookings >= SLOTS_PER_DAY) {
+      return res.status(400).json({ message: "This date is fully booked. Please choose another date." });
+    }
+
+    if (PUBLIC_HOLIDAYS.includes(newDate)) {
+      return res.status(400).json({ message: "This date is a public holiday." });
+    }
+
+    const dayOfWeek = new Date(newDate).getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return res.status(400).json({ message: "Weekends are not available for inspection." });
+    }
+
+    // Check that new date is in the future
+    const newDateObj = new Date(newDate);
+    newDateObj.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (newDateObj <= today) {
+      return res.status(400).json({ message: "Cannot schedule in the past." });
+    }
+
+    // Update the ticket with new date
+    const oldDate = new Date(ticket.scheduledDate);
+    ticket.scheduledDate = new Date(newDate);
+    ticket.rescheduledFrom = oldDate;
+    ticket.rescheduledAt = new Date();
+    await ticket.save();
+
+    const Order = getOrderModel();
+    const User = getUserModel();
+    const order = await Order.findById(ticket.orderId);
+    const user = await User.findById(ticket.customerId);
+
+    // Send rescheduling confirmation email
+    if (user?.email) {
+      const rescheduleLink = `${FRONTEND_URL}/inspection-scheduling?ticketId=${ticket._id}&mode=reschedule`;
+      await sendSchedulingEmail(
+        user.email,
+        user.fullName || "Customer",
+        order?.orderRef || ticket.orderId.toString(),
+        newDate,
+        ticket._id,
+        rescheduleLink
+      );
+    }
+
+    res.json({
+      message: "Inspection rescheduled successfully",
+      oldDate: oldDate.toISOString().split("T")[0],
+      newDate: newDate,
+      ticket
+    });
+  } catch (error) {
+    console.error("rescheduleInspection error:", error);
+    res.status(500).json({ message: "Rescheduling failed", error: error.message });
+  }
+};

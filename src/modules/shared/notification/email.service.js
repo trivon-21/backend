@@ -72,7 +72,7 @@ const sendApprovalEmail = async (email, orderId, customerName, schedulingLink) =
 };
 
 // Scheduling confirmation email
-const sendSchedulingEmail = async (email, customerName, orderId, scheduledDate) => {
+const sendSchedulingEmail = async (email, customerName, orderId, scheduledDate, ticketId, rescheduleLink) => {
   try {
     await transporter.sendMail({
       from: `"AirLux Team" <${process.env.EMAIL_USER}>`,
@@ -89,6 +89,13 @@ const sendSchedulingEmail = async (email, customerName, orderId, scheduledDate) 
           </div>
           <p>Our inspection team will visit your site on the scheduled date.</p>
           <p>Please ensure someone is available at the site on that day.</p>
+          <p style="margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;">
+            <strong>Need to reschedule?</strong> You can change your inspection date up to 1 day before the scheduled date using the link below:
+          </p>
+          <a href="${rescheduleLink}"
+            style="background:#2d5a3d;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;margin:12px 0;">
+            Reschedule Inspection
+          </a>
           <p>Best regards,<br><strong>AirLux Team</strong></p>
         </div>
       `,

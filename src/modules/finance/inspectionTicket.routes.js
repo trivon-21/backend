@@ -7,6 +7,7 @@ router.get("/order/:orderId",              controller.getOrCreateTicket);
 router.put("/upload-slip/:ticketId",       controller.uploadSlip);
 router.get("/available-dates/:ticketId",   controller.getAvailableDates);
 router.put("/confirm-scheduling/:ticketId",controller.confirmScheduling);
+router.put("/reschedule/:ticketId",        controller.rescheduleInspection);
 
 // Finance Officer routes
 router.get("/pending",                     controller.getPendingVerification);
