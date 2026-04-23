@@ -2,6 +2,9 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const User = require("../../models/User");
+const Order = require("../../models/Order");
+const Inquiry = require("../../models/Inquiry");
+const ServiceRequest = require("../../models/ServiceRequest");
 const { sendPhoneOtp } = require("../../config/twilio");
 
 // Email transporter setup
@@ -14,6 +17,53 @@ const transporter = nodemailer.createTransport({
 });
 
 const VALID_ROLES = ["SUPER_ADMIN", "CUSTOMER", "CSA", "INSPECTION", "MAIN_TECH", "SERVICE_TEAM", "FINANCE", "INVENTORY", "MANAGER"];
+
+exports.getDashboardSummary = async () => {
+  const [
+    totalUsers,
+    activeUsers,
+    deactivatedUsers,
+    pendingReactivationRequests,
+    totalOrders,
+    pendingOrders,
+    totalInquiries,
+    openInquiries,
+    totalServiceRequests,
+    openServiceRequests
+  ] = await Promise.all([
+    User.countDocuments({}),
+    User.countDocuments({ isActive: { $ne: false } }),
+    User.countDocuments({ isActive: false }),
+    User.countDocuments({
+      reactivationRequests: {
+        $elemMatch: { status: "pending" }
+      }
+    }),
+    Order.countDocuments({}),
+    Order.countDocuments({ status: { $in: ["Pending"] } }),
+    Inquiry.countDocuments({}),
+    Inquiry.countDocuments({ status: { $in: ["Ongoing"] } }),
+    ServiceRequest.countDocuments({}),
+    ServiceRequest.countDocuments({ status: { $in: ["Pending", "Assigned", "In Progress", "Ongoing"] } })
+  ]);
+
+  return {
+    users: {
+      total: totalUsers,
+      active: activeUsers,
+      deactivated: deactivatedUsers,
+      pendingReactivationRequests
+    },
+    operations: {
+      totalOrders,
+      pendingOrders,
+      totalInquiries,
+      openInquiries,
+      totalServiceRequests,
+      openServiceRequests
+    }
+  };
+};
 
 /**
  * Send OTP email to new user

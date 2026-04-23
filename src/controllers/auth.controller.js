@@ -189,7 +189,7 @@ exports.signup = async (req, res) => {
       // Send OTP via Twilio SMS
       try {
         await sendPhoneOtp(user.phoneNumber, otp);
-        console.log(`✅ SMS OTP sent to ${user.phoneNumber}`);
+        console.log(`SMS OTP sent to ${user.phoneNumber}`);
       } catch (smsErr) {
         console.error("Failed to send SMS:", smsErr.message);
         // For development: still log OTP to console if SMS fails
@@ -599,7 +599,7 @@ exports.resendOtpPhone = async (req, res) => {
     // Send OTP via Twilio SMS
     try {
       await sendPhoneOtp(user.phoneNumber, otp);
-      console.log(`✅ SMS OTP resent to ${user.phoneNumber}`);
+      console.log(`SMS OTP resent to ${user.phoneNumber}`);
     } catch (smsErr) {
       console.error("Failed to send SMS:", smsErr.message);
       // For development: still log OTP to console if SMS fails

@@ -101,6 +101,19 @@ exports.listUsers = async (req, res) => {
 };
 
 /**
+ * Get dashboard summary counts
+ * GET /api/super-admin/dashboard-summary
+ */
+exports.getDashboardSummary = async (req, res) => {
+  try {
+    const summary = await service.getDashboardSummary();
+    return res.json({ message: "Dashboard summary retrieved successfully", data: summary });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
  * Update user details
  * PUT /api/super-admin/users/:userId
  * Body: { fullName, email, phoneNumber, role }

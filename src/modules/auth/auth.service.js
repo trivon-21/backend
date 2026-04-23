@@ -195,7 +195,7 @@ exports.signup = async (authInput, fullName, password) => {
     // Send OTP via Twilio SMS
     try {
       await sendPhoneOtp(user.phoneNumber, otp);
-      console.log(`✅ SMS OTP sent to ${user.phoneNumber}`);
+      console.log(`SMS OTP sent to ${user.phoneNumber}`);
     } catch (smsErr) {
       console.error("Failed to send SMS:", smsErr.message);
     }
@@ -538,7 +538,7 @@ exports.resendPhoneOtp = async (userId) => {
 
   try {
     await sendPhoneOtp(user.phoneNumber, otp);
-    console.log(`✅ SMS OTP resent to ${user.phoneNumber}`);
+    console.log(`SMS OTP resent to ${user.phoneNumber}`);
   } catch (smsErr) {
     console.error("Failed to send SMS:", smsErr.message);
   }

@@ -10,6 +10,7 @@ const { protect } = require("../../middleware/protect");
 const profileRoutes = require("./profile/profile.routes");
 const dashboardRoutes = require("./dashboard/dashboard.routes");
 const orderRoutes = require("./order/order.routes");
+const notificationRoutes = require("./notifications/notifications.routes");
 
 // Import shared routes (these should be available at /api/customer/*)
 const serviceRequestRoutes = require("../../routes/service-request.routes");
@@ -24,5 +25,6 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/orders", orderRoutes);
 router.use("/service-requests", serviceRequestRoutes);
 router.use("/inquiries", inquiryRoutes);
+router.use("/notifications", notificationRoutes);
 
 module.exports = router;

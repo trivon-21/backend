@@ -19,6 +19,10 @@ router.post("/users", controller.createUser);
 // GET /api/super-admin/users
 router.get("/users", controller.listUsers);
 
+// Dashboard summary metrics
+// GET /api/super-admin/dashboard-summary
+router.get("/dashboard-summary", controller.getDashboardSummary);
+
 // Get user by ID
 // GET /api/super-admin/users/:userId
 router.get("/users/:userId", controller.getUser);

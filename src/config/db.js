@@ -3,6 +3,7 @@ const dns = require("dns");
 
 async function connectDB() {
   const uri = process.env.MONGO_URI;
+  const dbName = process.env.MONGO_DB_NAME || "Dashintha_Test";
   if (!uri) throw new Error("MONGO_URI is missing in .env");
 
   const dnsServers = (process.env.MONGO_DNS_SERVERS || "8.8.8.8,1.1.1.1").split(",");
@@ -10,10 +11,11 @@ async function connectDB() {
   try {
     dns.setServers(dnsServers);
     await mongoose.connect(uri, {
+      dbName,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });
-    console.log("MongoDB connected...");
+    console.log(`MongoDB connected to database: ${dbName}`);
   } catch (err) {
     if (err.message && err.message.includes("querySrv ECONNREFUSED")) {
       console.error(

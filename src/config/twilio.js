@@ -10,15 +10,15 @@ function initializeTwilio() {
 
     if (!accountSid || !authToken || !twilioPhoneNumber) {
       console.error(
-        "❌ Twilio not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in .env"
+        "Twilio not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in .env"
       );
       return;
     }
 
     client = twilio(accountSid, authToken);
-    console.log("✅ Twilio SMS initialized successfully");
+    console.log("Twilio SMS initialized successfully");
   } catch (error) {
-    console.error("❌ Twilio initialization failed:", error.message);
+    console.error("Twilio initialization failed:", error.message);
   }
 }
 
@@ -40,10 +40,10 @@ async function sendPhoneOtp(phoneNumber, otp) {
       to: phoneNumber
     });
 
-    console.log(`✅ SMS sent to ${phoneNumber} - Message ID: ${message.sid}`);
+    console.log(`SMS sent to ${phoneNumber} - Message ID: ${message.sid}`);
     return { success: true, messageId: message.sid, phoneNumber };
   } catch (error) {
-    console.error(`❌ Failed to send SMS to ${phoneNumber}:`, error.message);
+    console.error(`Failed to send SMS to ${phoneNumber}:`, error.message);
     throw new Error(`Failed to send OTP via SMS: ${error.message}`);
   }
 }

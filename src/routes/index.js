@@ -41,7 +41,7 @@ function initializeRoutes(app) {
   app.use("/api/inventory", inventoryManagerRoutes);
   app.use("/api/manager", managerRoutes);
 
-  console.log("✅ All routes initialized");
+  console.log("All routes initialized");
 }
 
 module.exports = initializeRoutes;

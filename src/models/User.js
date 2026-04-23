@@ -47,6 +47,28 @@ const userSchema = new mongoose.Schema(
         respondedAt: { type: Date },
         adminResponse: { type: String }
       }
+    ],
+    notificationPreferences: {
+      orderUpdates: { type: Boolean, default: true },
+      inquiryResponses: { type: Boolean, default: true },
+      serviceRequests: { type: Boolean, default: true },
+      feedbackConfirmation: { type: Boolean, default: true },
+      emailNotifications: { type: Boolean, default: true },
+      pushNotifications: { type: Boolean, default: false }
+    },
+    notifications: [
+      {
+        type: {
+          type: String,
+          enum: ["order", "inquiry", "service", "feedback", "general"],
+          default: "general"
+        },
+        title: { type: String, required: true, trim: true },
+        message: { type: String, required: true, trim: true },
+        read: { type: Boolean, default: false },
+        actionUrl: { type: String, default: "" },
+        createdAt: { type: Date, default: Date.now }
+      }
     ]
   },
   { timestamps: true }
