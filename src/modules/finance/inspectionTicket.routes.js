@@ -1,6 +1,6 @@
 const express    = require("express");
 const router     = express.Router();
-const controller = require("../controllers/inspectionTicket.controller");
+const controller = require("./inspectionTicket.controller");
 
 // Customer routes
 router.get("/order/:orderId",              controller.getOrCreateTicket);

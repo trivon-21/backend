@@ -1,7 +1,7 @@
 const mongoose  = require("mongoose");
 const cron      = require("node-cron");
-const InspectionTicket = require("../models/InspectionTicket.model");
-const { sendRejectionEmail, sendApprovalEmail, sendSchedulingEmail, sendReminderEmail } = require("../services/email.service");
+const InspectionTicket = require("../shared/ticket/InspectionTicket.model");
+const { sendRejectionEmail, sendApprovalEmail, sendSchedulingEmail, sendReminderEmail } = require("../shared/notification/email.service");
 
 const SLOTS_PER_DAY  = 4;
 const FRONTEND_URL   = process.env.FRONTEND_URL || "http://localhost:4200";
@@ -21,8 +21,9 @@ const getUserModel = () => {
   try { return mongoose.model("User"); }
   catch {
     const s = new mongoose.Schema({
-      fullName: String, lastName: String, email: String,
-      phoneNumber: String, role: String, address: String,
+      fullName: String, lastName: String, firstName: String,
+      email: String, phoneNumber: String, role: String, address: String,
+      name: String,
     }, { strict: false, timestamps: true });
     return mongoose.model("User", s);
   }
@@ -111,12 +112,25 @@ exports.getPendingVerification = async (req, res) => {
     const formatted = await Promise.all(tickets.map(async (t) => {
       const order = await Order.findById(t.orderId);
       const user  = await User.findById(t.customerId);
+      
+      // Fallback: if user not found, try to get customer name from order (if it has customerName field)
+      let customerName = "Unknown";
+      let customerEmail = "";
+      
+      if (user) {
+        customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
+        customerEmail = user.email || "";
+      } else if (order?.customerName) {
+        customerName = order.customerName;
+        customerEmail = order.customerEmail || "";
+      }
+      
       return {
         _id:           t._id,
         orderId:       order?.orderRef || t.orderId,
         ticketId:      `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customerName:  user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
-        customerEmail: user?.email || "",
+        customerName:  customerName,
+        customerEmail: customerEmail,
         amount:        t.inspectionFee,
         slipUrl:       t.slipUrl,
         status:        t.status,
@@ -193,12 +207,25 @@ exports.getVerifiedPayments = async (req, res) => {
     const formatted = await Promise.all(tickets.map(async (t) => {
       const order = await Order.findById(t.orderId);
       const user  = await User.findById(t.customerId);
+      
+      // Fallback: if user not found, try to get customer name from order
+      let customerName = "Unknown";
+      let customerEmail = "";
+      
+      if (user) {
+        customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
+        customerEmail = user.email || "";
+      } else if (order?.customerName) {
+        customerName = order.customerName;
+        customerEmail = order.customerEmail || "";
+      }
+      
       return {
         _id:           t._id,
         orderId:       order?.orderRef || t.orderId,
         ticketId:      `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customerName:  user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
-        customerEmail: user?.email || "",
+        customerName:  customerName,
+        customerEmail: customerEmail,
         amount:        t.inspectionFee,
         slipUrl:       t.slipUrl,
         status:        t.status,
@@ -221,12 +248,25 @@ exports.getRejectedPayments = async (req, res) => {
     const formatted = await Promise.all(tickets.map(async (t) => {
       const order = await Order.findById(t.orderId);
       const user  = await User.findById(t.customerId);
+      
+      // Fallback: if user not found, try to get customer name from order
+      let customerName = "Unknown";
+      let customerEmail = "";
+      
+      if (user) {
+        customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
+        customerEmail = user.email || "";
+      } else if (order?.customerName) {
+        customerName = order.customerName;
+        customerEmail = order.customerEmail || "";
+      }
+      
       return {
         _id:             t._id,
         orderId:         order?.orderRef || t.orderId,
         ticketId:        `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customerName:    user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
-        customerEmail:   user?.email || "",
+        customerName:    customerName,
+        customerEmail:   customerEmail,
         amount:          t.inspectionFee,
         slipUrl:         t.slipUrl,
         status:          t.status,

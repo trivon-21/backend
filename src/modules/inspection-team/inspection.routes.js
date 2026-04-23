@@ -1,6 +1,6 @@
 const express    = require("express");
 const router     = express.Router();
-const controller = require("../controllers/inspectionOfficer.controller");
+const controller = require("./inspection.controller");
 
 router.get("/dashboard",                      controller.getDashboardStats);
 router.get("/scheduled",                      controller.getScheduledInspections);

@@ -1,6 +1,6 @@
 const express    = require("express");
 const router     = express.Router();
-const controller = require("../controllers/payment.controller");
+const controller = require("./payment.controller");
 
 router.get("/pending",        controller.getPendingPayments);
 router.put("/approve/:id",    controller.approvePayment);

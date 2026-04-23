@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { sendBuyOnlyRejectionEmail, sendBuyOnlyApprovalEmail } = require("../services/email.service");
+const { sendBuyOnlyRejectionEmail, sendBuyOnlyApprovalEmail } = require("../shared/notification/email.service");
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
@@ -33,12 +33,25 @@ const getUserModel = () => {
 const formatOrder = async (order) => {
   const User = getUserModel();
   const user = await User.findById(order.customer);
+  
+  // Fallback: if user not found, try to use Order's customerName if available
+  let customerName = "Unknown";
+  let customerEmail = "";
+  
+  if (user) {
+    customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
+    customerEmail = user?.email || "";
+  } else if (order?.customerName) {
+    customerName = order.customerName;
+    customerEmail = order.customerEmail || "";
+  }
+  
   return {
     _id:             order._id,
     orderId:         order.orderRef || order._id.toString(),
     itemName:        order.itemName || "",
-    customerName:    user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() : "Unknown",
-    customerEmail:   user?.email || "",
+    customerName:    customerName,
+    customerEmail:   customerEmail,
     amount:          order.amount || 0,
     slipUrl:         order.paymentSlipUrl || null,
     paymentType:     "BUY_ONLY",

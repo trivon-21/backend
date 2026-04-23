@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const Invoice  = require("../models/Invoice.model");
+const Invoice  = require("./Invoice.model");
 const cron     = require("node-cron");
 const PDFDocument = require("pdfkit");
 
@@ -24,15 +24,23 @@ const getReportModel = () => {
   catch { return null; }
 };
 
+const getInstallationModel = () => {
+  try { return mongoose.model("Installation"); }
+  catch {
+    const s = new mongoose.Schema({ orderId: mongoose.Schema.Types.ObjectId, materials: [{ type: mongoose.Schema.Types.Mixed }] }, { strict: false, timestamps: true });
+    return mongoose.model("Installation", s);
+  }
+};
+
 const { sendInvoiceEmail, sendInvoiceAcceptedEmail, sendInvoiceRejectedEmail,
         sendPaymentReminderEmail, sendAutoCancelledEmail,
-        sendRejectionWarningEmail, sendRejectionExpiredEmail } = require("../services/invoiceEmail.service");
+        sendRejectionWarningEmail, sendRejectionExpiredEmail } = require("../shared/notification/invoiceEmail.service");
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
 // ── GET orders ready for invoice generation ───────────────────────────────────
 // These are orders where inspection report has been submitted to main technician
-// Main technician adds material list to the report — we read from InspectionReport
+// AND materials have been added to the Installation collection
 exports.getInvoiceQueue = async (req, res) => {
   try {
     const InspectionReport = getReportModel();
@@ -42,12 +50,19 @@ exports.getInvoiceQueue = async (req, res) => {
     const reports = await InspectionReport.find({ status: "SUBMITTED" });
     const Order   = getOrderModel();
     const User    = getUserModel();
+    const Installation = getInstallationModel();
 
     const result = [];
     for (const report of reports) {
       // Check if invoice already exists for this report
       const existing = await Invoice.findOne({ reportId: report._id });
       if (existing) continue; // already has invoice
+
+      // Check if Installation with materials exists for this order
+      const installation = await Installation.findOne({ orderId: report.orderId });
+      if (!installation || !installation.materials || installation.materials.length === 0) {
+        continue; // Skip if no materials added yet
+      }
 
       const order  = await Order.findById(report.orderId);
       const InspectionTicket = require("../models/InspectionTicket.model");
@@ -65,8 +80,8 @@ exports.getInvoiceQueue = async (req, res) => {
         customerAddress: user?.address || "",
         date:          report.createdAt,
         itemName:      order?.itemName || "",
-        // Materials from report rooms
-        rooms:         report.rooms || [],
+        // Materials from Installation collection
+        materials:     installation.materials || [],
         inspectorName: report.inspectorName,
       });
     }

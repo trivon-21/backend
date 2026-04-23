@@ -1,7 +1,7 @@
 const mongoose       = require("mongoose");
-const InspectionTicket = require("../models/InspectionTicket.model");
-const InspectionReport = require("../models/InspectionReport.model");
-const { sendArrivalEmail, sendReportToTechnician } = require("../services/email.service");
+const InspectionTicket = require("../shared/ticket/InspectionTicket.model");
+const InspectionReport = require("./InspectionReport.model");
+const { sendArrivalEmail, sendReportToTechnician } = require("../shared/notification/email.service");
 
 const getOrderModel = () => {
   try { return mongoose.model("Order"); }

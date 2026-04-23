@@ -1,6 +1,6 @@
 const mongoose      = require("mongoose");
-const ServiceTicket = require("../models/ServiceTicket.model");
-const { sendServiceRejectionEmail, sendServiceApprovalEmail } = require("../services/email.service");
+const ServiceTicket = require("../shared/ticket/ServiceTicket.model");
+const { sendServiceRejectionEmail, sendServiceApprovalEmail } = require("../shared/notification/email.service");
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
@@ -27,12 +27,25 @@ const formatTicket = async (t) => {
   const Order = getOrderModel();
   const user  = await User.findById(t.customerId);
   const order = t.orderId ? await Order.findById(t.orderId) : null;
+  
+  // Fallback: if user not found, try to get customer name from order
+  let customerName = "Unknown";
+  let customerEmail = "";
+  
+  if (user) {
+    customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
+    customerEmail = user.email || "";
+  } else if (order?.customerName) {
+    customerName = order.customerName;
+    customerEmail = order.customerEmail || "";
+  }
+  
   return {
     _id:             t._id,
     orderId:         order?.orderRef || (t.orderId?.toString() || "-"),
     ticketId:        `SVC-${t._id.toString().slice(-6).toUpperCase()}`,
-    customerName:    user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() : "Unknown",
-    customerEmail:   user?.email || "",
+    customerName:    customerName,
+    customerEmail:   customerEmail,
     serviceType:     t.serviceType,
     description:     t.description || "",
     amount:          t.serviceFee || 0,
