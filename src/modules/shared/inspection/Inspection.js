@@ -26,4 +26,4 @@ const inspectionSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-module.exports = mongoose.model('Inspection', inspectionSchema, 'Inspections');
+module.exports = mongoose.models.Inspection || mongoose.model('Inspection', inspectionSchema, 'Inspections');
