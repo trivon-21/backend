@@ -1,9 +1,11 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
-const { signup, login, forgotPassword, resetPassword, verifyEmail, resendOtp, verifyPhone, resendOtpPhone } = require("./auth.controller");
+const { signup, login, forgotPassword, resetPassword, verifyEmail, resendOtp, verifyPhone, resendOtpPhone, getMaintenanceStatus } = require("./auth.controller");
 const { submitReactivationRequest } = require("../super-admin/super-admin.controller");
 const { validate } = require("../../middleware/auth.middleware");
 const { protect } = require("../../middleware/protect");
+
+router.get("/maintenance", getMaintenanceStatus);
 
 router.post(
   "/signup",

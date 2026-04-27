@@ -1,4 +1,5 @@
 const ServiceRequest = require("../models/ServiceRequest");
+const configCache = require("../utils/config-cache");
 
 // GET /api/service-requests
 exports.getServiceRequests = async (req, res) => {
@@ -41,6 +42,23 @@ exports.createServiceRequest = async (req, res) => {
 
     if (!serviceType) {
       return res.status(400).json({ message: "Service type is required" });
+    }
+
+    // Check feature flags for specific service types
+    const flags = await configCache.getFeatureFlags();
+
+    if (serviceType === "AMC Service" && !flags.amcModuleEnabled) {
+      return res.status(403).json({
+        success: false,
+        message: "AMC service requests are currently disabled",
+      });
+    }
+
+    if (acWarrantyStatus === "Active" && !flags.warrantyModuleEnabled) {
+      return res.status(403).json({
+        success: false,
+        message: "Warranty services are currently disabled",
+      });
     }
 
     const subject = serviceType === "Other" ? serviceTypeOther || "Other" : serviceType;

@@ -220,6 +220,56 @@ exports.changePassword = async (userId, { currentPassword, newPassword }) => {
   return { message: "Password changed successfully" };
 };
 
+exports.changePasswordFirstLogin = async (userId, { newPassword }) => {
+  const user = await User.findById(userId);
+  if (!user) throw new Error("User not found");
+
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash(newPassword, salt);
+
+  // Generate OTP for email verification
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+  // Update user with new password and OTP for email verification
+  await User.findByIdAndUpdate(userId, {
+    $set: {
+      passwordHash,
+      needsPasswordChange: false,
+      emailOtp: hashedOtp,
+      emailOtpExpires: new Date(Date.now() + 10 * 60 * 1000)
+    }
+  });
+
+  // Send OTP email
+  if (user.email) {
+    const transporter = createTransporter();
+    try {
+      await transporter.sendMail({
+        from: `AirLux <${process.env.EMAIL_USER}>`,
+        to: user.email,
+        subject: "AirLux — Verify Your Email",
+        html: `
+          <p>Hi ${user.fullName},</p>
+          <p>Your email verification code is:</p>
+          <h2 style="letter-spacing:6px;font-size:32px;">${otp}</h2>
+          <p>This code expires in <strong>10 minutes</strong>.</p>
+          <p>If you did not create an AirLux account, please ignore this email.</p>
+        `
+      });
+      console.log(`[DEV] Email OTP for ${user.email}: ${otp}`);
+    } catch (emailErr) {
+      console.error("Failed to send email verification OTP:", emailErr.message);
+    }
+  }
+
+  return {
+    message: "Password changed successfully",
+    requiresEmailVerification: true,
+    userEmail: user.email
+  };
+};
+
 exports.uploadPhoto = async (userId, { profilePhoto }) => {
   if (!profilePhoto.startsWith("data:image/")) {
     throw new Error("Invalid image format. Must be a base64 data URL");

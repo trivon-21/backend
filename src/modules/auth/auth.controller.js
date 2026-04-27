@@ -1,4 +1,19 @@
 const authService = require("./auth.service");
+const systemConfigService = require("../super-admin/config/system-config.service");
+
+exports.getMaintenanceStatus = async (req, res) => {
+  try {
+    const config = await systemConfigService.getSystemConfig();
+    return res.json({
+      success: true,
+      data: {
+        maintenance: config.maintenance
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
 
 exports.signup = async (req, res) => {
   try {

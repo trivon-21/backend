@@ -87,6 +87,20 @@ exports.changePassword = async (req, res) => {
   }
 };
 
+exports.changePasswordFirstLogin = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword) {
+      return res.status(400).json({ message: "New password is required" });
+    }
+
+    const result = await profileService.changePasswordFirstLogin(req.user._id, { newPassword });
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
 exports.uploadPhoto = async (req, res) => {
   try {
     const { profilePhoto } = req.body;

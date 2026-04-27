@@ -196,18 +196,14 @@ exports.createUser = async (data) => {
       phoneNumber ? "phone" : null
     ].filter(Boolean),
     emailVerified: false,
-    phoneVerified: false
+    phoneVerified: false,
+    needsPasswordChange: true
   });
 
   await user.save();
 
-  // Send OTPs
-  if (email) {
-    await sendOtpEmail(email, fullName, emailOtp);
-  }
-  if (phoneNumber) {
-    await sendSmsOtp(phoneNumberNormalized, phoneOtp);
-  }
+  // No OTP sending when super admin creates user
+  // Users will be prompted to verify email after first login and password change
 
   return formatUserResponse(user);
 };

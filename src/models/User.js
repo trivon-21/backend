@@ -69,7 +69,8 @@ const userSchema = new mongoose.Schema(
         actionUrl: { type: String, default: "" },
         createdAt: { type: Date, default: Date.now }
       }
-    ]
+    ],
+    needsPasswordChange: { type: Boolean, default: false }
   },
   { timestamps: true }
 );

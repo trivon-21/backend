@@ -3,6 +3,7 @@
  * Used by Customer, CSA, Manager roles
  */
 const Order = require("../../../models/Order");
+const configCache = require("../../../utils/config-cache");
 
 exports.getUserOrders = async (userId, filters = {}, pagination = {}) => {
   try {
@@ -114,5 +115,96 @@ exports.getAllOrders = async (filters = {}, pagination = {}) => {
     return { orders, total, limit, skip };
   } catch (err) {
     throw new Error(`Failed to fetch orders: ${err.message}`);
+  }
+};
+
+/**
+ * Check if order amount requires quotation approval
+ * @param {number} amount - Order amount
+ * @returns {Promise<boolean>}
+ */
+exports.checkQuotationApprovalRequired = async (amount) => {
+  try {
+    const rules = await configCache.getBusinessRules();
+    return amount > rules.quotationApprovalThreshold;
+  } catch (err) {
+    console.error('Error checking quotation approval:', err);
+    return false;
+  }
+};
+
+/**
+ * Create new order with business rules applied
+ * @param {Object} orderData - Order creation data
+ * @param {string} customerId - Customer ID
+ * @returns {Promise<Order>}
+ */
+exports.createOrder = async (orderData, customerId) => {
+  try {
+    const { amount } = orderData;
+
+    // Check if quotation approval is required
+    const needsApproval = await exports.checkQuotationApprovalRequired(amount);
+
+    const orderStatus = needsApproval ? 'Awaiting Approval' : 'Order Placed';
+
+    const order = await Order.create({
+      ...orderData,
+      customer: customerId,
+      orderStatus,
+      status: needsApproval ? 'Pending' : 'Completed',
+    });
+
+    return order;
+  } catch (err) {
+    throw new Error(`Failed to create order: ${err.message}`);
+  }
+};
+
+/**
+ * Apply default warranty to delivered order
+ * @param {string} orderId - Order ID
+ * @returns {Promise<Order>}
+ */
+exports.applyDefaultWarranty = async (orderId) => {
+  try {
+    const rules = await configCache.getBusinessRules();
+    const warrantyMonths = rules.defaultWarrantyMonths;
+
+    const today = new Date();
+    const warrantyExpiry = new Date(today);
+    warrantyExpiry.setMonth(warrantyExpiry.getMonth() + warrantyMonths);
+
+    const updated = await Order.findByIdAndUpdate(
+      orderId,
+      {
+        warrantyStart: today,
+        warrantyExpiry,
+      },
+      { new: true }
+    );
+
+    return updated;
+  } catch (err) {
+    throw new Error(`Failed to apply warranty: ${err.message}`);
+  }
+};
+
+/**
+ * Check if warranty is still active for an order
+ * @param {string} orderId - Order ID
+ * @returns {Promise<boolean>}
+ */
+exports.isWarrantyActive = async (orderId) => {
+  try {
+    const order = await Order.findById(orderId);
+    if (!order || !order.warrantyExpiry) {
+      return false;
+    }
+
+    return new Date() <= new Date(order.warrantyExpiry);
+  } catch (err) {
+    console.error('Error checking warranty status:', err);
+    return false;
   }
 };

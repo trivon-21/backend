@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed": "node seeds/seedDatabase.js"
+    "seed": "node seeds/seedDatabase.js",
+    "seed:config": "node seeds/system-config-seed.js"
   },
   "keywords": [],
   "author": "",

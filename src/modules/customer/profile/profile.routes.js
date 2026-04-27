@@ -9,6 +9,7 @@ const {
   resendAdditionalEmailOtp,
   deleteAccount,
   changePassword,
+  changePasswordFirstLogin,
   uploadPhoto,
   removePhoto
 } = require("./profile.controller");
@@ -62,6 +63,21 @@ router.post(
   ],
   validate,
   changePassword
+);
+
+// POST change password on first login (no current password required)
+router.post(
+  "/change-password-first-login",
+  [
+    body("newPassword")
+      .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
+      .matches(/[A-Z]/).withMessage("Password must contain uppercase")
+      .matches(/[a-z]/).withMessage("Password must contain lowercase")
+      .matches(/[0-9]/).withMessage("Password must contain number")
+      .matches(/[^A-Za-z0-9]/).withMessage("Password must contain special character")
+  ],
+  validate,
+  changePasswordFirstLogin
 );
 
 // PUT upload profile photo

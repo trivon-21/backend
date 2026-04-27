@@ -9,8 +9,16 @@ function initializeTwilio() {
     const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 
     if (!accountSid || !authToken || !twilioPhoneNumber) {
-      console.error(
+      console.warn(
         "Twilio not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in .env"
+      );
+      return;
+    }
+
+    // Validate that accountSid starts with AC (Twilio format)
+    if (!accountSid.startsWith('AC')) {
+      console.warn(
+        "Invalid Twilio credentials detected. Skipping Twilio initialization. Ensure valid credentials in .env"
       );
       return;
     }
@@ -18,7 +26,7 @@ function initializeTwilio() {
     client = twilio(accountSid, authToken);
     console.log("Twilio SMS initialized successfully");
   } catch (error) {
-    console.error("Twilio initialization failed:", error.message);
+    console.warn("Twilio initialization failed:", error.message, "- SMS features will be unavailable");
   }
 }
 

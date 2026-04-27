@@ -292,7 +292,8 @@ exports.login = async (authInput, password, rememberMe = true) => {
         email: user.email,
         role: user.role,
         emailVerified: user.emailVerified || false,
-        authMethods: user.authMethods || ['email']
+        authMethods: user.authMethods || ['email'],
+        needsPasswordChange: user.needsPasswordChange || false
       }
     };
   }
@@ -360,7 +361,8 @@ exports.login = async (authInput, password, rememberMe = true) => {
         phoneNumber: user.phoneNumber,
         role: user.role,
         phoneVerified: user.phoneVerified || false,
-        authMethods: user.authMethods || ['phone']
+        authMethods: user.authMethods || ['phone'],
+        needsPasswordChange: user.needsPasswordChange || false
       }
     };
   }

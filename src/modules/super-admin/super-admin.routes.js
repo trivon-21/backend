@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const controller = require("./super-admin.controller");
+const systemConfigRoutes = require("./config/system-config.routes");
 const { protect } = require("../../middleware/protect");
 const { authorize } = require("../../middleware/role.middleware");
 
@@ -50,5 +51,10 @@ router.get("/reactivation-requests", controller.getReactivationRequests);
 // Handle reactivation request (approve/reject)
 // PATCH /api/super-admin/reactivation-requests/:userId
 router.patch("/reactivation-requests/:userId", controller.handleReactivationRequest);
+
+/**
+ * System Configuration Routes
+ */
+router.use("/system-config", systemConfigRoutes);
 
 module.exports = router;
