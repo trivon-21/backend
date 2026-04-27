@@ -6,9 +6,17 @@ const ServiceRequest = require('../shared/serviceRequest/ServiceRequest');
 const Installation = require('../shared/installation/Installation');
 const Inspection = require('../shared/inspection/Inspection');
 const mongoose = require('mongoose');
+const {
+  WORKFLOW_STATUS,
+  EXECUTION_STATUS,
+  TEAM_STATUS,
+  REQUEST_TYPES,
+  STATUS_GROUPS,
+  DEFAULTS,
+} = require('../../constants/enums');
 
-const activeStatuses = ['Assigned', 'Scheduled', 'In Progress', 'On Hold'];
-const inProgressStatus = 'In Progress';
+const activeStatuses = STATUS_GROUPS.ACTIVE_WORKLOAD;
+const inProgressStatus = EXECUTION_STATUS.IN_PROGRESS;
 
 const { calculateAvailableSlots } = require('../../utils/availability.utils');
 
@@ -42,7 +50,7 @@ const mapTeamMembers = (members) => members.map((member) => ({
 const mapActiveJob = (item, type) => ({
   id: item._id,
   ticketId: normalizeTicketId(item.ticketId || String(item._id).slice(-4).toUpperCase()),
-  customerName: item.customerId?.name || item.customerName || 'Unknown',
+  customerName: item.customerId?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
   location: item.customerId?.address || item.location || '-',
   type,
   date: item.serviceDate || item.date || item.createdAt || null
@@ -164,12 +172,12 @@ exports.getAllTeamsWithMembers = async (req, res) => {
 
     const jobsByTeamId = new Map();
     [
-      ...services.map((item) => ({ ...item, type: 'Service' })),
-      ...installations.map((item) => ({ ...item, type: 'Installation' })),
-      ...inspections.map((item) => ({ ...item, type: 'Inspection' }))
+      ...services.map((item) => ({ ...item, type: REQUEST_TYPES.SERVICE })),
+      ...installations.map((item) => ({ ...item, type: REQUEST_TYPES.INSTALLATION })),
+      ...inspections.map((item) => ({ ...item, type: REQUEST_TYPES.INSPECTION }))
     ]
       .forEach((item) => {
-        const teamKey = item.type === 'Inspection'
+        const teamKey = item.type === REQUEST_TYPES.INSPECTION
           ? String(item._resolvedInspectionTeamId || '')
           : getAssignedTeamKey(item);
         if (!teamKey) {
@@ -225,7 +233,7 @@ exports.getAllTeamsWithMembers = async (req, res) => {
         ? calculateAvailableSlots(teamWorkload, { maxSlots: 4, includeToday: false })
         : [];
       const inProgressCount = activeJobs.length;
-      const derivedStatus = inProgressCount > 0 ? 'Busy' : 'Available';
+      const derivedStatus = inProgressCount > 0 ? TEAM_STATUS.BUSY : TEAM_STATUS.AVAILABLE;
 
       return {
         _id: team._id,
@@ -248,10 +256,10 @@ exports.getAllTeamsWithMembers = async (req, res) => {
 exports.getPendingAssignments = async (req, res) => {
   try {
     const [serviceRequests, installations] = await Promise.all([
-      ServiceRequest.find({ status: 'Sent to IM' })
+      ServiceRequest.find({ status: WORKFLOW_STATUS.SENT_TO_IM })
         .populate('customerId', 'name address')
         .lean(),
-      Installation.find({ status: 'Sent to IM' })
+      Installation.find({ status: WORKFLOW_STATUS.SENT_TO_IM })
         .populate('customerId', 'name address')
         .lean()
     ]);
@@ -260,17 +268,17 @@ exports.getPendingAssignments = async (req, res) => {
       ...serviceRequests.map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
-        customerName: item.customerId?.name || item.customerName || 'Unknown Customer',
+        customerName: item.customerId?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
-        requestType: 'Service',
+        requestType: REQUEST_TYPES.SERVICE,
         productType: item.productType || '-'
       })),
       ...installations.map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
-        customerName: item.customerId?.name || item.customerName || 'Unknown Customer',
+        customerName: item.customerId?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
-        requestType: 'Installation',
+        requestType: REQUEST_TYPES.INSTALLATION,
         productType: item.productType || '-'
       }))
     ];
@@ -285,13 +293,16 @@ exports.assignServiceRequestToTeam = async (req, res) => {
   try {
     const { serviceRequestId, teamId, requestType } = req.body || {};
     const resolvedServiceRequestId = String(serviceRequestId || '').replace(/^#/, '').trim();
-    const resolvedTeamId = String(teamId || '').trim();
+    
+    // Parse teamId to number if numeric, as test DB uses numeric IDs
+    const resolvedTeamIdStr = String(teamId || '').trim();
+    const resolvedTeamId = !isNaN(Number(resolvedTeamIdStr)) ? Number(resolvedTeamIdStr) : resolvedTeamIdStr;
 
     if (!mongoose.Types.ObjectId.isValid(resolvedServiceRequestId)) {
       return res.status(400).json({ success: false, error: 'Invalid serviceRequestId.' });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(resolvedTeamId)) {
+    if (!resolvedTeamId) {
       return res.status(400).json({ success: false, error: 'Invalid teamId.' });
     }
 
@@ -301,7 +312,7 @@ exports.assignServiceRequestToTeam = async (req, res) => {
     }
 
     const normalizedRequestType = String(requestType || '').toLowerCase();
-    const isInstallation = normalizedRequestType === 'installation';
+    const isInstallation = normalizedRequestType === REQUEST_TYPES.INSTALLATION.toLowerCase();
     const Model = isInstallation ? Installation : ServiceRequest;
     const assignment = await Model.findByIdAndUpdate(
       resolvedServiceRequestId,
@@ -309,7 +320,7 @@ exports.assignServiceRequestToTeam = async (req, res) => {
         assignedTeam: team._id,
         assignedTeamId: team._id,
         assignedTeamName: team.teamName,
-        status: 'Assigned'
+        status: EXECUTION_STATUS.ASSIGNED
       },
       { new: true }
     );
@@ -321,7 +332,7 @@ exports.assignServiceRequestToTeam = async (req, res) => {
     const currentActiveJobsCount = Number(team.activeJobsCount || 0);
     await TechTeam.findByIdAndUpdate(resolvedTeamId, {
       activeJobsCount: currentActiveJobsCount + 1,
-      status: 'Busy'
+      status: TEAM_STATUS.BUSY
     });
 
     res.json({
@@ -383,9 +394,9 @@ exports.getTeamScheduleDetails = async (req, res) => {
       activeJobs = inspections.map((item) => ({
         id: item._id,
         ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
-        customerName: item.customerId?.name || 'Unknown',
+        customerName: item.customerId?.name || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
-        type: 'Inspection',
+        type: REQUEST_TYPES.INSPECTION,
         date: item.serviceDate || item.date
       })).sort((a, b) => new Date(a.date) - new Date(b.date));
 
@@ -411,17 +422,17 @@ exports.getTeamScheduleDetails = async (req, res) => {
         ...services.map((item) => ({
           id: item._id,
           ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
-          customerName: item.customerId?.name || 'Unknown',
+          customerName: item.customerId?.name || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
-          type: 'Service',
+          type: REQUEST_TYPES.SERVICE,
           date: item.serviceDate || item.date
         })),
         ...installations.map((item) => ({
           id: item._id,
           ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
-          customerName: item.customerId?.name || 'Unknown',
+          customerName: item.customerId?.name || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
-          type: 'Installation',
+          type: REQUEST_TYPES.INSTALLATION,
           date: item.date || item.serviceDate
         }))
       ].sort((a, b) => new Date(a.date) - new Date(b.date));

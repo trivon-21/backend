@@ -1,5 +1,6 @@
 // src/models/InspectionReport.js
 const mongoose = require('mongoose');
+const { INSPECTION_REVIEW_STATUS } = require('../../constants/enums');
 
 const inspectionReportSchema = new mongoose.Schema({
   customerId: { 
@@ -9,8 +10,13 @@ const inspectionReportSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Pending', 'Reviewed', 'Approved', 'Rejected'],
-    default: 'Pending'
+    enum: [
+      INSPECTION_REVIEW_STATUS.PENDING,
+      INSPECTION_REVIEW_STATUS.REVIEWED,
+      INSPECTION_REVIEW_STATUS.APPROVED,
+      INSPECTION_REVIEW_STATUS.REJECTED,
+    ],
+    default: INSPECTION_REVIEW_STATUS.PENDING
   },
   siteDetails: {
     buildingType: String,

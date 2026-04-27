@@ -5,6 +5,10 @@ const TechTeam = require('../shared/tech-teams/TechTeam');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
 const { isTeamBJob } = require('../../utils/team.utils');
 const { calculateAvailableSlots } = require('../../utils/availability.utils');
+const {
+  EXECUTION_STATUS,
+  TEAM_STATUS,
+} = require('../../constants/enums');
 
 const TEAM_B_ALIASES = ['team b', 'service team b', 'service-team-b', 'service team-b', 'teamb'];
 
@@ -130,6 +134,7 @@ exports.getTeamDetails = async (req, res) => {
     ]);
 
     const teamBJobs = [...installs, ...requests].filter(isTeamBJob);
+    const inProgressJobsCount = teamBJobs.filter((j) => normalize(j.status) === normalize(EXECUTION_STATUS.IN_PROGRESS)).length;
     const freeSlots = calculateAvailableSlots(teamBJobs);
 
     const formattedMembers = rawMembers.map(toMember).filter((m) => m.name);
@@ -152,8 +157,8 @@ exports.getTeamDetails = async (req, res) => {
           id: teamId || null,
           teamName,
           teamType: 'Service Team',
-          status: teamBJobs.length > 5 ? 'Busy' : 'Available',
-          activeJobsCount: teamBJobs.filter((j) => normalize(j.status) === 'in progress').length,
+          status: inProgressJobsCount > 0 ? TEAM_STATUS.BUSY : TEAM_STATUS.AVAILABLE,
+          activeJobsCount: inProgressJobsCount,
           availableSlots: freeSlots
         },
         teamLeader,     // null if not found in DB

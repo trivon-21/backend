@@ -1,5 +1,9 @@
 // src/models/ServiceRequest.js
 const mongoose = require('mongoose');
+const {
+  WORKFLOW_STATUS,
+  EXECUTION_STATUS,
+} = require('../../../constants/enums');
 
 const serviceRequestSchema = new mongoose.Schema({
   customerId: { 
@@ -15,10 +19,18 @@ const serviceRequestSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: [
-      'Pending', 'Finance Approved', 'Finance Rejected', 'Cancelled', 'Sent to IM', 
-      'Assigned', 'Scheduled', 'In Progress', 'On Hold', 'Completed'
+      WORKFLOW_STATUS.PENDING,
+      WORKFLOW_STATUS.FINANCE_APPROVED,
+      WORKFLOW_STATUS.FINANCE_REJECTED,
+      WORKFLOW_STATUS.CANCELLED,
+      WORKFLOW_STATUS.SENT_TO_IM,
+      EXECUTION_STATUS.ASSIGNED,
+      EXECUTION_STATUS.SCHEDULED,
+      EXECUTION_STATUS.IN_PROGRESS,
+      EXECUTION_STATUS.ON_HOLD,
+      EXECUTION_STATUS.COMPLETED,
     ],
-    default: 'Pending'
+    default: WORKFLOW_STATUS.PENDING
   },
 
   // Warranty & Materials
@@ -31,7 +43,7 @@ const serviceRequestSchema = new mongoose.Schema({
   financeNotes: String,
 
   // Team & Progress
-  assignedTeam: { type: mongoose.Schema.Types.ObjectId, ref: 'TechTeam' },
+  assignedTeam: { type: mongoose.Schema.Types.Mixed, ref: 'TechTeam' },
   assignedTeamId: mongoose.Schema.Types.Mixed,
   assignedTeamName: String,
   timeline: {

@@ -4,32 +4,35 @@ const inspectionReportRoutes = require('../modules/inspection-team/inspection.ro
 const inspectionRoutes = require('../modules/shared/inspection/inspection.route');
 const installationRoutes = require('../modules/shared/installation/installation.route');
 const serviceRequestRoutes = require('../modules/shared/serviceRequest/serviceRequest.route');
-const materialRequestRoutes = require('../modules/inventory-manager/inventory.routes');
+const materialRequestRoutes = require('../modules/shared/inventory/inventory.routes');
 const techTeamRoutes = require('../modules/service-team/serviceTeam.routes');
 const serviceTeamTaskController = require('../modules/service-team/task.controller');
 const serviceTeamMemberController = require('../modules/service-team/team.controller');
 const serviceHistoryController = require('../modules/service-team/serviceHistory.controller');
-const dashboardRoutes = require('../modules/super-admin/superAdmin.routes');
+const dashboardRoutes = require('../modules/technician/dashboard.routes');
 const customerRoutes = require('../modules/customer/customer.routes');
 const serviceReportRoutes = require('../modules/technician/technician.routes');
+const authRoutes = require('../modules/auth/auth.routes');
+const { API_SEGMENTS } = require('../constants/enums');
 
 const router = express.Router();
 
-router.use('/inspections-reports', inspectionReportRoutes);
-router.use('/inspections', inspectionRoutes);
-router.use('/installations', installationRoutes);
-router.use('/service-requests', serviceRequestRoutes);
-router.use('/service-views', serviceRequestRoutes);
-router.use('/material-requests', materialRequestRoutes);
-router.use('/tech-teams', techTeamRoutes);
-router.use('/dashboard', dashboardRoutes);
-router.use('/customers', customerRoutes);
-router.use('/service-reports', serviceReportRoutes);
+router.use(API_SEGMENTS.INSPECTION_REPORTS, inspectionReportRoutes);
+router.use(API_SEGMENTS.INSPECTIONS, inspectionRoutes);
+router.use(API_SEGMENTS.INSTALLATIONS, installationRoutes);
+router.use(API_SEGMENTS.SERVICE_REQUESTS, serviceRequestRoutes);
+router.use(API_SEGMENTS.SERVICE_VIEWS, serviceRequestRoutes);
+router.use(API_SEGMENTS.MATERIAL_REQUESTS, materialRequestRoutes);
+router.use(API_SEGMENTS.TECH_TEAMS, techTeamRoutes);
+router.use(API_SEGMENTS.DASHBOARD, dashboardRoutes);
+router.use(API_SEGMENTS.CUSTOMERS, customerRoutes);
+router.use(API_SEGMENTS.SERVICE_REPORTS, serviceReportRoutes);
+router.use(API_SEGMENTS.AUTH, authRoutes);
 
-router.get('/tasks', serviceTeamTaskController.getTasks);
-router.get('/tasks/:id', serviceTeamTaskController.getTaskById);
-router.patch('/tasks/:id/status', serviceTeamTaskController.updateTaskStatus);
-router.get('/team-details', serviceTeamMemberController.getTeamDetails);
-router.get('/service-history/:id', serviceHistoryController.getCustomerHistory);
+router.get(API_SEGMENTS.TASKS, serviceTeamTaskController.getTasks);
+router.get(API_SEGMENTS.TASKS_BY_ID, serviceTeamTaskController.getTaskById);
+router.patch(API_SEGMENTS.TASKS_STATUS, serviceTeamTaskController.updateTaskStatus);
+router.get(API_SEGMENTS.TEAM_DETAILS, serviceTeamMemberController.getTeamDetails);
+router.get(API_SEGMENTS.SERVICE_HISTORY, serviceHistoryController.getCustomerHistory);
 
 module.exports = router;

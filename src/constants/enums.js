@@ -1,0 +1,112 @@
+const WORKFLOW_STATUS = {
+  NEW: 'New',
+  PENDING: 'Pending',
+  FINANCE_APPROVED: 'Finance Approved',
+  FINANCE_REJECTED: 'Finance Rejected',
+  CANCELLED: 'Cancelled',
+  SENT_TO_IM: 'Sent to IM',
+};
+
+const EXECUTION_STATUS = {
+  ASSIGNED: 'Assigned',
+  SCHEDULED: 'Scheduled',
+  IN_PROGRESS: 'In Progress',
+  ON_HOLD: 'On Hold',
+  COMPLETED: 'Completed',
+};
+
+const INSPECTION_REVIEW_STATUS = {
+  PENDING: 'Pending',
+  REVIEWED: 'Reviewed',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+};
+
+const TEAM_STATUS = {
+  BUSY: 'Busy',
+  AVAILABLE: 'Available',
+};
+
+const REQUEST_TYPES = {
+  SERVICE: 'Service',
+  INSTALLATION: 'Installation',
+  INSPECTION: 'Inspection',
+};
+
+const STATUS_GROUPS = {
+  MATERIAL_WORKFLOW_VISIBLE: [
+    WORKFLOW_STATUS.NEW,
+    WORKFLOW_STATUS.PENDING,
+    WORKFLOW_STATUS.FINANCE_APPROVED,
+    WORKFLOW_STATUS.FINANCE_REJECTED,
+    WORKFLOW_STATUS.SENT_TO_IM,
+  ],
+  EXECUTION_VISIBLE: [
+    EXECUTION_STATUS.ASSIGNED,
+    EXECUTION_STATUS.SCHEDULED,
+    EXECUTION_STATUS.IN_PROGRESS,
+    EXECUTION_STATUS.ON_HOLD,
+    EXECUTION_STATUS.COMPLETED,
+  ],
+  SERVICE_REQUEST_VISIBLE: [
+    EXECUTION_STATUS.ASSIGNED,
+    EXECUTION_STATUS.SCHEDULED,
+    EXECUTION_STATUS.IN_PROGRESS,
+    EXECUTION_STATUS.ON_HOLD,
+    EXECUTION_STATUS.COMPLETED,
+  ],
+  HISTORY_NORMALIZED: [
+    EXECUTION_STATUS.COMPLETED,
+    EXECUTION_STATUS.IN_PROGRESS,
+    EXECUTION_STATUS.SCHEDULED,
+    EXECUTION_STATUS.ON_HOLD,
+    EXECUTION_STATUS.ASSIGNED,
+  ],
+  ACTIVE_WORKLOAD: [
+    EXECUTION_STATUS.ASSIGNED,
+    EXECUTION_STATUS.SCHEDULED,
+    EXECUTION_STATUS.IN_PROGRESS,
+    EXECUTION_STATUS.ON_HOLD,
+  ],
+};
+
+const DEFAULTS = {
+  UNASSIGNED: 'Unassigned',
+  UNKNOWN_CUSTOMER: 'Unknown Customer',
+  INSPECTION_TEAM_NAME: 'Inspection Team A',
+};
+
+const API_SEGMENTS = {
+  INSPECTION_REPORTS: '/inspections-reports',
+  INSPECTIONS: '/inspections',
+  INSTALLATIONS: '/installations',
+  SERVICE_REQUESTS: '/service-requests',
+  SERVICE_VIEWS: '/service-views',
+  MATERIAL_REQUESTS: '/material-requests',
+  TECH_TEAMS: '/tech-teams',
+  DASHBOARD: '/dashboard',
+  CUSTOMERS: '/customers',
+  SERVICE_REPORTS: '/service-reports',
+  AUTH: '/auth',
+  TASKS: '/tasks',
+  TASKS_BY_ID: '/tasks/:id',
+  TASKS_STATUS: '/tasks/:id/status',
+  TEAM_DETAILS: '/team-details',
+  SERVICE_HISTORY: '/service-history/:id',
+};
+
+const ROUTES = {
+  API_BASE: '/api',
+};
+
+module.exports = {
+  WORKFLOW_STATUS,
+  EXECUTION_STATUS,
+  INSPECTION_REVIEW_STATUS,
+  TEAM_STATUS,
+  REQUEST_TYPES,
+  STATUS_GROUPS,
+  DEFAULTS,
+  API_SEGMENTS,
+  ROUTES,
+};

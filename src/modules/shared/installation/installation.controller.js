@@ -2,12 +2,13 @@ const mongoose = require('mongoose');
 const Installation = require('./Installation');
 const Customer = require('../../customer/customer.model');
 const TechTeam = require('../../service-team/serviceTeam.model');
+const { STATUS_GROUPS, DEFAULTS } = require('../../../constants/enums');
 
 // 1. GET all for the Installations Tab
 exports.getAllInstallations = async (req, res) => {
   try {
     // Only show tickets ready for team execution
-    const visibleStatuses = ['Assigned', 'Scheduled', 'In Progress', 'On Hold', 'Completed'];
+    const visibleStatuses = STATUS_GROUPS.EXECUTION_VISIBLE;
     
     const query = { status: { $in: visibleStatuses } };
     if (req.query.status && req.query.status !== 'All') query.status = req.query.status;
@@ -59,11 +60,11 @@ exports.getAllInstallations = async (req, res) => {
         || item.assignedTeamName
         || resolvedTeam?.teamName
         || (typeof item.assignedTeam === 'string' ? item.assignedTeam : null)
-        || 'Unassigned';
+        || DEFAULTS.UNASSIGNED;
 
       return {
         ...item,
-        customerName: customer?.name || item.customerName || 'Unknown Customer',
+        customerName: customer?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: customer?.address || '-',
         assignedTeam: assignedTeamName,
         assignedTeamName

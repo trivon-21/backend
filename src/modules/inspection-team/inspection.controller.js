@@ -1,16 +1,91 @@
 // src/controllers/inspectionReport.controller.js
 const InspectionReport = require('./inspection.model');
 const Installation = require('../shared/installation/Installation');
+const Customer = require('../customer/customer.model');
+const {
+  WORKFLOW_STATUS,
+  INSPECTION_REVIEW_STATUS,
+} = require('../../constants/enums');
+
+const toCustomerId = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    if (value._id) return String(value._id);
+    if (value.id) return String(value.id);
+  }
+  return String(value);
+};
+
+const buildReportSignature = (report) => {
+  const site = report?.siteDetails || {};
+  const inspectionMeta = report?.inspectionMeta || {};
+  const dateValue = inspectionMeta.date ? new Date(inspectionMeta.date).toISOString().slice(0, 10) : '';
+
+  return [
+    site.buildingType || '',
+    site.floors ?? '',
+    site.rooms ?? '',
+    site.ceilingHeight || '',
+    site.wallType || '',
+    site.powerSupply || '',
+    site.outdoorAccess || '',
+    dateValue,
+    inspectionMeta.time || '',
+  ].join('|');
+};
 
 // 1. GET all reports with populated Customer details
 exports.getAllReports = async (req, res) => {
   try {
     const reports = await InspectionReport.find()
-      .populate('customerId', 'name address contactNo')
       .sort({ updatedAt: -1 })
       .lean();
 
-    res.json({ success: true, data: reports });
+    const customerIds = Array.from(new Set(
+      reports
+        .map((item) => toCustomerId(item.customerId))
+        .filter(Boolean)
+    ));
+
+    const customers = customerIds.length > 0
+      ? await Customer.find({ _id: { $in: customerIds } }, 'name address contactNo').lean()
+      : [];
+
+    const customerById = new Map(customers.map((customer) => [String(customer._id), customer]));
+
+    // Build signature-based fallback map from reports that already have resolvable customers.
+    const signatureCustomerIdMap = new Map();
+    reports.forEach((report) => {
+      const customerId = toCustomerId(report.customerId);
+      if (!customerId || !customerById.has(customerId)) {
+        return;
+      }
+
+      const signature = buildReportSignature(report);
+      if (signature && !signatureCustomerIdMap.has(signature)) {
+        signatureCustomerIdMap.set(signature, customerId);
+      }
+    });
+
+    const enrichedReports = reports.map((report) => {
+      const rawCustomerId = toCustomerId(report.customerId);
+      const signature = buildReportSignature(report);
+      const fallbackCustomerId = signatureCustomerIdMap.get(signature) || null;
+      const resolvedCustomerId = (rawCustomerId && customerById.has(rawCustomerId))
+        ? rawCustomerId
+        : fallbackCustomerId;
+      const customer = resolvedCustomerId ? customerById.get(resolvedCustomerId) : null;
+
+      return {
+        ...report,
+        customerId: customer || report.customerId || null,
+        customerName: customer?.name || null,
+        customerAddress: customer?.address || null,
+      };
+    });
+
+    res.json({ success: true, data: enrichedReports });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -20,11 +95,46 @@ exports.getAllReports = async (req, res) => {
 exports.getReportById = async (req, res) => {
   try {
     const report = await InspectionReport.findById(req.params.id)
-      .populate('customerId')
       .lean();
 
     if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
-    res.json({ success: true, data: report });
+
+    const customerId = toCustomerId(report.customerId);
+    let customer = customerId
+      ? await Customer.findById(customerId, 'name email contactNo address').lean()
+      : null;
+
+    if (!customer) {
+      const signature = buildReportSignature(report);
+      const siblingReports = await InspectionReport.find({ _id: { $ne: report._id } }).lean();
+
+      let fallbackCustomerId = null;
+      for (const sibling of siblingReports) {
+        if (buildReportSignature(sibling) !== signature) {
+          continue;
+        }
+
+        const siblingCustomerId = toCustomerId(sibling.customerId);
+        if (siblingCustomerId) {
+          fallbackCustomerId = siblingCustomerId;
+          break;
+        }
+      }
+
+      if (fallbackCustomerId) {
+        customer = await Customer.findById(fallbackCustomerId, 'name email contactNo address').lean();
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...report,
+        customerId: customer || report.customerId || null,
+        customerName: customer?.name || null,
+        customerAddress: customer?.address || null,
+      }
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -41,7 +151,7 @@ exports.updateRequirements = async (req, res) => {
     }
 
     report.requirements = req.body.requirements;
-    report.status = 'Reviewed';
+    report.status = INSPECTION_REVIEW_STATUS.REVIEWED;
     if (typeof req.body.reviewNotes === 'string') {
       report.reviewNotes = req.body.reviewNotes;
     }
@@ -59,17 +169,37 @@ exports.approveReport = async (req, res) => {
     const report = await InspectionReport.findById(req.params.id);
     if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
 
+    const recommendedProduct = String(req.body.recommendedProduct || '').trim();
+    if (!recommendedProduct) {
+      return res.status(400).json({ success: false, message: 'Recommended product is required' });
+    }
+
+    const normalizedReviewNotes = String(req.body.financeNotes || '').trim();
+    if (!report.inspectionMeta) {
+      report.inspectionMeta = {};
+    }
+    report.inspectionMeta.recommendedProducts = [recommendedProduct];
+    report.reviewNotes = normalizedReviewNotes || report.reviewNotes;
+
     // Promote details to the Installations collection for this exact inspection report.
     const installationPayload = {
       customerId: report.customerId,
       inspectionReportId: report._id,
-      productType: report.inspectionMeta?.recommendedProducts?.join(', ') || 'Standard Installation',
+      productType: recommendedProduct,
       location: report.siteDetails?.buildingType || 'Site Location',
+      serviceDate: report.inspectionMeta?.date || null,
       siteDetails: report.siteDetails,
       materials: report.requirements?.materials || [],
       labour: report.requirements?.labour || null,
-      financeNotes: req.body.financeNotes || report.reviewNotes,
+      financeNotes: normalizedReviewNotes || report.reviewNotes,
       reviewNotes: report.reviewNotes,
+      inspectionSnapshot: {
+        inspectionMeta: report.inspectionMeta || {},
+        findings: report.findings || [],
+        requirements: report.requirements || {},
+        photos: report.photos || [],
+      },
+      status: WORKFLOW_STATUS.NEW,
     };
 
     const existingInstallation = await Installation.findOne({ inspectionReportId: report._id });
@@ -85,15 +215,13 @@ exports.approveReport = async (req, res) => {
     } else {
       await Installation.create({
         ...installationPayload,
-        status: 'Pending'
       });
     }
 
-    report.status = 'Approved';
-    report.reviewNotes = req.body.financeNotes || report.reviewNotes;
+    report.status = INSPECTION_REVIEW_STATUS.APPROVED;
     await report.save();
 
-    res.json({ success: true, message: 'Report approved and installation created' });
+    res.json({ success: true, message: 'Report approved and installation created in New status' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -111,7 +239,7 @@ exports.rejectReport = async (req, res) => {
 
     const updated = await InspectionReport.findByIdAndUpdate(
       req.params.id,
-      { status: 'Rejected', reviewNotes: req.body.rejectionReason.trim() },
+      { status: INSPECTION_REVIEW_STATUS.REJECTED, reviewNotes: req.body.rejectionReason.trim() },
       { new: true }
     );
     res.json({ success: true, data: updated });

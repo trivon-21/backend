@@ -1,5 +1,6 @@
 // src/models/ServiceReport.js
 const mongoose = require('mongoose');
+const { EXECUTION_STATUS } = require('../../constants/enums');
 
 const serviceReportSchema = new mongoose.Schema({
   // Dynamic linking to the original job source
@@ -25,7 +26,7 @@ const serviceReportSchema = new mongoose.Schema({
   materialsUsed: [{ item: String, quantity: String }],
   notesFromMainTechnician: String,
   technicianComment: String, 
-  finalStatus: { type: String, default: 'Completed' },        
+  finalStatus: { type: String, default: EXECUTION_STATUS.COMPLETED },        
   submittedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 

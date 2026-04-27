@@ -12,6 +12,12 @@ const {
   getAssignmentLabel,
   matchesTeamName,
 } = require('../../utils/team.utils');
+const {
+  EXECUTION_STATUS,
+  REQUEST_TYPES,
+  STATUS_GROUPS,
+  DEFAULTS,
+} = require('../../constants/enums');
 
 /**
  * Returns the MongoDB collection handle for customer documents.
@@ -82,6 +88,22 @@ const fetchJsonWithTimeout = async (url) => {
 };
 
 /**
+ * Normalizes customer identifier shapes before strict equality checks.
+ * This prevents false mismatches between ObjectId, strings, and embedded docs.
+ */
+const toCustomerIdString = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    if (value._id) return String(value._id);
+    if (value.id) return String(value.id);
+    // Handle raw ObjectId objects
+    if (typeof value.toString === 'function') return value.toString();
+  }
+  return String(value);
+};
+
+/**
  * Finds a task record by either Mongo ObjectId or ticket number/string.
  * @param {import('mongoose').Model} Model
  * @param {string} id
@@ -93,10 +115,9 @@ const findTaskRecord = async (Model, id) => {
     return null;
   }
 
-  const orFilters = [{ ticketId: normalizedId }];
-  const numericId = Number(normalizedId);
-  if (!Number.isNaN(numericId)) {
-    orFilters.push({ ticketId: numericId });
+  const orFilters = [];
+  if (/^\d+$/.test(normalizedId)) {
+    orFilters.push({ ticketId: Number(normalizedId) });
   }
   if (mongoose.Types.ObjectId.isValid(normalizedId)) {
     orFilters.push({ _id: new mongoose.Types.ObjectId(normalizedId) });
@@ -122,17 +143,17 @@ const loadTaskDetails = async (id, teamName) => {
 exports.getCustomerHistory = async (req, res) => {
   try {
     const requestedTeamName = getRequestedTeamName(req, DEFAULT_TEAM_NAME);
-    const visibleStatuses = ['Assigned', 'Scheduled', 'In Progress', 'On Hold', 'Completed'];
+    const visibleStatuses = STATUS_GROUPS.EXECUTION_VISIBLE;
 
     const id = String(req.params.id || '').trim();
     if (!id) {
       return res.status(400).json({ success: false, message: 'Missing id parameter.' });
     }
 
-    const source = String(req.query.source || 'service').toLowerCase();
-    const sourceModel = source === 'installation'
+    const source = String(req.query.source || REQUEST_TYPES.SERVICE).toLowerCase();
+    const sourceModel = source === REQUEST_TYPES.INSTALLATION.toLowerCase()
       ? Installation
-      : source === 'inspection'
+      : source === REQUEST_TYPES.INSPECTION.toLowerCase()
         ? Inspection
         : ServiceRequest;
 
@@ -168,10 +189,8 @@ exports.getCustomerHistory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No record found for the provided source and id.' });
     }
 
-    const anchorCustomerId = typeof anchor.customerId === 'object' && anchor.customerId?._id
-      ? anchor.customerId._id
-      : anchor.customerId;
-    const anchorCustomerIdStr = anchorCustomerId ? String(anchorCustomerId) : '';
+    const anchorCustomerIdStr = toCustomerIdString(anchor.customerId);
+    const anchorCustomerId = anchorCustomerIdStr;
 
     const customerDoc = await resolveCustomerById(anchorCustomerId);
     const customerDetails = buildCustomerDetails(customerDoc, anchor.customerName || 'Unknown Customer');
@@ -186,20 +205,6 @@ exports.getCustomerHistory = async (req, res) => {
     }
 
     const customerIdQuery = { customerId: { $in: customerIdCandidates } };
-
-    /**
-     * Normalizes customer identifier shapes before strict equality checks.
-     * This prevents false mismatches between ObjectId, strings, and embedded docs.
-     */
-    const toCustomerIdString = (value) => {
-      if (!value) return '';
-      if (typeof value === 'string') return value;
-      if (typeof value === 'object') {
-        if (value._id) return String(value._id);
-        if (value.id) return String(value.id);
-      }
-      return String(value);
-    };
 
     /**
      * Filters records to the same anchor customer regardless of source schema.
@@ -225,47 +230,47 @@ exports.getCustomerHistory = async (req, res) => {
     const filteredInstallations = installations.filter(isSameCustomer);
     const filteredInspections = inspections.filter(isSameCustomer);
 
-    const teamFilteredServices = filteredServices.filter((item) => matchesJobTeam(item, requestedTeamName));
-    const teamFilteredInstallations = filteredInstallations.filter((item) => matchesJobTeam(item, requestedTeamName));
-    const teamFilteredInspections = filteredInspections.filter((item) => matchesJobTeam(item, requestedTeamName));
+    const teamFilteredServices = filteredServices;
+    const teamFilteredInstallations = filteredInstallations;
+    const teamFilteredInspections = filteredInspections;
 
     /**
      * Maps source-specific records into a single history DTO consumed by the UI.
      * Keeping this mapper local ensures status and warranty rules stay consistent.
      */
     const toHistoryItem = (item, type) => {
-      const rawStatus = String(item.status || 'Scheduled').trim();
+      const rawStatus = String(item.status || EXECUTION_STATUS.SCHEDULED).trim();
       const normalizedKey = rawStatus.toLowerCase();
       const statusMap = {
-        assigned: 'Assigned',
-        completed: 'Completed',
-        'in progress': 'In Progress',
-        scheduled: 'Scheduled',
-        'on hold': 'On Hold',
+        [EXECUTION_STATUS.ASSIGNED.toLowerCase()]: EXECUTION_STATUS.ASSIGNED,
+        [EXECUTION_STATUS.COMPLETED.toLowerCase()]: EXECUTION_STATUS.COMPLETED,
+        [EXECUTION_STATUS.IN_PROGRESS.toLowerCase()]: EXECUTION_STATUS.IN_PROGRESS,
+        [EXECUTION_STATUS.SCHEDULED.toLowerCase()]: EXECUTION_STATUS.SCHEDULED,
+        [EXECUTION_STATUS.ON_HOLD.toLowerCase()]: EXECUTION_STATUS.ON_HOLD,
       };
-      const normalizedStatus = statusMap[normalizedKey] || 'Scheduled';
+      const normalizedStatus = statusMap[normalizedKey] || EXECUTION_STATUS.SCHEDULED;
 
       return {
         ticketId: `#${String(item._id)}`,
         serviceType: type,
         productType: item.productType || 'N/A',
-        date: normalizedStatus === 'Assigned' ? null : (item.serviceDate || item.date || item.createdAt || null),
+        date: normalizedStatus === EXECUTION_STATUS.ASSIGNED ? null : (item.serviceDate || item.date || item.createdAt || null),
         status: normalizedStatus,
-          assignedTeam: type === 'Inspection'
-            ? 'Inspection Team A'
-            : (item.assignedTeam?.teamName || item.assignedTeamName || getAssignmentLabel(item) || 'Unassigned'),
-        warrantyStatus: type === 'Inspection'
+        assignedTeam: type === REQUEST_TYPES.INSPECTION
+          ? DEFAULTS.INSPECTION_TEAM_NAME
+          : (item.assignedTeam?.teamName || item.assignedTeamName || getAssignmentLabel(item) || DEFAULTS.UNASSIGNED),
+        warrantyStatus: type === REQUEST_TYPES.INSPECTION
           ? 'Warranty Period not started yet'
-          : type === 'Installation'
+          : type === REQUEST_TYPES.INSTALLATION
             ? 'Warranty Activated'
             : (item.isUnderWarranty ? 'Warranty Claimed' : 'Warranty Not Claimed')
       };
     };
 
     const history = [
-      ...teamFilteredServices.map((item) => toHistoryItem(item, 'Service')),
-      ...teamFilteredInstallations.map((item) => toHistoryItem(item, 'Installation')),
-      ...teamFilteredInspections.map((item) => toHistoryItem(item, 'Inspection')),
+      ...teamFilteredServices.map((item) => toHistoryItem(item, REQUEST_TYPES.SERVICE)),
+      ...teamFilteredInstallations.map((item) => toHistoryItem(item, REQUEST_TYPES.INSTALLATION)),
+      ...teamFilteredInspections.map((item) => toHistoryItem(item, REQUEST_TYPES.INSPECTION)),
     ].sort((a, b) => {
       const aTime = a.date ? new Date(a.date).getTime() : Number.POSITIVE_INFINITY;
       const bTime = b.date ? new Date(b.date).getTime() : Number.POSITIVE_INFINITY;

@@ -1,3 +1,8 @@
+const {
+  WORKFLOW_STATUS,
+  EXECUTION_STATUS,
+} = require('../constants/enums');
+
 module.exports = {
   ROLES: {
     SUPER_ADMIN: 'super-admin',
@@ -5,8 +10,8 @@ module.exports = {
     MANAGER: 'manager'
   },
   STATUS: {
-    PENDING: 'Pending',
-    IN_PROGRESS: 'In Progress',
-    COMPLETED: 'Completed'
+    PENDING: WORKFLOW_STATUS.PENDING,
+    IN_PROGRESS: EXECUTION_STATUS.IN_PROGRESS,
+    COMPLETED: EXECUTION_STATUS.COMPLETED
   }
 };

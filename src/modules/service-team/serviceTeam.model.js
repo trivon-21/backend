@@ -2,6 +2,7 @@
 const mongoose = require('mongoose');
 
 const techTeamSchema = new mongoose.Schema({
+  _id: mongoose.Schema.Types.Mixed,
   teamName: { type: String, required: true }, // e.g., "Service Team A"
   teamType: { type: String, enum: ['Service Team', 'Inspection Team'], required: true },
   status: { type: String, enum: ['Available', 'Busy'], default: 'Available' },

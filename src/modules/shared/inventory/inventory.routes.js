@@ -2,10 +2,17 @@
 const express = require('express');
 const router = express.Router();
 const materialController = require('./inventory.controller');
-const NewRequest = require('../shared/serviceRequest/NewRequest');
-const ServiceRequest = require('../shared/serviceRequest/ServiceRequest');
-const Installation = require('../shared/installation/Installation');
-const Customer = require('../customer/customer.model');
+const NewRequest = require('../serviceRequest/NewRequest');
+const ServiceRequest = require('../serviceRequest/ServiceRequest');
+const Installation = require('../installation/Installation');
+const Customer = require('../../customer/customer.model');
+const {
+    WORKFLOW_STATUS,
+    EXECUTION_STATUS,
+    REQUEST_TYPES,
+    STATUS_GROUPS,
+    DEFAULTS,
+} = require('../../../constants/enums');
 
 router.get('/dropdown-tickets', materialController.getNewServiceTickets);
 router.post('/submit-to-finance', materialController.sendToFinance);
@@ -16,7 +23,12 @@ router.patch('/:id/cancel', materialController.cancelMaterialRequest);
 
 router.get('/', async (req, res) => {
     try {
-        const materialWorkflowStatusRegex = [/^\s*pending\s*$/i, /^\s*finance approved\s*$/i, /^\s*finance rejected\s*$/i, /^\s*sent to im\s*$/i];
+        const materialWorkflowStatusRegex = [
+            new RegExp(`^\\s*${WORKFLOW_STATUS.PENDING}\\s*$`, 'i'),
+            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${WORKFLOW_STATUS.SENT_TO_IM}\\s*$`, 'i')
+        ];
         const toCustomerId = (value) => {
             if (!value) return null;
             if (typeof value === 'string') return value;
@@ -37,7 +49,7 @@ router.get('/', async (req, res) => {
 
         // 1b. Get Installations in the same materials workflow statuses.
         const installations = await Installation.collection.find({
-            status: { $in: ['Pending', 'Finance Approved', 'Finance Rejected', 'Sent to IM'] }
+            status: { $in: STATUS_GROUPS.MATERIAL_WORKFLOW_VISIBLE }
         }).sort({ createdAt: -1 }).toArray();
 
         // 2. Get NewRequests (Status: New) and calculate warranty
@@ -66,11 +78,11 @@ router.get('/', async (req, res) => {
                 return {
                     ...item,
                     ticketId: item._id,
-                    customerName: customer?.name || item.customerName || 'Unknown Customer',
+                    customerName: customer?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || '-',
                     customerContactNo: customer?.contactNo || '-',
                     location: customer?.address || item.location || '-',
-                    requestType: 'Service'
+                    requestType: REQUEST_TYPES.SERVICE
                 };
             });
 
@@ -83,11 +95,11 @@ router.get('/', async (req, res) => {
                 return {
                     ...item,
                     ticketId: item._id,
-                    customerName: customer?.name || item.customerName || 'Unknown Customer',
+                    customerName: customer?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || '-',
                     customerContactNo: customer?.contactNo || '-',
                     location: customer?.address || item.location || '-',
-                    requestType: 'Installation'
+                    requestType: REQUEST_TYPES.INSTALLATION
                 };
             });
 
@@ -99,7 +111,7 @@ router.get('/', async (req, res) => {
             const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
             const customerObjectId = customerId || req.customerId;
 
-            const installation = await Installation.findOne({ customerId: customerObjectId, status: 'Completed' }).lean();
+            const installation = await Installation.findOne({ customerId: customerObjectId, status: EXECUTION_STATUS.COMPLETED }).lean();
             if (installation) {
                 const installDate = new Date(installation.serviceDate || installation.date);
                 const twoYearsLater = new Date(installDate);
@@ -108,7 +120,7 @@ router.get('/', async (req, res) => {
 
                 const completedCount = await ServiceRequest.countDocuments({
                     customerId: customerObjectId,
-                    status: 'Completed',
+                    status: EXECUTION_STATUS.COMPLETED,
                     createdAt: { $gte: installDate, $lte: twoYearsLater }
                 });
                 isFreeOfCharge = isUnderWarranty && completedCount < 3;
@@ -117,12 +129,12 @@ router.get('/', async (req, res) => {
             return {
                 ...req,
                 ticketId: req._id,
-                customerName: customer?.name || 'Unknown Customer',
+                customerName: customer?.name || DEFAULTS.UNKNOWN_CUSTOMER,
                 customerEmail: customer?.email || '-',
                 customerContactNo: customer?.contactNo || '-',
                 location: customer?.address || req.location || '-',
-                status: 'New',
-                requestType: 'Service',
+                status: WORKFLOW_STATUS.NEW,
+                requestType: REQUEST_TYPES.SERVICE,
                 isUnderWarranty,
                 isFreeOfCharge
             };

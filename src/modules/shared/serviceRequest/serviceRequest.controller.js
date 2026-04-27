@@ -3,8 +3,15 @@ const Installation = require('../installation/Installation');
 const Inspection = require('../inspection/Inspection');
 const Customer = require('../../customer/customer.model');
 const mongoose = require('mongoose');
+const {
+  WORKFLOW_STATUS,
+  EXECUTION_STATUS,
+  REQUEST_TYPES,
+  STATUS_GROUPS,
+  DEFAULTS,
+} = require('../../../constants/enums');
 
-const VISIBLE_STATUSES = ['Pending', 'In Progress', 'Completed', 'On Hold'];
+const VISIBLE_STATUSES = STATUS_GROUPS.SERVICE_REQUEST_VISIBLE;
 
 
 exports.getAllServiceRequests = async (req, res) => {
@@ -17,9 +24,9 @@ exports.getAllServiceRequests = async (req, res) => {
     // Transform data to ensure consistent customer and team information for UI display
     const data = serviceRequests.map((item) => ({
       ...item,
-      customerName: item.customerId?.name || item.customerName || 'Unknown Customer',
+      customerName: item.customerId?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
       location: item.customerId?.address || item.location || '-',
-      assignedTeam: item.assignedTeam?.teamName || item.assignedTeamName || 'Unassigned'
+      assignedTeam: item.assignedTeam?.teamName || item.assignedTeamName || DEFAULTS.UNASSIGNED
     }));
 
     res.json({ success: true, data });
@@ -33,10 +40,8 @@ exports.getServiceRequestById = async (req, res) => {
   try {
     const service = await ServiceRequest.findById(req.params.id)
       .populate('customerId', 'name email contactNo address')
-      .populate({
-        path: 'assignedTeam',
-        populate: { path: 'members', model: 'TechTeamMember' }
-      }).lean();
+      .populate('assignedTeam', 'teamName')
+      .lean();
 
     if (!service) return res.status(404).json({ success: false, message: 'Not found' });
 
@@ -61,10 +66,10 @@ exports.getCustomerHistory = async (req, res) => {
     }
 
     // Determine source model based on query parameter
-    const source = String(req.query.source || 'service').toLowerCase();
-    const sourceModel = source === 'installation'
+    const source = String(req.query.source || REQUEST_TYPES.SERVICE).toLowerCase();
+    const sourceModel = source === REQUEST_TYPES.INSTALLATION.toLowerCase()
       ? Installation
-      : source === 'inspection'
+      : source === REQUEST_TYPES.INSPECTION.toLowerCase()
         ? Inspection
         : ServiceRequest;
 
@@ -77,7 +82,7 @@ exports.getCustomerHistory = async (req, res) => {
       }
 
       // Installation has numeric ticketId as alternative lookup
-      if (!record && source === 'installation') {
+      if (!record && source === REQUEST_TYPES.INSTALLATION.toLowerCase()) {
         const numericTicketId = Number(id);
         if (!Number.isNaN(numericTicketId)) {
           record = await Installation.findOne({ ticketId: numericTicketId }).lean();
@@ -159,11 +164,11 @@ exports.getCustomerHistory = async (req, res) => {
     const filteredInspections = inspections.filter(isSameCustomer);
 
     const toHistoryItem = (item, type) => {
-      const rawStatus = String(item.status || 'Scheduled');
+      const rawStatus = String(item.status || EXECUTION_STATUS.SCHEDULED);
       // Normalize status to standard values
-      const normalizedStatus = ['Completed', 'In Progress', 'Scheduled', 'On Hold'].includes(rawStatus)
+      const normalizedStatus = STATUS_GROUPS.HISTORY_NORMALIZED.includes(rawStatus)
         ? rawStatus
-        : 'Scheduled';
+        : EXECUTION_STATUS.SCHEDULED;
 
       return {
         ticketId: `#${String(item._id)}`,
@@ -171,12 +176,12 @@ exports.getCustomerHistory = async (req, res) => {
         productType: item.productType || 'N/A',
         date: item.serviceDate || item.date || item.createdAt || null,
         status: normalizedStatus,
-        assignedTeam: type === 'Inspection'
-          ? 'Inspection Team A'
-          : (item.assignedTeam?.teamName || item.assignedTeamName || 'Unassigned'),
-        warrantyStatus: type === 'Inspection'
+        assignedTeam: type === REQUEST_TYPES.INSPECTION
+          ? DEFAULTS.INSPECTION_TEAM_NAME
+          : (item.assignedTeam?.teamName || item.assignedTeamName || DEFAULTS.UNASSIGNED),
+        warrantyStatus: type === REQUEST_TYPES.INSPECTION
           ? 'Warranty Period not started yet'
-          : type === 'Installation'
+          : type === REQUEST_TYPES.INSTALLATION
             ? 'Warranty Activated'
             : (item.isUnderWarranty ? 'Warranty Claimed' : 'Warranty Not Claimed')
       };
@@ -184,9 +189,9 @@ exports.getCustomerHistory = async (req, res) => {
 
     // Build complete history from all record types
     const history = [
-      ...filteredServices.map((item) => toHistoryItem(item, 'Service')),
-      ...filteredInstallations.map((item) => toHistoryItem(item, 'Installation')),
-      ...filteredInspections.map((item) => toHistoryItem(item, 'Inspection')),
+      ...filteredServices.map((item) => toHistoryItem(item, REQUEST_TYPES.SERVICE)),
+      ...filteredInstallations.map((item) => toHistoryItem(item, REQUEST_TYPES.INSTALLATION)),
+      ...filteredInspections.map((item) => toHistoryItem(item, REQUEST_TYPES.INSPECTION)),
     ].sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
 
     // Extract latest installation for warranty activation date

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { WORKFLOW_STATUS } = require('../../../constants/enums');
 
 
 const materialRequestSchema = new mongoose.Schema({
@@ -14,8 +15,15 @@ const materialRequestSchema = new mongoose.Schema({
   serviceDescription: String,
   status: {
     type: String,
-    enum: ['New', 'Pending', 'Finance Approved', 'Finance Rejected', 'Cancelled', 'Sent to IM'],
-    default: 'New'
+    enum: [
+      WORKFLOW_STATUS.NEW,
+      WORKFLOW_STATUS.PENDING,
+      WORKFLOW_STATUS.FINANCE_APPROVED,
+      WORKFLOW_STATUS.FINANCE_REJECTED,
+      WORKFLOW_STATUS.CANCELLED,
+      WORKFLOW_STATUS.SENT_TO_IM,
+    ],
+    default: WORKFLOW_STATUS.NEW
   },
   materials: [{
     item: { type: String, required: true },

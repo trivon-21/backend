@@ -1,5 +1,6 @@
 // src/models/Inspection.js
 const mongoose = require('mongoose');
+const { EXECUTION_STATUS } = require('../../../constants/enums');
 
 const inspectionSchema = new mongoose.Schema({
   // Foreign Key linking to the Customers collection
@@ -12,8 +13,14 @@ const inspectionSchema = new mongoose.Schema({
   serviceDate: { type: Date, required: true },
   status: {
     type: String,
-    enum: ['Assigned', 'Scheduled', 'In Progress', 'Completed', 'On Hold'],
-    default: 'Assigned'
+    enum: [
+      EXECUTION_STATUS.ASSIGNED,
+      EXECUTION_STATUS.SCHEDULED,
+      EXECUTION_STATUS.IN_PROGRESS,
+      EXECUTION_STATUS.COMPLETED,
+      EXECUTION_STATUS.ON_HOLD,
+    ],
+    default: EXECUTION_STATUS.ASSIGNED
   },
   // Reference to the technical team assigned to the job
   assignedTeam: {

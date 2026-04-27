@@ -6,11 +6,16 @@ const {
   getRequestedTeamName,
   matchesJobTeam,
 } = require('../../utils/team.utils');
+const {
+  WORKFLOW_STATUS,
+  REQUEST_TYPES,
+  DEFAULTS,
+} = require('../../constants/enums');
 
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
 const toCustomer = (customerDoc, fallbackAddress = '-') => ({
-  name: customerDoc?.name || customerDoc?.customerName || 'Unknown Customer',
+  name: customerDoc?.name || customerDoc?.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
   address: customerDoc?.address || fallbackAddress,
   phone: customerDoc?.phone || null,
   email: customerDoc?.email || null,
@@ -20,18 +25,18 @@ const formatTask = (job, source) => {
   const customerDoc = job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
   const customer = toCustomer(customerDoc, job.location || '-');
   const ticketId = job.ticketId != null && job.ticketId !== '' ? String(job.ticketId) : String(job._id);
-  const serviceType = source === 'installation'
+  const serviceType = source === REQUEST_TYPES.INSTALLATION.toLowerCase()
     ? `${job.productType || 'Installation'}${job.units ? ` - ${job.units} Units` : ''}`
     : String(job.productType || job.serviceDescription || 'Service Request');
 
   return {
     id: ticketId,
     sourceId: String(job._id),
-    type: source === 'installation' ? 'Installation' : 'Service Request',
+    type: source === REQUEST_TYPES.INSTALLATION.toLowerCase() ? REQUEST_TYPES.INSTALLATION : 'Service Request',
     customer,
     location: job.location || customer.address || '-',
     serviceType,
-    status: job.status || 'Pending',
+    status: job.status || WORKFLOW_STATUS.PENDING,
     scheduledDate: job.serviceDate || job.date || job.createdAt || null,
     detailedProductType: job.productType || '',
     description: job.serviceDescription || '',
@@ -55,10 +60,10 @@ const findTaskRecord = async (id) => {
     return null;
   }
 
-  const queryParts = [{ ticketId: normalizedId }];
-  const numericId = Number(normalizedId);
-  if (!Number.isNaN(numericId)) {
-    queryParts.push({ ticketId: numericId });
+  const queryParts = [];
+  
+  if (/^\d+$/.test(normalizedId)) {
+    queryParts.push({ ticketId: Number(normalizedId) });
   }
 
   if (mongoose.Types.ObjectId.isValid(normalizedId)) {
@@ -73,7 +78,7 @@ const findTaskRecord = async (id) => {
   ]);
 
   if (installation) {
-    return { source: 'installation', record: installation };
+    return { source: REQUEST_TYPES.INSTALLATION.toLowerCase(), record: installation };
   }
 
   if (request) {

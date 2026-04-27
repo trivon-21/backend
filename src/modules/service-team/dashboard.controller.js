@@ -7,6 +7,12 @@ const {
   matchesJobTeam,
   matchesTeamName,
 } = require('../../utils/team.utils');
+const {
+  WORKFLOW_STATUS,
+  EXECUTION_STATUS,
+  TEAM_STATUS,
+  REQUEST_TYPES,
+} = require('../../constants/enums');
 
 
 /**
@@ -30,6 +36,30 @@ const parseActivityLimit = (value) => {
  * @returns {string}
  */
 const normalize = (value) => String(value || '').trim().toLowerCase();
+const NORMALIZED_STATUS = {
+  ASSIGNED: normalize(EXECUTION_STATUS.ASSIGNED),
+  SCHEDULED: normalize(EXECUTION_STATUS.SCHEDULED),
+  PENDING: normalize(WORKFLOW_STATUS.PENDING),
+  FINANCE_APPROVED: normalize(WORKFLOW_STATUS.FINANCE_APPROVED),
+  SENT_TO_IM: normalize(WORKFLOW_STATUS.SENT_TO_IM),
+  IN_PROGRESS: normalize(EXECUTION_STATUS.IN_PROGRESS),
+  COMPLETED: normalize(EXECUTION_STATUS.COMPLETED),
+};
+
+const STATUS_PRIORITY = new Map([
+  [NORMALIZED_STATUS.IN_PROGRESS, 1],
+  [NORMALIZED_STATUS.ASSIGNED, 2],
+  [NORMALIZED_STATUS.SCHEDULED, 3],
+  [NORMALIZED_STATUS.PENDING, 4],
+  [NORMALIZED_STATUS.FINANCE_APPROVED, 5],
+  [NORMALIZED_STATUS.SENT_TO_IM, 6],
+  [NORMALIZED_STATUS.COMPLETED, 7],
+]);
+
+const JOB_TYPE = {
+  SERVICE: REQUEST_TYPES.SERVICE.toLowerCase(),
+  INSTALLATION: REQUEST_TYPES.INSTALLATION.toLowerCase(),
+};
 
 /**
  * GET: Dashboard summary - counts of active jobs, service requests, and installations
@@ -43,18 +73,18 @@ exports.getDashboardSummary = async (req, res) => {
     ]);
 
     const assignedStageStatuses = new Set([
-      'assigned',
-      'scheduled',
-      'pending',
-      'finance approved',
-      'sent to im'
+      NORMALIZED_STATUS.ASSIGNED,
+      NORMALIZED_STATUS.SCHEDULED,
+      NORMALIZED_STATUS.PENDING,
+      NORMALIZED_STATUS.FINANCE_APPROVED,
+      NORMALIZED_STATUS.SENT_TO_IM,
     ]);
 
     const teamInstallations = installs.filter((job) => matchesJobTeam(job, requestedTeamName));
     const teamServiceRequests = requests.filter((job) => matchesJobTeam(job, requestedTeamName));
 
-    const inProgressInstallations = teamInstallations.filter((item) => normalize(item.status) === 'in progress').length;
-    const inProgressServiceRequests = teamServiceRequests.filter((item) => normalize(item.status) === 'in progress').length;
+    const inProgressInstallations = teamInstallations.filter((item) => normalize(item.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
+    const inProgressServiceRequests = teamServiceRequests.filter((item) => normalize(item.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
 
     const assignedInstallations = teamInstallations.filter((item) => assignedStageStatuses.has(normalize(item.status))).length;
     const assignedServiceRequests = teamServiceRequests.filter((item) => assignedStageStatuses.has(normalize(item.status))).length;
@@ -80,44 +110,62 @@ exports.getRecentActivity = async (req, res) => {
   try {
     const requestedTeamName = getRequestedTeamName(req, DEFAULT_TEAM_NAME);
     const limit = parseActivityLimit(req.query.limit);
-    const fetchLimit = Math.ceil(limit * 1.5);
 
     const [installs, requests] = await Promise.all([
-      Installation.find({}).sort({ updatedAt: -1, createdAt: -1 }).limit(fetchLimit).lean(),
-      ServiceRequest.find({}).sort({ updatedAt: -1, createdAt: -1 }).limit(fetchLimit).lean()
+      Installation.find({}).lean(),
+      ServiceRequest.find({}).lean()
     ]);
 
-    const allJobs = [...installs, ...requests].filter((job) => matchesJobTeam(job, requestedTeamName));
+    const teamInstallations = installs
+      .filter((job) => matchesJobTeam(job, requestedTeamName))
+      .map((job) => ({ ...job, _type: JOB_TYPE.INSTALLATION }));
 
-    const activityItems = allJobs.map((job) => {
-      const timestamp = job.updatedAt || job.createdAt || new Date();
-      const status = normalize(job.status);
-      
-      let type = 'service';
-      let title = `Service Request Updated`;
+    const teamServiceRequests = requests
+      .filter((job) => matchesJobTeam(job, requestedTeamName))
+      .map((job) => ({ ...job, _type: JOB_TYPE.SERVICE }));
 
-      if (job.type === 'Installation' || job.units !== undefined) {
-        type = 'installation';
-        title = `Installation ${capitalize(status)}`;
-      } else if (status === 'in progress') {
-        type = 'service';
-        title = `Service Job In Progress`;
-      } else if (status === 'completed') {
-        type = 'service';
-        title = `Service Completed`;
-      } else {
-        title = `${job.customerName || 'Job'} - ${capitalize(status)}`;
+    const grouped = new Map();
+    [...teamInstallations, ...teamServiceRequests].forEach((job) => {
+      const status = normalize(job.status) || NORMALIZED_STATUS.PENDING;
+      const key = `${job._type}::${status}`;
+      const timestamp = new Date(job.updatedAt || job.createdAt || 0).getTime();
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          type: job._type,
+          status,
+          count: 0,
+          latestTimestamp: timestamp,
+        });
       }
 
-      return {
-        type,
-        title,
-        timestamp
-      };
+      const current = grouped.get(key);
+      current.count += 1;
+      current.latestTimestamp = Math.max(current.latestTimestamp, timestamp);
     });
 
-    const sorted = activityItems.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    const limited = sorted.slice(0, limit);
+    const activityItems = Array.from(grouped.values())
+      .sort((a, b) => {
+        if (b.latestTimestamp !== a.latestTimestamp) {
+          return b.latestTimestamp - a.latestTimestamp;
+        }
+
+        const aPriority = STATUS_PRIORITY.get(a.status) || Number.MAX_SAFE_INTEGER;
+        const bPriority = STATUS_PRIORITY.get(b.status) || Number.MAX_SAFE_INTEGER;
+        return aPriority - bPriority;
+      })
+      .map((entry) => {
+        const isInstallation = entry.type === JOB_TYPE.INSTALLATION;
+        const noun = isInstallation ? REQUEST_TYPES.INSTALLATION : 'Service Requests';
+
+        return {
+          type: entry.type,
+          title: `${noun} ${capitalize(entry.status)}: ${entry.count}`,
+          timestamp: new Date(entry.latestTimestamp || Date.now()),
+        };
+      });
+
+    const limited = activityItems.slice(0, limit);
 
     res.json({ success: true, data: limited });
   } catch (err) {
@@ -140,8 +188,8 @@ exports.getUrgentAlerts = async (req, res) => {
     const teamJobs = [...installs, ...requests].filter((job) => matchesJobTeam(job, requestedTeamName));
     const alerts = [];
 
-    const inProgressCount = teamJobs.filter(j => normalize(j.status) === 'in progress').length;
-    const pendingCount = teamJobs.filter(j => normalize(j.status) === 'pending' || normalize(j.status) === 'scheduled').length;
+    const inProgressCount = teamJobs.filter(j => normalize(j.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
+    const pendingCount = teamJobs.filter(j => normalize(j.status) === NORMALIZED_STATUS.PENDING || normalize(j.status) === NORMALIZED_STATUS.SCHEDULED).length;
 
     // Alert: High workload
     if (inProgressCount > 3) {
@@ -165,17 +213,18 @@ exports.getUrgentAlerts = async (req, res) => {
 
     // Alert: Team availability
     const activeTeam = teams.find((team) => matchesTeamName(team.teamName || team.name || team.team, requestedTeamName));
-    if (activeTeam && normalize(activeTeam.status) === 'busy') {
+    const isTeamBusyFromLiveJobs = inProgressCount > 0;
+    if (activeTeam && isTeamBusyFromLiveJobs) {
       alerts.push({
         title: 'Team Status',
-        subtitle: `${requestedTeamName} is currently marked as Busy`,
+        subtitle: `${requestedTeamName} is currently Busy`,
         action: 'Review',
         urgent: false
       });
     }
 
     // Alert: Completed jobs needing review
-    const completedCount = teamJobs.filter(j => normalize(j.status) === 'completed').length;
+    const completedCount = teamJobs.filter(j => normalize(j.status) === NORMALIZED_STATUS.COMPLETED).length;
     if (completedCount > 0) {
       alerts.push({
         title: 'Jobs Completed',

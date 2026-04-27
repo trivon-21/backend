@@ -1,11 +1,40 @@
 // src/controllers/materialRequest.controller.js
-const NewRequest = require('../shared/serviceRequest/NewRequest');
-const ServiceRequest = require('../shared/serviceRequest/ServiceRequest');
-const Installation = require('../shared/installation/Installation');
-const Customer = require('../customer/customer.model');
+const NewRequest = require('../serviceRequest/NewRequest');
+const ServiceRequest = require('../serviceRequest/ServiceRequest');
+const Installation = require('../installation/Installation');
+const Customer = require('../../customer/customer.model');
+const {
+  WORKFLOW_STATUS,
+  EXECUTION_STATUS,
+  REQUEST_TYPES,
+  DEFAULTS,
+} = require('../../../constants/enums');
 
 exports.getNewServiceTickets = async (req, res) => {
   try {
+    const formatInstallationSiteDetails = (installation) => {
+      const details = installation?.siteDetails || {};
+      const parts = [
+        details.buildingType ? `Building: ${details.buildingType}` : null,
+        Number.isFinite(details.floors) ? `Floors: ${details.floors}` : null,
+        Number.isFinite(details.rooms) ? `Rooms: ${details.rooms}` : null,
+        details.ceilingHeight ? `Ceiling: ${details.ceilingHeight}` : null,
+        details.wallType ? `Wall: ${details.wallType}` : null,
+        details.powerSupply ? `Power: ${details.powerSupply}` : null,
+        details.outdoorAccess ? `Outdoor Access: ${details.outdoorAccess}` : null,
+      ].filter(Boolean);
+
+      if (parts.length > 0) {
+        return parts.join(' | ');
+      }
+
+      if (installation?.location) {
+        return `Location: ${installation.location}`;
+      }
+
+      return 'Site details are not available.';
+    };
+
   
     const toCustomerId = (value) => {
       if (!value) return null;
@@ -23,12 +52,17 @@ exports.getNewServiceTickets = async (req, res) => {
       .lean();
 
     // Fetch ServiceRequests with 'Finance Rejected' status (can be recreated)
-    const rejectedServiceRequests = await ServiceRequest.find({ status: 'Finance Rejected' })
+    const rejectedServiceRequests = await ServiceRequest.find({ status: WORKFLOW_STATUS.FINANCE_REJECTED })
       .populate('customerId', 'name email contactNo address')
       .lean();
 
     // Fetch Installations with 'Finance Rejected' status (can be recreated)
-    const rejectedInstallations = await Installation.find({ status: 'Finance Rejected' })
+    const rejectedInstallations = await Installation.find({ status: WORKFLOW_STATUS.FINANCE_REJECTED })
+      .populate('customerId', 'name email contactNo address')
+      .lean();
+
+    // Fetch Installations with 'New' status (freshly approved from inspection review)
+    const newInstallations = await Installation.find({ status: WORKFLOW_STATUS.NEW })
       .populate('customerId', 'name email contactNo address')
       .lean();
 
@@ -36,6 +70,7 @@ exports.getNewServiceTickets = async (req, res) => {
     const customerIds = Array.from(new Set(
       [
         ...newRequests,
+        ...newInstallations,
         ...rejectedServiceRequests,
         ...rejectedInstallations
       ]
@@ -60,7 +95,7 @@ exports.getNewServiceTickets = async (req, res) => {
       
       const installation = await Installation.findOne({
         customerId: customerObjectId,
-        status: 'Completed'
+        status: EXECUTION_STATUS.COMPLETED
       }).lean();
 
       if (installation) {
@@ -75,7 +110,7 @@ exports.getNewServiceTickets = async (req, res) => {
         // Count services completed within warranty period (for free service eligibility)
         const completedWithinWarranty = await ServiceRequest.countDocuments({
           customerId: customerObjectId,
-          status: 'Completed',
+          status: EXECUTION_STATUS.COMPLETED,
           createdAt: { $gte: installDate, $lte: warrantyExpiryDate }
         });
 
@@ -87,14 +122,14 @@ exports.getNewServiceTickets = async (req, res) => {
         ticketId: request._id,
         productType: request.productType || 'N/A',
         serviceDescription: request.serviceDescription,
-        customerName: customer?.name || 'Unknown Customer',
+        customerName: customer?.name || DEFAULTS.UNKNOWN_CUSTOMER,
         customerEmail: customer?.email || '-',
         customerContactNo: customer?.contactNo || '-',
         customerAddress: customer?.address || '-',
         isUnderWarranty,
         isFreeOfCharge,
-        requestType: 'Service',
-        status: 'New',
+        requestType: REQUEST_TYPES.SERVICE,
+        status: WORKFLOW_STATUS.NEW,
         materials: [],
         financeNotes: '',
         location: request.location || '-'
@@ -117,8 +152,8 @@ exports.getNewServiceTickets = async (req, res) => {
         customerAddress: customer?.address || '-',
         isUnderWarranty: request.isUnderWarranty || false,
         isFreeOfCharge: request.isFreeOfCharge || false,
-        requestType: 'Service',
-        status: 'Finance Rejected',
+        requestType: REQUEST_TYPES.SERVICE,
+        status: WORKFLOW_STATUS.FINANCE_REJECTED,
         note: 'Finance Rejected - Available for Re-submission',
         materials: request.materials || [],
         financeNotes: request.financeNotes || '',
@@ -131,28 +166,57 @@ exports.getNewServiceTickets = async (req, res) => {
       const customerId = toCustomerId(installation.customerId);
       const populatedCustomer = installation.customerId && typeof installation.customerId === 'object' ? installation.customerId : null;
       const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+      const siteDetailsSummary = formatInstallationSiteDetails(installation);
 
       return {
         ticketId: installation._id,
         productType: installation.productType || 'N/A',
-        serviceDescription: `Installation (${installation.productType || 'Product'})`,
+        serviceDescription: siteDetailsSummary,
         customerName: customer?.name || 'Unknown Customer',
         customerEmail: customer?.email || '-',
         customerContactNo: customer?.contactNo || '-',
         customerAddress: customer?.address || installation.location || '-',
         isUnderWarranty: false,
         isFreeOfCharge: false,
-        requestType: 'Installation',
-        status: 'Finance Rejected',
+        requestType: REQUEST_TYPES.INSTALLATION,
+        status: WORKFLOW_STATUS.FINANCE_REJECTED,
         note: 'Finance Rejected - Available for Re-submission',
         materials: installation.materials || [],
         financeNotes: installation.financeNotes || '',
-        location: installation.location || '-'
+        location: installation.location || '-',
+        siteDetails: installation.siteDetails || {},
+      };
+    });
+
+    // Transform new installations
+    const newInstallationsData = newInstallations.map((installation) => {
+      const customerId = toCustomerId(installation.customerId);
+      const populatedCustomer = installation.customerId && typeof installation.customerId === 'object' ? installation.customerId : null;
+      const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+      const siteDetailsSummary = formatInstallationSiteDetails(installation);
+
+      return {
+        ticketId: installation._id,
+        productType: installation.productType || 'N/A',
+        serviceDescription: siteDetailsSummary,
+        customerName: customer?.name || 'Unknown Customer',
+        customerEmail: customer?.email || '-',
+        customerContactNo: customer?.contactNo || '-',
+        customerAddress: customer?.address || installation.location || '-',
+        isUnderWarranty: false,
+        isFreeOfCharge: false,
+        requestType: REQUEST_TYPES.INSTALLATION,
+        status: WORKFLOW_STATUS.NEW,
+        note: 'New installation - ready for material submission',
+        materials: installation.materials || [],
+        financeNotes: installation.financeNotes || '',
+        location: installation.location || '-',
+        siteDetails: installation.siteDetails || {},
       };
     });
 
     // Combine all available tickets
-    const data = [...newRequestsData, ...rejectedServiceRequestsData, ...rejectedInstallationsData];
+    const data = [...newRequestsData, ...newInstallationsData, ...rejectedServiceRequestsData, ...rejectedInstallationsData];
 
     res.json({ success: true, data });
   } catch (err) {
@@ -196,7 +260,7 @@ exports.submitMaterialRequest = async (req, res) => {
       isResubmission = true;
     }
 
-    if (isResubmission && existingServiceRequest?.status === 'Finance Rejected') {
+    if (isResubmission && existingServiceRequest?.status === WORKFLOW_STATUS.FINANCE_REJECTED) {
       // RESUBMISSION: Update existing ServiceRequest with new materials
       // Reset status to 'Pending' for new Finance review
       
@@ -207,7 +271,7 @@ exports.submitMaterialRequest = async (req, res) => {
           financeNotes,
           isUnderWarranty,
           isFreeOfCharge,
-          status: 'Pending'
+          status: WORKFLOW_STATUS.PENDING
         },
         { new: true }
       );
@@ -220,32 +284,37 @@ exports.submitMaterialRequest = async (req, res) => {
           warrantyStatus: isUnderWarranty ? 'Under Warranty' : 'Out of Warranty',
           freeOfCharge: isFreeOfCharge,
           resubmission: true,
-          status: 'Pending'
+          status: WORKFLOW_STATUS.PENDING
         }
       });
     }
 
-    if (isResubmission && existingInstallation?.status === 'Finance Rejected') {
-      // RESUBMISSION: Update existing Installation with new materials
-      // Reset status to 'Pending' for new Finance review
+    if (
+      existingInstallation &&
+      [WORKFLOW_STATUS.FINANCE_REJECTED, WORKFLOW_STATUS.NEW].includes(existingInstallation.status)
+    ) {
+      // INSTALLATION FLOW: New or rejected installation moves to Pending on material submission.
       
       const updatedRequest = await Installation.findByIdAndUpdate(
         resolvedId,
         {
           materials,
           financeNotes,
-          status: 'Pending'
+          status: WORKFLOW_STATUS.PENDING
         },
         { new: true }
       );
 
       return res.json({ 
         success: true, 
-        message: "Material request resubmitted to Finance",
+        message: existingInstallation.status === WORKFLOW_STATUS.NEW
+          ? "Installation material request submitted to Finance"
+          : "Material request resubmitted to Finance",
         data: {
           serviceRequestId: resolvedId,
-          resubmission: true,
-          status: 'Pending'
+          requestType: REQUEST_TYPES.INSTALLATION,
+          resubmission: existingInstallation.status === WORKFLOW_STATUS.FINANCE_REJECTED,
+          status: WORKFLOW_STATUS.PENDING
         }
       });
     }
@@ -259,7 +328,7 @@ exports.submitMaterialRequest = async (req, res) => {
       financeNotes,
       isUnderWarranty,
       isFreeOfCharge,
-      status: 'Pending' // Initial state: awaiting finance approval
+      status: WORKFLOW_STATUS.PENDING // Initial state: awaiting finance approval
     });
     await serviceEntry.save();
 
@@ -273,7 +342,7 @@ exports.submitMaterialRequest = async (req, res) => {
         serviceRequestId: resolvedId,
         warrantyStatus: isUnderWarranty ? 'Under Warranty' : 'Out of Warranty',
         freeOfCharge: isFreeOfCharge,
-        status: 'Pending'
+        status: WORKFLOW_STATUS.PENDING
       }
     });
   } catch (err) {
@@ -296,28 +365,42 @@ exports.sendToInventoryManager = async (req, res) => {
       materials 
     } = req.body;
     
-    // Fetch the ServiceRequest to get customerId and other details
-    const serviceRequest = await ServiceRequest.findById(resolvedId).lean();
-    
-    if (!serviceRequest) {
-      return res.status(404).json({ success: false, message: 'Service request not found' });
+    // Support both ServiceRequest and Installation so both follow the same workflow behavior.
+    let sourceRecord = await ServiceRequest.findById(resolvedId).lean();
+    let requestType = REQUEST_TYPES.SERVICE;
+
+    if (!sourceRecord) {
+      sourceRecord = await Installation.findById(resolvedId).lean();
+      requestType = REQUEST_TYPES.INSTALLATION;
     }
 
-    // Update ServiceRequest status to 'Sent to IM'
-    const updatedServiceRequest = await ServiceRequest.findByIdAndUpdate(
+    if (!sourceRecord) {
+      return res.status(404).json({ success: false, message: 'Request not found' });
+    }
+
+    let updatedRecord = await ServiceRequest.findByIdAndUpdate(
       resolvedId,
-      { status: 'Sent to IM' },
+      { status: WORKFLOW_STATUS.SENT_TO_IM },
       { new: true }
     );
+
+    if (!updatedRecord) {
+      updatedRecord = await Installation.findByIdAndUpdate(
+        resolvedId,
+        { status: WORKFLOW_STATUS.SENT_TO_IM },
+        { new: true }
+      );
+    }
 
     res.json({ 
       success: true, 
       message: 'Material request sent to Inventory Manager',
       data: {
         serviceRequestId: resolvedId,
-        status: 'Sent to IM',
-        location: location || serviceRequest.location || '-',
-        materials: materials || serviceRequest.materials || [],
+        requestType,
+        status: WORKFLOW_STATUS.SENT_TO_IM,
+        location: location || sourceRecord.location || '-',
+        materials: materials || sourceRecord.materials || [],
         sentAt: new Date()
       }
     });
@@ -334,7 +417,7 @@ exports.approveFinance = async (req, res) => {
     // Try updating ServiceRequest
     let updated = await ServiceRequest.findByIdAndUpdate(
       ticketId,
-      { status: 'Finance Approved' },
+      { status: WORKFLOW_STATUS.FINANCE_APPROVED },
       { new: true }
     );
 
@@ -342,7 +425,7 @@ exports.approveFinance = async (req, res) => {
     if (!updated) {
       updated = await Installation.findByIdAndUpdate(
         ticketId,
-        { status: 'Finance Approved' },
+        { status: WORKFLOW_STATUS.FINANCE_APPROVED },
         { new: true }
       );
     }
@@ -356,7 +439,7 @@ exports.approveFinance = async (req, res) => {
       message: 'Material request approved by Finance',
       data: {
         ticketId,
-        status: 'Finance Approved',
+        status: WORKFLOW_STATUS.FINANCE_APPROVED,
         updatedAt: new Date()
       }
     });
@@ -375,7 +458,7 @@ exports.rejectFinance = async (req, res) => {
     let updated = await ServiceRequest.findByIdAndUpdate(
       ticketId,
       { 
-        status: 'Finance Rejected',
+        status: WORKFLOW_STATUS.FINANCE_REJECTED,
         financeNotes: reason || 'Rejected by Finance'
       },
       { new: true }
@@ -386,7 +469,7 @@ exports.rejectFinance = async (req, res) => {
       updated = await Installation.findByIdAndUpdate(
         ticketId,
         { 
-          status: 'Finance Rejected',
+          status: WORKFLOW_STATUS.FINANCE_REJECTED,
           financeNotes: reason || 'Rejected by Finance'
         },
         { new: true }
@@ -402,7 +485,7 @@ exports.rejectFinance = async (req, res) => {
       message: 'Material request rejected by Finance. Available for re-submission in the dropdown.',
       data: {
         ticketId,
-        status: 'Finance Rejected',
+        status: WORKFLOW_STATUS.FINANCE_REJECTED,
         reason: reason || 'Rejected by Finance',
         resubmissionAvailable: true,
         updatedAt: new Date()
@@ -423,8 +506,8 @@ exports.cancelMaterialRequest = async (req, res) => {
     let updated = await ServiceRequest.findByIdAndUpdate(
       ticketId,
       { 
-        status: 'Cancelled',
-        financeNotes: reason || 'Cancelled'
+        status: WORKFLOW_STATUS.CANCELLED,
+        financeNotes: reason || WORKFLOW_STATUS.CANCELLED
       },
       { new: true }
     );
@@ -434,8 +517,8 @@ exports.cancelMaterialRequest = async (req, res) => {
       updated = await Installation.findByIdAndUpdate(
         ticketId,
         { 
-          status: 'Cancelled',
-          financeNotes: reason || 'Cancelled'
+          status: WORKFLOW_STATUS.CANCELLED,
+          financeNotes: reason || WORKFLOW_STATUS.CANCELLED
         },
         { new: true }
       );
@@ -450,8 +533,8 @@ exports.cancelMaterialRequest = async (req, res) => {
       message: 'Material request cancelled. Associated service request/installation has been stopped.',
       data: {
         ticketId,
-        status: 'Cancelled',
-        reason: reason || 'Cancelled',
+        status: WORKFLOW_STATUS.CANCELLED,
+        reason: reason || WORKFLOW_STATUS.CANCELLED,
         workflow_stopped: true,
         updatedAt: new Date()
       }
