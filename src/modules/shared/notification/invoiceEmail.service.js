@@ -6,14 +6,14 @@ const transporter = nodemailer.createTransport({
 });
 
 const fmt = (n) => Number(n || 0).toLocaleString();
-const fmtDate = (d) => new Date(d).toLocaleDateString("en-US", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+const fmtDate = (d) => new Date(d).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
 // Send invoice with PDF to customer
 const sendInvoiceEmail = async (email, name, invoiceNum, total, acceptLink, pdfBuffer) => {
   try {
     await transporter.sendMail({
       from: `"AirLux Finance" <${process.env.EMAIL_USER}>`,
-      to:   email,
+      to: email,
       subject: `Invoice ${invoiceNum} - AirLux`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
@@ -43,7 +43,7 @@ const sendInvoiceEmail = async (email, name, invoiceNum, total, acceptLink, pdfB
       `,
       attachments: [{
         filename: `Invoice-${invoiceNum}.pdf`,
-        content:  pdfBuffer,
+        content: pdfBuffer,
         contentType: "application/pdf",
       }],
     });

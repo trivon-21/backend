@@ -28,7 +28,7 @@ const roomSchema = new mongoose.Schema({
 const inspectionReportSchema = new mongoose.Schema(
   {
     ticketId: { type: mongoose.Schema.Types.ObjectId, ref: "InspectionTicket", required: true },
-    orderId:  { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
     inspectorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
     // Section 1
@@ -55,7 +55,7 @@ const inspectionReportSchema = new mongoose.Schema(
       default: "DRAFT"
     },
     submittedAt: Date,
-    recordedAt:  Date,
+    recordedAt: Date,
   },
   { timestamps: true }
 );

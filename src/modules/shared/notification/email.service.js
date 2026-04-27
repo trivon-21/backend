@@ -18,7 +18,7 @@ const sendRejectionEmail = async (email, orderId, reason, reuploadLink) => {
   try {
     await transporter.sendMail({
       from: `"AirLux Finance Team" <${process.env.EMAIL_USER}>`,
-      to:   email,
+      to: email,
       subject: `Payment Rejected - Order ${orderId}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
@@ -48,7 +48,7 @@ const sendApprovalEmail = async (email, orderId, customerName, schedulingLink) =
   try {
     await transporter.sendMail({
       from: `"AirLux Finance Team" <${process.env.EMAIL_USER}>`,
-      to:   email,
+      to: email,
       subject: `Inspection Payment Verified - Order ${orderId}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
@@ -76,7 +76,7 @@ const sendSchedulingEmail = async (email, customerName, orderId, scheduledDate, 
   try {
     await transporter.sendMail({
       from: `"AirLux Team" <${process.env.EMAIL_USER}>`,
-      to:   email,
+      to: email,
       subject: `Inspection Scheduled - Order ${orderId}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
@@ -111,7 +111,7 @@ const sendReminderEmail = async (email, customerName, orderId, scheduledDate) =>
   try {
     await transporter.sendMail({
       from: `"AirLux Team" <${process.env.EMAIL_USER}>`,
-      to:   email,
+      to: email,
       subject: `Reminder: Inspection Tomorrow - Order ${orderId}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
@@ -172,67 +172,67 @@ const sendReportToTechnician = async (techEmail, report, orderId, ticketId) => {
     const roomsHtml = (report.rooms || []).map((room, i) => `
       <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:12px 0;">
         <h4 style="color:#1e3a2a;margin:0 0 12px;font-size:15px;border-bottom:1px solid #e5e7eb;padding-bottom:8px;">
-          Room ${i+1}: ${room.name || 'Unnamed'}
+          Room ${i + 1}: ${room.name || 'Unnamed'}
         </h4>
 
         <h5 style="color:#374151;margin:10px 0 6px;font-size:13px;">Room / Area Details</h5>
         <table style="width:100%;font-size:12px;border-collapse:collapse;">
           <tr><td style="padding:3px 8px;color:#6b7280;width:45%;">Dimensions (L×W×H)</td>
-              <td style="padding:3px 8px;">${room.length||'-'}m × ${room.width||'-'}m × ${room.height||'-'}m</td></tr>
+              <td style="padding:3px 8px;">${room.length || '-'}m × ${room.width || '-'}m × ${room.height || '-'}m</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Area</td>
-              <td style="padding:3px 8px;">${room.area||'-'} sq m</td></tr>
+              <td style="padding:3px 8px;">${room.area || '-'} sq m</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Sun Exposure</td>
-              <td style="padding:3px 8px;">${room.sunExposure||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.sunExposure || '-'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Ventilation</td>
-              <td style="padding:3px 8px;">${room.ventilation||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.ventilation || '-'}</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">No. of Windows</td>
-              <td style="padding:3px 8px;">${room.windows||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.windows || '-'}</td></tr>
         </table>
 
         <h5 style="color:#374151;margin:10px 0 6px;font-size:13px;">Installation Locations</h5>
         <table style="width:100%;font-size:12px;border-collapse:collapse;">
           <tr><td style="padding:3px 8px;color:#6b7280;width:45%;">Possible Wall Locations</td>
-              <td style="padding:3px 8px;">${room.possibleWallLocations||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.possibleWallLocations || '-'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Wall Condition</td>
-              <td style="padding:3px 8px;">${room.wallCondition||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.wallCondition || '-'}</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Space Availability</td>
-              <td style="padding:3px 8px;">${room.spaceAvailability||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.spaceAvailability || '-'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Outdoor Locations</td>
-              <td style="padding:3px 8px;">${room.outdoorAvailableLocations||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.outdoorAvailableLocations || '-'}</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Surface Condition</td>
-              <td style="padding:3px 8px;">${room.surfaceCondition||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.surfaceCondition || '-'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Ventilation Condition</td>
-              <td style="padding:3px 8px;">${room.ventilationCondition||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.ventilationCondition || '-'}</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Exposure to Weather</td>
-              <td style="padding:3px 8px;">${room.exposureToWeather||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.exposureToWeather || '-'}</td></tr>
         </table>
 
         <h5 style="color:#374151;margin:10px 0 6px;font-size:13px;">Distance & Routing</h5>
         <table style="width:100%;font-size:12px;border-collapse:collapse;">
           <tr><td style="padding:3px 8px;color:#6b7280;width:45%;">Indoor-Outdoor Distance</td>
-              <td style="padding:3px 8px;">${room.indoorOutdoorDistance||'-'}m (${room.distanceMeasured||''})</td></tr>
+              <td style="padding:3px 8px;">${room.indoorOutdoorDistance || '-'}m (${room.distanceMeasured || ''})</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Routing Path</td>
-              <td style="padding:3px 8px;">${room.possibleRoutingPath||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.possibleRoutingPath || '-'}</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Routing Description</td>
-              <td style="padding:3px 8px;">${room.routingPathDescription||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.routingPathDescription || '-'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Estimated Bends</td>
-              <td style="padding:3px 8px;">${room.estimatedBends||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.estimatedBends || '-'}</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Drain Outlet Available</td>
               <td style="padding:3px 8px;">${room.drainOutletAvailable ? 'Yes' : 'No'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Drain Type</td>
-              <td style="padding:3px 8px;">${room.drainType||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.drainType || '-'}</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Drain Path Description</td>
-              <td style="padding:3px 8px;">${room.drainPathDescription||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.drainPathDescription || '-'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Obstacles</td>
-              <td style="padding:3px 8px;">${(room.obstacles||[]).join(', ')||'-'}</td></tr>
+              <td style="padding:3px 8px;">${(room.obstacles || []).join(', ') || '-'}</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Obstacle Details</td>
-              <td style="padding:3px 8px;">${room.obstacleDetails||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.obstacleDetails || '-'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Wall Drilling Required</td>
               <td style="padding:3px 8px;">${room.wallDrillingRequired ? 'Yes' : 'No'}</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Drill Points (Approx.)</td>
-              <td style="padding:3px 8px;">${room.drillPoints||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.drillPoints || '-'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Vertical Height Diff</td>
-              <td style="padding:3px 8px;">${room.verticalHeightDiff||'-'}m</td></tr>
+              <td style="padding:3px 8px;">${room.verticalHeightDiff || '-'}m</td></tr>
         </table>
 
         <h5 style="color:#374151;margin:10px 0 6px;font-size:13px;">Electrical Condition</h5>
@@ -244,24 +244,24 @@ const sendReportToTechnician = async (techEmail, report, orderId, ticketId) => {
           <tr><td style="padding:3px 8px;color:#6b7280;">Earthing Availability</td>
               <td style="padding:3px 8px;">${room.earthingAvailability ? 'Yes' : 'No'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Distance to Board</td>
-              <td style="padding:3px 8px;">${room.distanceToBoard||'-'}m</td></tr>
+              <td style="padding:3px 8px;">${room.distanceToBoard || '-'}m</td></tr>
           <tr><td style="padding:3px 8px;color:#6b7280;">Electrical Limitations</td>
-              <td style="padding:3px 8px;">${room.electricalLimitations||'-'}</td></tr>
+              <td style="padding:3px 8px;">${room.electricalLimitations || '-'}</td></tr>
         </table>
 
         <h5 style="color:#374151;margin:10px 0 6px;font-size:13px;">Constraints & Notes</h5>
         <table style="width:100%;font-size:12px;border-collapse:collapse;">
           <tr><td style="padding:3px 8px;color:#6b7280;width:45%;">Constraints & Risks</td>
-              <td style="padding:3px 8px;">${room.constraintsRisks||'None'}</td></tr>
+              <td style="padding:3px 8px;">${room.constraintsRisks || 'None'}</td></tr>
           <tr style="background:#f9fafb;"><td style="padding:3px 8px;color:#6b7280;">Inspector Notes</td>
-              <td style="padding:3px 8px;">${room.inspectorNotes||'None'}</td></tr>
+              <td style="padding:3px 8px;">${room.inspectorNotes || 'None'}</td></tr>
         </table>
       </div>
     `).join('');
 
     await transporter.sendMail({
       from: `"AirLux Inspection Team" <${process.env.EMAIL_USER}>`,
-      to:   techEmail,
+      to: techEmail,
       subject: `Inspection Report - Order ${orderId} | Ticket ${ticketId}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:750px;margin:0 auto;padding:20px;">
@@ -279,42 +279,42 @@ const sendReportToTechnician = async (techEmail, report, orderId, ticketId) => {
             <h3 style="color:#1e3a2a;font-size:15px;margin:0 0 12px;">1. Customer & Site Details</h3>
             <table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:20px;">
               <tr><td style="padding:5px 8px;color:#6b7280;width:35%;">Customer Name</td>
-                  <td style="padding:5px 8px;">${report.customerName||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.customerName || '-'}</td></tr>
               <tr style="background:#f9fafb;"><td style="padding:5px 8px;color:#6b7280;">Contact Number</td>
-                  <td style="padding:5px 8px;">${report.contactNumber||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.contactNumber || '-'}</td></tr>
               <tr><td style="padding:5px 8px;color:#6b7280;">Site Address</td>
-                  <td style="padding:5px 8px;">${report.siteAddress||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.siteAddress || '-'}</td></tr>
               <tr style="background:#f9fafb;"><td style="padding:5px 8px;color:#6b7280;">Site Type</td>
-                  <td style="padding:5px 8px;">${report.siteType||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.siteType || '-'}</td></tr>
               <tr><td style="padding:5px 8px;color:#6b7280;">Inspection Date</td>
-                  <td style="padding:5px 8px;">${report.inspectionDate||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.inspectionDate || '-'}</td></tr>
             </table>
 
             <h3 style="color:#1e3a2a;font-size:15px;margin:0 0 12px;">2. General Site Information</h3>
             <table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:20px;">
               <tr><td style="padding:5px 8px;color:#6b7280;width:35%;">Site Status</td>
-                  <td style="padding:5px 8px;">${report.siteStatus||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.siteStatus || '-'}</td></tr>
               <tr style="background:#f9fafb;"><td style="padding:5px 8px;color:#6b7280;">Floor Level</td>
-                  <td style="padding:5px 8px;">${report.floorLevel||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.floorLevel || '-'}</td></tr>
               <tr><td style="padding:5px 8px;color:#6b7280;">Elevator Availability</td>
                   <td style="padding:5px 8px;">${report.elevatorAvailability ? 'Available' : 'Not Available'}</td></tr>
               <tr style="background:#f9fafb;"><td style="padding:5px 8px;color:#6b7280;">Parking Availability</td>
-                  <td style="padding:5px 8px;">${report.parkingAvailability||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.parkingAvailability || '-'}</td></tr>
             </table>
 
             <h3 style="color:#1e3a2a;font-size:15px;margin:0 0 4px;">
-              3-8. Room Details (${(report.rooms||[]).length} room(s))
+              3-8. Room Details (${(report.rooms || []).length} room(s))
             </h3>
             ${roomsHtml || '<p style="color:#9ca3af;font-size:13px;">No rooms recorded</p>'}
 
             <h3 style="color:#1e3a2a;font-size:15px;margin:20px 0 12px;">10. Acknowledgement</h3>
             <table style="width:100%;font-size:13px;border-collapse:collapse;">
               <tr><td style="padding:5px 8px;color:#6b7280;width:35%;">Inspector Name</td>
-                  <td style="padding:5px 8px;">${report.inspectorName||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.inspectorName || '-'}</td></tr>
               <tr style="background:#f9fafb;"><td style="padding:5px 8px;color:#6b7280;">Date</td>
-                  <td style="padding:5px 8px;">${report.acknowledgeDate||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.acknowledgeDate || '-'}</td></tr>
               <tr><td style="padding:5px 8px;color:#6b7280;">Time</td>
-                  <td style="padding:5px 8px;">${report.acknowledgeTime||'-'}</td></tr>
+                  <td style="padding:5px 8px;">${report.acknowledgeTime || '-'}</td></tr>
             </table>
 
             <p style="margin-top:24px;font-size:11px;color:#9ca3af;border-top:1px solid #f3f4f6;padding-top:12px;">
@@ -463,7 +463,7 @@ const sendServiceRejectionEmail = async (email, customerName, orderId, serviceTy
   }
 };
 
-module.exports = { 
+module.exports = {
   sendRejectionEmail,
   sendApprovalEmail,
   sendSchedulingEmail,

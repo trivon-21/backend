@@ -1,12 +1,18 @@
 const mongoose = require("mongoose");
-const Invoice  = require("./Invoice.model");
-const cron     = require("node-cron");
+const Invoice = require("./Invoice.model");
+const cron = require("node-cron");
 const PDFDocument = require("pdfkit");
+const { createLog } = require("./auditLog.controller");
 
+// ── Lazy model loaders ────────────────────────────────────────────────────────
 const getOrderModel = () => {
   try { return mongoose.model("Order"); }
   catch {
-    const s = new mongoose.Schema({ orderRef: String, customer: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, itemName: String, quantity: Number, amount: Number, orderType: String }, { strict: false, timestamps: true });
+    const s = new mongoose.Schema({
+      orderRef: String,
+      customer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      itemName: String, quantity: Number, amount: Number, orderType: String,
+    }, { strict: false, timestamps: true });
     return mongoose.model("Order", s);
   }
 };
@@ -14,7 +20,10 @@ const getOrderModel = () => {
 const getUserModel = () => {
   try { return mongoose.model("User"); }
   catch {
-    const s = new mongoose.Schema({ fullName: String, lastName: String, email: String, phoneNumber: String, role: String, address: String }, { strict: false, timestamps: true });
+    const s = new mongoose.Schema({
+      fullName: String, lastName: String, email: String,
+      phoneNumber: String, role: String, address: String,
+    }, { strict: false, timestamps: true });
     return mongoose.model("User", s);
   }
 };
@@ -24,71 +33,160 @@ const getReportModel = () => {
   catch { return null; }
 };
 
-const getInstallationModel = () => {
-  try { return mongoose.model("Installation"); }
+const getTicketModel = () => {
+  try { return mongoose.model("InspectionTicket"); }
   catch {
-    const s = new mongoose.Schema({ orderId: mongoose.Schema.Types.ObjectId, materials: [{ type: mongoose.Schema.Types.Mixed }] }, { strict: false, timestamps: true });
-    return mongoose.model("Installation", s);
+    const s = new mongoose.Schema({
+      customerId: mongoose.Schema.Types.ObjectId,
+      orderId: mongoose.Schema.Types.ObjectId,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("InspectionTicket", s);
+  }
+};
+
+const getLInstallationModel = () => {
+  try { return mongoose.model("L_Installation"); }
+  catch {
+    const s = new mongoose.Schema({
+      orderId: mongoose.Schema.Types.ObjectId,
+      inspectionTicketId: mongoose.Schema.Types.ObjectId,
+      customerId: mongoose.Schema.Types.ObjectId,
+      materials: [{ item: String, quantity: mongoose.Schema.Types.Mixed }],
+      status: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("L_Installation", s);
+  }
+};
+
+const getLInventoryModel = () => {
+  try { return mongoose.model("L_Inventory"); }
+  catch {
+    const s = new mongoose.Schema({
+      name: String, costPerUnit: Number, unit: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("L_Inventory", s);
+  }
+};
+
+const getLSellingPriceModel = () => {
+  try { return mongoose.model("L_SellingPrice"); }
+  catch {
+    const s = new mongoose.Schema({
+      inventoryId: mongoose.Schema.Types.ObjectId,
+      inventoryName: String,
+      costPerUnit: Number,
+      sellingPricePerUnit: Number,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("L_SellingPrice", s);
+  }
+};
+
+const getLChargeModel = () => {
+  try { return mongoose.model("L_Charge"); }
+  catch {
+    const s = new mongoose.Schema({
+      name: String, amount: Number, type: String, description: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("L_Charge", s);
   }
 };
 
 const { sendInvoiceEmail, sendInvoiceAcceptedEmail, sendInvoiceRejectedEmail,
-        sendPaymentReminderEmail, sendAutoCancelledEmail,
-        sendRejectionWarningEmail, sendRejectionExpiredEmail } = require("../shared/notification/invoiceEmail.service");
+  sendPaymentReminderEmail, sendAutoCancelledEmail,
+  sendRejectionWarningEmail, sendRejectionExpiredEmail
+} = require("../shared/notification/invoiceEmail.service");
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
-// ── GET orders ready for invoice generation ───────────────────────────────────
-// These are orders where inspection report has been submitted to main technician
-// AND materials have been added to the Installation collection
+// ── Helper: find selling price for a material name ────────────────────────────
+async function getSellingPrice(materialName) {
+  const LInventory = getLInventoryModel();
+  const LSellingPrice = getLSellingPriceModel();
+
+  // Try exact match first, then partial
+  let inventory = await LInventory.findOne({ name: materialName });
+  if (!inventory) {
+    inventory = await LInventory.findOne({ name: { $regex: materialName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: "i" } });
+  }
+  if (!inventory) return null;
+
+  const sp = await LSellingPrice.findOne({ inventoryId: inventory._id });
+  return sp ? sp.sellingPricePerUnit : inventory.costPerUnit;
+}
+
+// ── Helper: get fixed charge by name ─────────────────────────────────────────
+async function getCharge(chargeName) {
+  const LCharge = getLChargeModel();
+  const charge = await LCharge.findOne({ name: chargeName });
+  return charge ? charge.amount : 0;
+}
+
+// ── GET invoice queue ─────────────────────────────────────────────────────────
+// Shows orders where L_Installation has materials added by main technician
 exports.getInvoiceQueue = async (req, res) => {
   try {
     const InspectionReport = getReportModel();
     if (!InspectionReport) return res.json([]);
 
-    // Get reports that are SUBMITTED and don't have an invoice yet
-    const reports = await InspectionReport.find({ status: "SUBMITTED" });
-    const Order   = getOrderModel();
-    const User    = getUserModel();
-    const Installation = getInstallationModel();
+    const Order = getOrderModel();
+    const User = getUserModel();
+    const LInstallation = getLInstallationModel();
+    const Ticket = getTicketModel();
+
+    // Get ALL L_Installations that have materials (main tech has done their job)
+    const installations = await LInstallation.find({
+      "materials.0": { $exists: true }, // at least 1 material
+    });
 
     const result = [];
-    for (const report of reports) {
-      // Check if invoice already exists for this report
-      const existing = await Invoice.findOne({ reportId: report._id });
-      if (existing) continue; // already has invoice
 
-      // Check if Installation with materials exists for this order
-      const installation = await Installation.findOne({ orderId: report.orderId });
-      if (!installation || !installation.materials || installation.materials.length === 0) {
-        continue; // Skip if no materials added yet
+    for (const installation of installations) {
+      // Check if invoice already exists for this installation's order
+      const existingInvoice = await Invoice.findOne({ orderId: installation.orderId });
+      if (existingInvoice) continue;
+
+      // Find the submitted inspection report for this order
+      const report = await InspectionReport.findOne({
+        $or: [
+          { orderId: installation.orderId },
+          { ticketId: installation.inspectionTicketId },
+        ],
+        status: "SUBMITTED",
+      });
+      if (!report) continue; // Report not submitted yet
+
+      // Get order details
+      const order = await Order.findById(installation.orderId);
+
+      // Get customer — try from installation.customerId first, then ticket
+      let user = await User.findById(installation.customerId);
+      if (!user && installation.inspectionTicketId) {
+        const ticket = await Ticket.findById(installation.inspectionTicketId);
+        if (ticket?.customerId) user = await User.findById(ticket.customerId);
       }
 
-      const order  = await Order.findById(report.orderId);
-      const InspectionTicket = require("../models/InspectionTicket.model");
-      const ticket = await InspectionTicket.findById(report.ticketId);
-      const user   = await User.findById(ticket?.customerId);
-
       result.push({
-        reportId:      report._id,
-        ticketId:      report.ticketId,
-        orderId:       order?._id,
-        orderRef:      order?.orderRef || report.orderId,
-        invoiceId:     `IN-${report._id.toString().slice(-5).toUpperCase()}`,
-        customerName:  user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
+        reportId: report._id,
+        installationId: installation._id,
+        ticketId: installation.inspectionTicketId,
+        orderId: order?._id || installation.orderId,
+        orderRef: order?.orderRef || installation.orderId?.toString().slice(-6).toUpperCase(),
+        invoiceId: `IN-${installation._id.toString().slice(-5).toUpperCase()}`,
+        customerName: user
+          ? `${user.fullName || ""} ${user.lastName || ""}`.trim() || user.name || "Unknown"
+          : "Unknown",
         customerEmail: user?.email || "",
-        customerAddress: user?.address || "",
-        date:          report.createdAt,
-        itemName:      order?.itemName || "",
-        // Materials from Installation collection
-        materials:     installation.materials || [],
-        inspectorName: report.inspectorName,
+        customerAddress: user?.address || installation.location || "",
+        date: report.submittedAt || report.updatedAt,
+        itemName: order?.itemName || installation.productType || "",
+        materialsCount: installation.materials.length,
+        location: installation.location || "",
       });
     }
 
     res.json(result);
   } catch (error) {
-    console.error("Queue error:", error);
+    console.error("getInvoiceQueue error:", error);
     res.status(500).json({ message: "Failed to fetch queue", error: error.message });
   }
 };
@@ -101,26 +199,32 @@ exports.getInvoiceQueueDetails = async (req, res) => {
     const report = await InspectionReport.findById(reportId);
     if (!report) return res.status(404).json({ message: "Report not found" });
 
-    const Order  = getOrderModel();
-    const User   = getUserModel();
-    const InspectionTicket = require("../models/InspectionTicket.model");
-    const ticket = await InspectionTicket.findById(report.ticketId);
-    const order  = await Order.findById(report.orderId);
-    const user   = await User.findById(ticket?.customerId);
+    const Order = getOrderModel();
+    const User = getUserModel();
+    const LInstallation = getLInstallationModel();
+    const Ticket = getTicketModel();
+
+    const ticket = await Ticket.findById(report.ticketId);
+    const order = await Order.findById(report.orderId);
+    const user = await User.findById(ticket?.customerId || report.customerId);
+    const installation = await LInstallation.findOne({
+      $or: [
+        { orderId: report.orderId },
+        { inspectionTicketId: report.ticketId },
+      ]
+    });
 
     res.json({
       report,
-      order: {
-        orderRef: order?.orderRef,
-        itemName: order?.itemName,
-        amount:   order?.amount,
-      },
+      order: { orderRef: order?.orderRef, itemName: order?.itemName, amount: order?.amount },
       customer: {
-        name:    user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
-        email:   user?.email || "",
+        name: user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() : "Unknown",
+        email: user?.email || "",
         address: user?.address || "",
-        phone:   user?.phoneNumber || "",
+        phone: user?.phoneNumber || "",
       },
+      materials: installation?.materials || [],
+      materialsCount: installation?.materials?.length || 0,
     });
   } catch (error) {
     console.error("getInvoiceQueueDetails error:", error);
@@ -128,68 +232,138 @@ exports.getInvoiceQueueDetails = async (req, res) => {
   }
 };
 
-// ── GENERATE invoice from report ──────────────────────────────────────────────
+// ── GENERATE invoice ──────────────────────────────────────────────────────────
 exports.generateInvoice = async (req, res) => {
   try {
     const { reportId } = req.params;
+
     const InspectionReport = getReportModel();
+    const Order = getOrderModel();
+    const User = getUserModel();
+    const LInstallation = getLInstallationModel();
+    const Ticket = getTicketModel();
+
     const report = await InspectionReport.findById(reportId);
     if (!report) return res.status(404).json({ message: "Report not found" });
 
-    // Check if invoice already exists
-    const existing = await Invoice.findOne({ reportId: report._id });
-    if (existing) return res.json({ message: "Invoice already exists", invoice: existing });
+    // Check if invoice already exists for this order
+    const existing = await Invoice.findOne({ orderId: report.orderId });
+    if (existing) {
+      return res.json({ message: "Invoice already exists", invoice: existing });
+    }
 
-    const Order  = getOrderModel();
-    const User   = getUserModel();
-    const InspectionTicket = require("../models/InspectionTicket.model");
-    const ticket = await InspectionTicket.findById(report.ticketId);
-    const order  = await Order.findById(report.orderId);
-    const user   = await User.findById(ticket?.customerId);
+    // Get installation — search by orderId OR ticketId
+    const installation = await LInstallation.findOne({
+      $or: [
+        { orderId: report.orderId },
+        { inspectionTicketId: report.ticketId },
+      ]
+    });
+    if (!installation || !installation.materials || installation.materials.length === 0) {
+      return res.status(400).json({ message: "No materials found in installation record. Main technician must add materials first." });
+    }
 
-    // Build items from report rooms (materials)
-    // Main tech is expected to add materials to report rooms
-    // For now we generate from order + inspection fee as base
+    const ticket = await Ticket.findById(report.ticketId);
+    const order = await Order.findById(report.orderId);
+
+    // Customer: try multiple sources
+    let user = null;
+    if (installation.customerId) user = await User.findById(installation.customerId);
+    if (!user && ticket?.customerId) user = await User.findById(ticket.customerId);
+
+    const customerName = user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown" : "Unknown";
+    const customerEmail = user?.email || "";
+    const customerAddress = user?.address || installation.location || "";
+
+    // ── Build invoice items ───────────────────────────────────────────────────
+    // ── Build invoice items ───────────────────────────────────────────────────
     const items = [];
-    let itemNo  = 1;
+    let itemNo = 1;
 
-    // Add main AC unit from order
-    if (order?.itemName) {
+    // 1. AC Unit from order — use order.amount DIRECTLY (already includes profit)
+    if (order?.itemName && order?.amount) {
+      const acQty = order.quantity || 1;
+      const acPrice = order.amount || 0;   // ← no profit margin added
+
       items.push({
-        no: itemNo++, itemName: order.itemName,
-        description: "AC Unit Supply", qty: order?.quantity || 1,
-        rate: order?.amount || 0, amount: (order?.quantity || 1) * (order?.amount || 0)
+        no: itemNo++,
+        itemName: order.itemName,
+        description: "AC Unit Supply",
+        qty: acQty,
+        rate: acPrice,
+        amount: acQty * acPrice,
       });
     }
 
-    // Add rooms as installation items
-    if (report.rooms && report.rooms.length > 0) {
-      report.rooms.forEach((room, i) => {
-        items.push({
-          no: itemNo++, itemName: `Room ${i+1} Installation`,
-          description: room.name || `Room ${i+1}`,
-          qty: 1, rate: 5000, amount: 5000
-        });
+    // 2. Materials from L_Installation (with 25% profit margin from L_Charges)
+    for (const material of installation.materials) {
+      const qty = Number(material.quantity) || 1;
+      const unitPrice = await getSellingPrice(material.item) || 0;
+
+      items.push({
+        no: itemNo++,
+        itemName: material.item,
+        description: `Installation material`,
+        qty: qty,
+        rate: unitPrice,
+        amount: qty * unitPrice,
       });
     }
 
-    const serviceCharge = 2000;
-    const subTotal      = items.reduce((s, i) => s + i.amount, 0);
-    const grandTotal    = subTotal + serviceCharge;
+    // 3. Installation fixed charge only (NO inspection fee — already paid)
+    const installationCharge = await getCharge("installation") || 10000;
+    items.push({
+      no: itemNo++,
+      itemName: "Installation Charge",
+      description: "Fixed installation service charge",
+      qty: 1,
+      rate: installationCharge,
+      amount: installationCharge,
+    });
+    // 4. Inspection fee from L_Charges
+    /* const inspectionCharge = await getCharge("inspection") || 2500;
+     items.push({
+       no:          itemNo++,
+       itemName:    "Inspection Fee",
+       description: "Site inspection fee",
+       qty:         1,
+       rate:        inspectionCharge,
+       amount:      inspectionCharge,
+     });*/
 
-    const invoice = await Invoice.create({
-      orderId:         report.orderId,
-      customerId:      ticket?.customerId,
-      ticketId:        report.ticketId,
-      reportId:        report._id,
-      customerName:    user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
-      customerEmail:   user?.email || "",
-      customerAddress: user?.address || "",
+    // ── Totals ────────────────────────────────────────────────────────────────
+    const subTotal = items.reduce((s, i) => s + (i.amount || 0), 0);
+    const serviceCharge = 0; // already included in items above
+    const grandTotal = subTotal + serviceCharge;
+
+    // ── Create invoice ────────────────────────────────────────────────────────
+    const invoice = new Invoice({
+      orderId: installation.orderId || report.orderId,
+      customerId: installation.customerId || ticket?.customerId,
+      ticketId: installation.inspectionTicketId || report.ticketId,
+      reportId: report._id,
+      customerName,
+      customerEmail,
+      customerAddress,
       items,
       serviceCharge,
       subTotal,
       grandTotal,
       status: "DRAFT",
+    });
+    await invoice.save();
+
+    // ── Audit log ─────────────────────────────────────────────────────────────
+    await createLog({
+      eventType: "INVOICE_GENERATED",
+      paymentType: "INVOICE",
+      orderId: (installation.orderId || report.orderId)?.toString() || "",
+      invoiceId: invoice.invoiceNumber || invoice._id.toString(),
+      customerId: installation.customerId || ticket?.customerId,
+      customerName,
+      customerEmail,
+      amount: grandTotal,
+      performedBy: "Finance Officer",
     });
 
     res.json({ message: "Invoice generated successfully", invoice });
@@ -210,12 +384,12 @@ exports.getInvoice = async (req, res) => {
   }
 };
 
-// ── CONFIRM invoice (Finance Officer confirms and moves to PENDING) ────────────
+// ── CONFIRM invoice ───────────────────────────────────────────────────────────
 exports.confirmInvoice = async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.id);
     if (!invoice) return res.status(404).json({ message: "Invoice not found" });
-    invoice.status = "DRAFT"; // stays draft until sent
+    invoice.status = "DRAFT";
     await invoice.save();
     res.json({ message: "Invoice confirmed", invoice });
   } catch (error) {
@@ -233,20 +407,18 @@ exports.getPendingInvoices = async (req, res) => {
   }
 };
 
-// ── SEND invoice to customer (generates PDF + sends email) ────────────────────
+// ── SEND invoice to customer ──────────────────────────────────────────────────
 exports.sendInvoiceToCustomer = async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.id);
     if (!invoice) return res.status(404).json({ message: "Invoice not found" });
 
-    const acceptLink  = `${FRONTEND_URL}/customer/invoice?invoiceId=${invoice._id}`;
+    const acceptLink = `${FRONTEND_URL}/customer/invoice?invoiceId=${invoice._id}`;
     const rejectionDeadline = new Date();
     rejectionDeadline.setDate(rejectionDeadline.getDate() + 30);
 
-    // Generate PDF
     const pdfBuffer = await generateInvoicePDF(invoice);
 
-    // Send email with PDF attachment
     await sendInvoiceEmail(
       invoice.customerEmail,
       invoice.customerName,
@@ -256,10 +428,22 @@ exports.sendInvoiceToCustomer = async (req, res) => {
       pdfBuffer
     );
 
-    invoice.status            = "SENT";
-    invoice.sentAt            = new Date();
+    invoice.status = "SENT";
+    invoice.sentAt = new Date();
     invoice.rejectionDeadline = rejectionDeadline;
     await invoice.save();
+
+    await createLog({
+      eventType: "INVOICE_SENT",
+      paymentType: "INVOICE",
+      orderId: invoice.orderId?.toString() || "",
+      invoiceId: invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      performedBy: "Finance Officer",
+    });
 
     res.json({ message: "Invoice sent to customer", invoice });
   } catch (error) {
@@ -268,14 +452,14 @@ exports.sendInvoiceToCustomer = async (req, res) => {
   }
 };
 
-// ── GET invoice for customer (by invoice ID) ──────────────────────────────────
+// ── GET invoice for customer ──────────────────────────────────────────────────
 exports.getInvoiceForCustomer = async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.invoiceId);
     if (!invoice) return res.status(404).json({ message: "Invoice not found" });
 
     const daysLeft = invoice.rejectionDeadline
-      ? Math.max(0, Math.ceil((new Date(invoice.rejectionDeadline) - new Date()) / (1000*60*60*24)))
+      ? Math.max(0, Math.ceil((new Date(invoice.rejectionDeadline) - new Date()) / (1000 * 60 * 60 * 24)))
       : null;
 
     res.json({ invoice, daysLeft });
@@ -284,7 +468,7 @@ exports.getInvoiceForCustomer = async (req, res) => {
   }
 };
 
-// ── ACCEPT invoice (Customer) ─────────────────────────────────────────────────
+// ── ACCEPT invoice ────────────────────────────────────────────────────────────
 exports.acceptInvoice = async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.invoiceId);
@@ -296,10 +480,22 @@ exports.acceptInvoice = async (req, res) => {
     const paymentDeadline = new Date();
     paymentDeadline.setDate(paymentDeadline.getDate() + 14);
 
-    invoice.status          = "ACCEPTED";
-    invoice.acceptedAt      = new Date();
+    invoice.status = "ACCEPTED";
+    invoice.acceptedAt = new Date();
     invoice.paymentDeadline = paymentDeadline;
     await invoice.save();
+
+    await createLog({
+      eventType: "INVOICE_ACCEPTED",
+      paymentType: "INVOICE",
+      orderId: invoice.orderId?.toString() || "",
+      invoiceId: invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      performedBy: "Customer",
+    });
 
     const slipUploadLink = `${FRONTEND_URL}/invoice/upload-payment?invoiceId=${invoice._id}`;
     await sendInvoiceAcceptedEmail(
@@ -317,7 +513,7 @@ exports.acceptInvoice = async (req, res) => {
   }
 };
 
-// ── REJECT invoice (Customer) ─────────────────────────────────────────────────
+// ── REJECT invoice ────────────────────────────────────────────────────────────
 exports.rejectInvoice = async (req, res) => {
   try {
     const { reason } = req.body;
@@ -329,10 +525,23 @@ exports.rejectInvoice = async (req, res) => {
     if (invoice.status !== "SENT")
       return res.status(400).json({ message: "Invoice cannot be rejected at this stage" });
 
-    invoice.status          = "REJECTED";
-    invoice.rejectedAt      = new Date();
+    invoice.status = "REJECTED";
+    invoice.rejectedAt = new Date();
     invoice.rejectionReason = reason;
     await invoice.save();
+
+    await createLog({
+      eventType: "INVOICE_REJECTED",
+      paymentType: "INVOICE",
+      orderId: invoice.orderId?.toString() || "",
+      invoiceId: invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      rejectionReason: reason,
+      performedBy: "Customer",
+    });
 
     const cancelLink = `${FRONTEND_URL}/customer/invoice?invoiceId=${invoice._id}`;
     await sendInvoiceRejectedEmail(
@@ -350,7 +559,7 @@ exports.rejectInvoice = async (req, res) => {
   }
 };
 
-// ── CANCEL REJECTION (Customer — within 30 days) ──────────────────────────────
+// ── CANCEL REJECTION ──────────────────────────────────────────────────────────
 exports.cancelRejection = async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.invoiceId);
@@ -359,19 +568,29 @@ exports.cancelRejection = async (req, res) => {
     if (invoice.status !== "REJECTED")
       return res.status(400).json({ message: "Invoice is not in rejected state" });
 
-    // Check 30-day deadline
     if (invoice.rejectionDeadline && new Date() > new Date(invoice.rejectionDeadline))
       return res.status(400).json({ message: "Rejection cancellation period has expired" });
 
-    // Cancel rejection = accept the invoice
     const paymentDeadline = new Date();
     paymentDeadline.setDate(paymentDeadline.getDate() + 14);
 
-    invoice.status          = "ACCEPTED";
-    invoice.acceptedAt      = new Date();
+    invoice.status = "ACCEPTED";
+    invoice.acceptedAt = new Date();
     invoice.paymentDeadline = paymentDeadline;
     invoice.rejectionReason = null;
     await invoice.save();
+
+    await createLog({
+      eventType: "INVOICE_REJECTION_CANCELLED",
+      paymentType: "INVOICE",
+      orderId: invoice.orderId?.toString() || "",
+      invoiceId: invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      performedBy: "Customer",
+    });
 
     const slipUploadLink = `${FRONTEND_URL}/invoice/upload-payment?invoiceId=${invoice._id}`;
     await sendInvoiceAcceptedEmail(
@@ -392,7 +611,9 @@ exports.cancelRejection = async (req, res) => {
 // ── GET accepted invoices ─────────────────────────────────────────────────────
 exports.getAcceptedInvoices = async (req, res) => {
   try {
-    const invoices = await Invoice.find({ status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] } }).sort({ acceptedAt: -1 });
+    const invoices = await Invoice.find({
+      status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] }
+    }).sort({ acceptedAt: -1 });
     res.json(invoices);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
@@ -438,12 +659,53 @@ exports.getDashboardStats = async (req, res) => {
       Invoice.countDocuments({ status: "PAID" }),
       Invoice.countDocuments({ status: { $in: ["REJECTED", "AUTO_CANCELLED"] } }),
     ]);
-
     const recent = await Invoice.find().sort({ updatedAt: -1 }).limit(20);
-
     res.json({ accepted, pending, paid, rejected, tableData: recent });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch stats", error: error.message });
+  }
+};
+
+// ── DEBUG ─────────────────────────────────────────────────────────────────────
+exports.debugInvoiceQueue = async (req, res) => {
+  try {
+    const InspectionReport = getReportModel();
+    const LInstallation = getLInstallationModel();
+    const Order = getOrderModel();
+
+    const allReports = await InspectionReport.find({}).limit(10);
+    const allInstallations = await LInstallation.find({}).limit(10);
+    const submittedReports = await InspectionReport.find({ status: "SUBMITTED" }).limit(10);
+
+    const reportDetails = [];
+    for (const report of submittedReports) {
+      const installation = await LInstallation.findOne({
+        $or: [{ orderId: report.orderId }, { inspectionTicketId: report.ticketId }]
+      });
+      const order = await Order.findById(report.orderId);
+      reportDetails.push({
+        reportId: report._id,
+        reportStatus: report.status,
+        orderId: report.orderId,
+        orderRef: order?.orderRef,
+        hasInstallation: !!installation,
+        installationId: installation?._id,
+        materialsCount: installation?.materials?.length || 0,
+        ticketId: report.ticketId,
+      });
+    }
+
+    res.json({
+      totalReports: allReports.length,
+      totalInstallations: allInstallations.length,
+      submittedReportsCount: submittedReports.length,
+      allReports: allReports.map(r => ({ id: r._id, status: r.status, orderId: r.orderId, ticketId: r.ticketId })),
+      allInstallations: allInstallations.map(i => ({ id: i._id, orderId: i.orderId, inspectionTicketId: i.inspectionTicketId, materialsCount: i.materials?.length || 0 })),
+      reportDetails,
+    });
+  } catch (error) {
+    console.error("Debug error:", error);
+    res.status(500).json({ message: "Debug error", error: error.message });
   }
 };
 
@@ -451,53 +713,51 @@ exports.getDashboardStats = async (req, res) => {
 async function generateInvoicePDF(invoice) {
   return new Promise((resolve, reject) => {
     try {
-      const doc    = new PDFDocument({ margin: 50 });
+      const doc = new PDFDocument({ margin: 50 });
       const chunks = [];
-      doc.on("data",  chunk => chunks.push(chunk));
-      doc.on("end",   ()    => resolve(Buffer.concat(chunks)));
-      doc.on("error", err   => reject(err));
+      doc.on("data", chunk => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", err => reject(err));
 
-      // Header
+      // Header bar
       doc.fillColor("#1e3a2a").rect(50, 50, 495, 60).fill();
       doc.fillColor("white").fontSize(18).font("Helvetica-Bold")
         .text(`INVOICE #${invoice.invoiceNumber}`, 60, 65);
-      doc.fontSize(12).text(`Date: ${new Date(invoice.invoiceDate).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}`, 400, 65, { align: "right" });
+      const dateStr = `Date: ${new Date(invoice.invoiceDate || invoice.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`;
+      doc.fillColor("white").fontSize(10).font("Helvetica")
+        .text(dateStr, 300, 72, { width: 235, align: "right" });
 
-      // From/To
+      // From / To
       doc.fillColor("#1a1a1a").fontSize(14).font("Helvetica-Bold").text("AirLux", 60, 130);
       doc.fontSize(10).font("Helvetica").fillColor("#4b5563")
         .text("Premium Cooling Solutions", 60, 148)
         .text("123 Galle Road, Colombo 03", 60, 162);
 
       doc.fillColor("#9ca3af").fontSize(9).text("INVOICE TO:", 380, 130);
-      doc.fillColor("#1a1a1a").fontSize(10).font("Helvetica-Bold").text(invoice.customerName, 380, 144);
+      doc.fillColor("#1a1a1a").fontSize(10).font("Helvetica-Bold").text(invoice.customerName || "", 380, 144);
       doc.font("Helvetica").fontSize(10).fillColor("#4b5563")
         .text(invoice.customerAddress || "", 380, 158, { width: 165 });
 
-      // Items table header
+      // Table header
       const tableTop = 230;
       doc.fillColor("#1e3a2a").rect(50, tableTop, 495, 25).fill();
       doc.fillColor("white").fontSize(9).font("Helvetica-Bold");
-      doc.text("No", 60, tableTop + 8);
-      doc.text("Item Name", 90, tableTop + 8);
-      doc.text("Description", 220, tableTop + 8);
-      doc.text("Qty", 360, tableTop + 8);
-      doc.text("Rate (LKR)", 395, tableTop + 8);
-      doc.text("Amount (LKR)", 460, tableTop + 8);
+      ["No", "Item Name", "Description", "Qty", "Rate (LKR)", "Amount (LKR)"].forEach((h, i) => {
+        const x = [60, 90, 220, 360, 395, 460][i];
+        doc.text(h, x, tableTop + 8);
+      });
 
-      // Items
+      // Table rows
       let y = tableTop + 30;
-      invoice.items.forEach((item, i) => {
-        if (i % 2 === 1) {
-          doc.fillColor("#f7f9f7").rect(50, y - 5, 495, 22).fill();
-        }
+      (invoice.items || []).forEach((item, i) => {
+        if (i % 2 === 1) doc.fillColor("#f7f9f7").rect(50, y - 5, 495, 22).fill();
         doc.fillColor("#374151").fontSize(9).font("Helvetica");
-        doc.text(String(item.no), 60, y);
-        doc.text(item.itemName || "", 90, y, { width: 120 });
-        doc.text(item.description || "", 220, y, { width: 130 });
-        doc.text(String(item.qty), 360, y);
-        doc.text(item.rate?.toLocaleString() || "0", 395, y);
-        doc.text(item.amount?.toLocaleString() || "0", 460, y);
+        doc.text(String(item.no || i + 1), 60, y);
+        doc.text((item.itemName || "").substring(0, 20), 90, y, { width: 125 });
+        doc.text((item.description || "").substring(0, 25), 220, y, { width: 130 });
+        doc.text(String(item.qty || 1), 360, y);
+        doc.text((item.rate || 0).toLocaleString(), 395, y);
+        doc.text((item.amount || 0).toLocaleString(), 460, y);
         y += 22;
       });
 
@@ -505,25 +765,31 @@ async function generateInvoicePDF(invoice) {
       y += 10;
       doc.strokeColor("#e5e7eb").lineWidth(1).moveTo(350, y).lineTo(545, y).stroke();
       y += 8;
-      doc.fillColor("#374151").fontSize(10).text("Sub Total:", 370, y);
-      doc.font("Helvetica-Bold").text(`LKR ${invoice.subTotal?.toLocaleString()}`, 460, y);
+      doc.fillColor("#374151").fontSize(10).font("Helvetica")
+        .text("Sub Total:", 370, y);
+      doc.font("Helvetica-Bold")
+        .text(`LKR ${(invoice.subTotal || 0).toLocaleString()}`, 460, y);
       y += 18;
-      doc.font("Helvetica").text("Service Charge:", 355, y);
-      doc.text(`LKR ${invoice.serviceCharge?.toLocaleString()}`, 460, y);
-      y += 18;
+      if (invoice.serviceCharge > 0) {
+        doc.font("Helvetica").text("Service Charge:", 355, y);
+        doc.text(`LKR ${(invoice.serviceCharge || 0).toLocaleString()}`, 460, y);
+        y += 18;
+      }
       doc.fillColor("#1e3a2a").rect(350, y, 195, 25).fill();
       doc.fillColor("white").fontSize(11).font("Helvetica-Bold")
         .text("Grand Total:", 360, y + 7)
-        .text(`LKR ${invoice.grandTotal?.toLocaleString()}`, 460, y + 7);
+        .text(`LKR ${(invoice.grandTotal || 0).toLocaleString()}`, 455, y + 7);
       y += 40;
 
       // Terms
-      doc.fillColor("#f0fdf4").rect(50, y, 495, 110).fill();
-      doc.fillColor("#1a1a1a").fontSize(9).font("Helvetica-Bold").text("Terms & Conditions", 60, y + 10);
-      doc.font("Helvetica").fillColor("#374151").fontSize(8)
-        .text("Payment Deadline: Once an invoice is accepted, the customer must complete the payment and upload the payment slip within fourteen (14) calendar days.", 60, y + 25, { width: 475 })
-        .text("Rejection Policy: If the invoice is rejected, it can be resumed within one (1) month of the rejection date. After this period, the request will be permanently closed.", 60, y + 52, { width: 475 })
-        .text("Failure to upload the payment slip within the 2-week period, the invoice will be automatically cancelled.", 60, y + 79, { width: 475 });
+      if (y < 680) {
+        doc.fillColor("#f0fdf4").rect(50, y, 495, 100).fill();
+        doc.fillColor("#1a1a1a").fontSize(9).font("Helvetica-Bold").text("Terms & Conditions", 60, y + 10);
+        doc.font("Helvetica").fillColor("#374151").fontSize(8)
+          .text("Payment Deadline: Once an invoice is accepted, the customer must complete the payment and upload the payment slip within fourteen (14) calendar days.", 60, y + 25, { width: 475 })
+          .text("Rejection Policy: If the invoice is rejected, it can be resumed within one (1) month of the rejection date. After this period, the request will be permanently closed.", 60, y + 50, { width: 475 })
+          .text("Failure to upload the payment slip within the 2-week period, the invoice will be automatically cancelled.", 60, y + 75, { width: 475 });
+      }
 
       doc.end();
     } catch (err) {
@@ -533,70 +799,53 @@ async function generateInvoicePDF(invoice) {
 }
 
 // ── CRON JOBS ─────────────────────────────────────────────────────────────────
-// Run daily at 9 AM
 cron.schedule("0 9 * * *", async () => {
   const now = new Date();
   console.log("Running invoice cron jobs...");
 
-  // 1. Auto-cancel invoices where rejection not cancelled within 30 days
+  // 1. Auto-cancel expired rejections (30 days)
   const expiredRejections = await Invoice.find({
-    status: "REJECTED",
-    rejectionDeadline: { $lt: now },
+    status: "REJECTED", rejectionDeadline: { $lt: now },
   });
   for (const inv of expiredRejections) {
-    inv.status      = "AUTO_CANCELLED";
-    inv.cancelledAt = now;
+    inv.status = "AUTO_CANCELLED"; inv.cancelledAt = now;
     await inv.save();
     await sendRejectionExpiredEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber);
-    console.log(`Auto-cancelled rejected invoice: ${inv.invoiceNumber}`);
   }
 
-  // 2. Auto-cancel accepted invoices where payment not received in 14 days
+  // 2. Auto-cancel unpaid accepted invoices (14 days)
   const expiredPayments = await Invoice.find({
-    status: "ACCEPTED",
-    paymentDeadline: { $lt: now },
+    status: "ACCEPTED", paymentDeadline: { $lt: now },
   });
   for (const inv of expiredPayments) {
-    inv.status      = "AUTO_CANCELLED";
-    inv.cancelledAt = now;
+    inv.status = "AUTO_CANCELLED"; inv.cancelledAt = now;
     await inv.save();
     await sendAutoCancelledEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber);
-    console.log(`Auto-cancelled unpaid invoice: ${inv.invoiceNumber}`);
   }
 
-  // 3. Send rejection warning 2 days before rejection deadline
-  const rejectionWarningDate = new Date(now);
-  rejectionWarningDate.setDate(rejectionWarningDate.getDate() + 2);
+  // 3. Rejection warnings (2 days before)
+  const rWarnDate = new Date(now); rWarnDate.setDate(rWarnDate.getDate() + 2);
   const rejectionWarnings = await Invoice.find({
     status: "REJECTED",
-    rejectionDeadline: {
-      $gte: now,
-      $lte: rejectionWarningDate,
-    },
+    rejectionDeadline: { $gte: now, $lte: rWarnDate },
     rejectionReminderSent: false,
   });
   for (const inv of rejectionWarnings) {
-    const daysLeft = Math.ceil((new Date(inv.rejectionDeadline) - now) / (1000*60*60*24));
-    await sendRejectionWarningEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber, daysLeft);
-    inv.rejectionReminderSent = true;
-    await inv.save();
+    const d = Math.ceil((new Date(inv.rejectionDeadline) - now) / (1000 * 60 * 60 * 24));
+    await sendRejectionWarningEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber, d);
+    inv.rejectionReminderSent = true; await inv.save();
   }
 
-  // 4. Send payment reminder 2 days before payment deadline
-  const paymentWarningDate = new Date(now);
-  paymentWarningDate.setDate(paymentWarningDate.getDate() + 2);
+  // 4. Payment reminders (2 days before)
+  const pWarnDate = new Date(now); pWarnDate.setDate(pWarnDate.getDate() + 2);
   const paymentWarnings = await Invoice.find({
     status: "ACCEPTED",
-    paymentDeadline: {
-      $gte: now,
-      $lte: paymentWarningDate,
-    },
+    paymentDeadline: { $gte: now, $lte: pWarnDate },
     paymentReminderSent: false,
   });
   for (const inv of paymentWarnings) {
-    const daysLeft = Math.ceil((new Date(inv.paymentDeadline) - now) / (1000*60*60*24));
-    await sendPaymentReminderEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber, inv.grandTotal, daysLeft);
-    inv.paymentReminderSent = true;
-    await inv.save();
+    const d = Math.ceil((new Date(inv.paymentDeadline) - now) / (1000 * 60 * 60 * 24));
+    await sendPaymentReminderEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber, inv.grandTotal, d);
+    inv.paymentReminderSent = true; await inv.save();
   }
 });

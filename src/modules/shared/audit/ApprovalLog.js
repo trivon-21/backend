@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-
+// Define the ApprovalLog schema to track all approval actions taken on payments
 const approvalLogSchema = new mongoose.Schema(
   {
     paymentId: {

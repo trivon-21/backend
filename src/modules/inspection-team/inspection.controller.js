@@ -1,4 +1,4 @@
-const mongoose       = require("mongoose");
+const mongoose = require("mongoose");
 const InspectionTicket = require("../shared/ticket/InspectionTicket.model");
 const InspectionReport = require("./InspectionReport.model");
 const { sendArrivalEmail, sendReportToTechnician } = require("../shared/notification/email.service");
@@ -24,21 +24,21 @@ exports.getScheduledInspections = async (req, res) => {
   try {
     const tickets = await InspectionTicket.find({ status: "INSPECTION_SCHEDULED" }).sort({ scheduledDate: 1 });
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
       const order = await Order.findById(t.orderId);
-      const user  = await User.findById(t.customerId);
+      const user = await User.findById(t.customerId);
       return {
-        _id:            t._id,
-        orderId:        order?.orderRef || t.orderId,
-        ticketId:       `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customerName:   user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
-        customerEmail:  user?.email || "",
-        customerPhone:  user?.phoneNumber || "",
-        customerAddress:user?.address || "",
+        _id: t._id,
+        orderId: order?.orderRef || t.orderId,
+        ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
+        customerEmail: user?.email || "",
+        customerPhone: user?.phoneNumber || "",
+        customerAddress: user?.address || "",
         inspectionDate: t.scheduledDate,
-        itemName:       order?.itemName || "",
-        orderAmount:    order?.amount || 0,
+        itemName: order?.itemName || "",
+        orderAmount: order?.amount || 0,
       };
     }));
     res.json(formatted);
@@ -51,22 +51,22 @@ exports.getScheduledInspections = async (req, res) => {
 // ── START inspection ──────────────────────────────────────────────────────────
 exports.startInspection = async (req, res) => {
   try {
-    const { ticketId }       = req.params;
-    const { arrivalTime }    = req.body;
+    const { ticketId } = req.params;
+    const { arrivalTime } = req.body;
 
     if (!arrivalTime) return res.status(400).json({ message: "Arrival time is required" });
 
     const ticket = await InspectionTicket.findById(ticketId);
-    if (!ticket)  return res.status(404).json({ message: "Ticket not found" });
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
-    ticket.status    = "ONGOING";
+    ticket.status = "ONGOING";
     ticket.startedAt = new Date();
     await ticket.save();
 
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const order = await Order.findById(ticket.orderId);
-    const user  = await User.findById(ticket.customerId);
+    const user = await User.findById(ticket.customerId);
 
     if (user?.email) {
       await sendArrivalEmail(
@@ -90,27 +90,27 @@ exports.getOngoingInspections = async (req, res) => {
   try {
     const tickets = await InspectionTicket.find({ status: { $in: ["ONGOING", "REPORT_RECORDED"] } }).sort({ startedAt: -1 });
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
-      const order  = await Order.findById(t.orderId);
-      const user   = await User.findById(t.customerId);
+      const order = await Order.findById(t.orderId);
+      const user = await User.findById(t.customerId);
       const report = await InspectionReport.findOne({ ticketId: t._id });
       return {
-        _id:            t._id,
-        orderId:        order?.orderRef || t.orderId,
-        ticketId:       `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customerName:   user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
-        customerEmail:  user?.email || "",
+        _id: t._id,
+        orderId: order?.orderRef || t.orderId,
+        ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
+        customerEmail: user?.email || "",
         inspectionDate: t.scheduledDate,
-        recorded:       t.status === "REPORT_RECORDED",
-        reportId:       report?._id || null,
+        recorded: t.status === "REPORT_RECORDED",
+        reportId: report?._id || null,
         // Pre-fill data for report
         prefill: {
-          customerName:   user ? `${user.fullName} ${user.lastName}`.trim() : "",
-          contactNumber:  user?.phoneNumber || "",
-          siteAddress:    user?.address || "",
+          customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "",
+          contactNumber: user?.phoneNumber || "",
+          siteAddress: user?.address || "",
           inspectionDate: t.scheduledDate?.toISOString().split("T")[0] || "",
-          orderId:        order?._id || null,
+          orderId: order?._id || null,
         }
       };
     }));
@@ -125,7 +125,7 @@ exports.getOngoingInspections = async (req, res) => {
 exports.saveReport = async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const reportData   = req.body;
+    const reportData = req.body;
 
     const ticket = await InspectionTicket.findById(ticketId);
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
@@ -150,7 +150,7 @@ exports.saveReport = async (req, res) => {
 exports.recordReport = async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const reportData   = req.body;
+    const reportData = req.body;
 
     const ticket = await InspectionTicket.findById(ticketId);
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
@@ -166,7 +166,7 @@ exports.recordReport = async (req, res) => {
       });
     }
 
-    ticket.status     = "REPORT_RECORDED";
+    ticket.status = "REPORT_RECORDED";
     ticket.inspectedAt = new Date();
     await ticket.save();
 
@@ -181,21 +181,21 @@ exports.recordReport = async (req, res) => {
 exports.getCompletedInspections = async (req, res) => {
   try {
     const tickets = await InspectionTicket.find({ status: { $in: ["REPORT_RECORDED", "INSPECTED"] } }).sort({ inspectedAt: -1 });
-    const Order  = getOrderModel();
-    const User   = getUserModel();
+    const Order = getOrderModel();
+    const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
-      const order  = await Order.findById(t.orderId);
-      const user   = await User.findById(t.customerId);
+      const order = await Order.findById(t.orderId);
+      const user = await User.findById(t.customerId);
       const report = await InspectionReport.findOne({ ticketId: t._id });
       return {
-        _id:            t._id,
-        orderId:        order?.orderRef || t.orderId,
-        ticketId:       `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customerName:   user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
+        _id: t._id,
+        orderId: order?.orderRef || t.orderId,
+        ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
         inspectionDate: t.scheduledDate,
-        reportStatus:   report?.status || "DRAFT",
-        reportId:       report?._id || null,
-        submitted:      report?.status === "SUBMITTED",
+        reportStatus: report?.status || "DRAFT",
+        reportId: report?._id || null,
+        submitted: report?.status === "SUBMITTED",
       };
     }));
     res.json(formatted);
@@ -227,9 +227,9 @@ exports.submitReport = async (req, res) => {
     if (!report) return res.status(404).json({ message: "Report not found" });
 
     const ticket = await InspectionTicket.findById(ticketId);
-    const Order  = getOrderModel();
-    const User   = getUserModel();
-    const order  = await Order.findById(ticket?.orderId);
+    const Order = getOrderModel();
+    const User = getUserModel();
+    const order = await Order.findById(ticket?.orderId);
 
     // Get main technician email from env or hardcode for now
     const techEmail = process.env.MAIN_TECH_EMAIL || process.env.EMAIL_USER;
@@ -241,7 +241,7 @@ exports.submitReport = async (req, res) => {
       `I-Tic-${ticketId.toString().slice(-5).toUpperCase()}`
     );
 
-    report.status      = "SUBMITTED";
+    report.status = "SUBMITTED";
     report.submittedAt = new Date();
     await report.save();
 
@@ -272,18 +272,18 @@ exports.getDashboardStats = async (req, res) => {
     }).sort({ updatedAt: -1 }).limit(20);
 
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
 
     const tableData = await Promise.all(allTickets.map(async (t) => {
       const order = await Order.findById(t.orderId);
-      const user  = await User.findById(t.customerId);
+      const user = await User.findById(t.customerId);
       return {
-        _id:       t._id,
-        orderId:   order?.orderRef || t.orderId,
-        ticketId:  `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customer:  user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
-        date:      t.scheduledDate || t.updatedAt,
-        status:    t.status,
+        _id: t._id,
+        orderId: order?.orderRef || t.orderId,
+        ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customer: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
+        date: t.scheduledDate || t.updatedAt,
+        status: t.status,
       };
     }));
 

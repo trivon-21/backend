@@ -1,10 +1,10 @@
-const mongoose  = require("mongoose");
-const cron      = require("node-cron");
+const mongoose = require("mongoose");
+const cron = require("node-cron");
 const InspectionTicket = require("../shared/ticket/InspectionTicket.model");
 const { sendRejectionEmail, sendApprovalEmail, sendSchedulingEmail, sendReminderEmail } = require("../shared/notification/email.service");
-
-const SLOTS_PER_DAY  = 4;
-const FRONTEND_URL   = process.env.FRONTEND_URL || "http://localhost:4200";
+const { createLog } = require("./auditLog.controller");
+const SLOTS_PER_DAY = 4;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
 const getOrderModel = () => {
   try { return mongoose.model("Order"); }
@@ -29,10 +29,21 @@ const getUserModel = () => {
   }
 };
 
-// Public holidays YYYY-MM-DD
+// Sri Lankan public holidays YYYY-MM-DD for 2026
 const PUBLIC_HOLIDAYS = [
-  "2026-04-13", "2026-04-14", "2026-05-01",
-  "2026-05-22", "2026-06-30",
+  "2026-01-26", // Independence Day
+  "2026-02-21", // Maha Shivaratri
+  "2026-04-13", // Sinhala & Tamil New Year (Day 1)
+  "2026-04-14", // Sinhala & Tamil New Year (Day 2)
+  "2026-05-01", // Labour Day
+  "2026-05-11", // Vesak Full Moon (Day 1)
+  "2026-05-12", // Vesak Full Moon (Day 2)
+  "2026-06-29", // Poson Full Moon (Day 1)
+  "2026-06-30", // Poson Full Moon (Day 2)
+  "2026-08-03", // Nikini Full Moon
+  "2026-10-29", // Deepavali
+  "2026-11-02", // Ill Full Moon
+  "2026-12-25", // Christmas
 ];
 
 // ── GET or CREATE ticket ──────────────────────────────────────────────────────
@@ -40,38 +51,38 @@ exports.getOrCreateTicket = async (req, res) => {
   try {
     const { orderId } = req.params;
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: "Order not found" });
     if (order.orderType !== "Buy & Install")
       return res.status(400).json({ message: "This order does not require inspection" });
-    const user   = await User.findById(order.customer);
-    let   ticket = await InspectionTicket.findOne({ orderId: order._id });
+    const user = await User.findById(order.customer);
+    let ticket = await InspectionTicket.findOne({ orderId: order._id });
     if (!ticket) {
       ticket = await InspectionTicket.create({
-        orderId:       order._id,
-        customerId:    order.customer,
-        status:        "PENDING_PAYMENT",
+        orderId: order._id,
+        customerId: order.customer,
+        status: "PENDING_PAYMENT",
         inspectionFee: 5000,
       });
     }
     res.json({
       ticket,
       order: {
-        orderId:       order.orderRef || order._id,
-        customerName:  user ? `${user.fullName} ${user.lastName}`.trim() : "Customer",
+        orderId: order.orderRef || order._id,
+        customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Customer",
         customerEmail: user?.email || "",
-        itemName:      order.itemName,
-        items:         [order.itemName],
-        quantity:      order.quantity,
-        amount:        order.amount,
-        orderType:     order.orderType,
+        itemName: order.itemName,
+        items: [order.itemName],
+        quantity: order.quantity,
+        amount: order.amount,
+        orderType: order.orderType,
       },
       bankDetails: {
-        bankName:      "Commercial Bank",
-        branchName:    "Colombo 03",
-        accountName:   "AirLux Pvt Ltd",
-        accountNo:     "1234567890",
+        bankName: "Commercial Bank",
+        branchName: "Colombo 03",
+        accountName: "AirLux Pvt Ltd",
+        accountNo: "1234567890",
         inspectionFee: ticket.inspectionFee,
       },
     });
@@ -85,16 +96,16 @@ exports.getOrCreateTicket = async (req, res) => {
 exports.uploadSlip = async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const { slipUrl  } = req.body;
+    const { slipUrl } = req.body;
     if (!slipUrl) return res.status(400).json({ message: "No slip data received" });
     const ticket = await InspectionTicket.findById(ticketId);
-    if (!ticket)  return res.status(404).json({ message: "Ticket not found" });
-    if (!["PENDING_PAYMENT","PAYMENT_REJECTED"].includes(ticket.status))
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+    if (!["PENDING_PAYMENT", "PAYMENT_REJECTED"].includes(ticket.status))
       return res.status(400).json({ message: `Cannot upload at stage: ${ticket.status}` });
-    ticket.slipUrl        = slipUrl;
-    ticket.status         = "PAYMENT_UNDER_REVIEW";
+    ticket.slipUrl = slipUrl;
+    ticket.status = "PAYMENT_UNDER_REVIEW";
     ticket.rejectionReason = null;
-    ticket.slipUploadedAt  = new Date();
+    ticket.slipUploadedAt = new Date();
     await ticket.save();
     res.json({ message: "Slip uploaded. Payment is under review.", ticket });
   } catch (error) {
@@ -108,15 +119,15 @@ exports.getPendingVerification = async (req, res) => {
   try {
     const tickets = await InspectionTicket.find({ status: "PAYMENT_UNDER_REVIEW" }).sort({ updatedAt: -1 });
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
       const order = await Order.findById(t.orderId);
-      const user  = await User.findById(t.customerId);
-      
+      const user = await User.findById(t.customerId);
+
       // Fallback: if user not found, try to get customer name from order (if it has customerName field)
       let customerName = "Unknown";
       let customerEmail = "";
-      
+
       if (user) {
         customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
         customerEmail = user.email || "";
@@ -124,19 +135,19 @@ exports.getPendingVerification = async (req, res) => {
         customerName = order.customerName;
         customerEmail = order.customerEmail || "";
       }
-      
+
       return {
-        _id:           t._id,
-        orderId:       order?.orderRef || t.orderId,
-        ticketId:      `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customerName:  customerName,
+        _id: t._id,
+        orderId: order?.orderRef || t.orderId,
+        ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customerName: customerName,
         customerEmail: customerEmail,
-        amount:        t.inspectionFee,
-        slipUrl:       t.slipUrl,
-        status:        t.status,
-        date:          t.slipUploadedAt || t.updatedAt,
-        createdAt:     t.createdAt,
-        updatedAt:     t.updatedAt,
+        amount: t.inspectionFee,
+        slipUrl: t.slipUrl,
+        status: t.status,
+        date: t.slipUploadedAt || t.updatedAt,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
       };
     }));
     res.json(formatted);
@@ -152,13 +163,25 @@ exports.approvePayment = async (req, res) => {
     const ticket = await InspectionTicket.findById(req.params.id);
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const order = await Order.findById(ticket.orderId);
-    const user  = await User.findById(ticket.customerId);
-    ticket.status          = "PAYMENT_CONFIRMED";
+    const user = await User.findById(ticket.customerId);
+    ticket.status = "PAYMENT_CONFIRMED";
     ticket.rejectionReason = null;
-    ticket.approvedAt      = new Date();
+    ticket.approvedAt = new Date();
     await ticket.save();
+    await createLog({
+      eventType: "PAYMENT_APPROVED",
+      paymentType: "INSPECTION",
+      orderId: order.orderRef || order._id.toString(),
+      ticketId: `I-Tic-${ticket._id.toString().slice(-5).toUpperCase()}`,
+      customerId: ticket.customerId,
+      customerName: user?.fullName || "Unknown",
+      customerEmail: user?.email || "",
+      amount: ticket.inspectionFee && ticket.inspectionFee > 0 ? ticket.inspectionFee : 5000,
+      slipUrl: ticket.slipUrl || null,
+      performedBy: "Finance Officer",
+    });
     if (user?.email) {
       const schedulingLink = `${FRONTEND_URL}/inspection-scheduling?ticketId=${ticket._id}`;
       await sendApprovalEmail(user.email, order?.orderRef || ticket.orderId, user.fullName || "Customer", schedulingLink);
@@ -178,13 +201,26 @@ exports.rejectPayment = async (req, res) => {
     const ticket = await InspectionTicket.findById(req.params.id);
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const order = await Order.findById(ticket.orderId);
-    const user  = await User.findById(ticket.customerId);
-    ticket.status          = "PAYMENT_REJECTED";
+    const user = await User.findById(ticket.customerId);
+    ticket.status = "PAYMENT_REJECTED";
     ticket.rejectionReason = rejectionReason;
-    ticket.rejectedAt      = new Date();
+    ticket.rejectedAt = new Date();
     await ticket.save();
+    await createLog({
+      eventType: "PAYMENT_REJECTED",
+      paymentType: "INSPECTION",
+      orderId: order.orderRef || order._id.toString(),
+      ticketId: `I-Tic-${ticket._id.toString().slice(-5).toUpperCase()}`,
+      customerId: ticket.customerId,
+      customerName: user?.fullName || "Unknown",
+      customerEmail: user?.email || "",
+      amount: ticket.inspectionFee && ticket.inspectionFee > 0 ? ticket.inspectionFee : 5000,
+      slipUrl: ticket.slipUrl || null,
+      rejectionReason: rejectionReason,
+      performedBy: "Finance Officer",
+    });
     if (user?.email) {
       const reuploadLink = `${FRONTEND_URL}/inspection-payment?orderId=${ticket.orderId}`;
       await sendRejectionEmail(user.email, order?.orderRef || ticket.orderId.toString(), rejectionReason, reuploadLink);
@@ -200,18 +236,18 @@ exports.rejectPayment = async (req, res) => {
 exports.getVerifiedPayments = async (req, res) => {
   try {
     const tickets = await InspectionTicket.find({
-      status: { $in: ["PAYMENT_CONFIRMED","INSPECTION_SCHEDULED","INSPECTED"] }
+      status: { $in: ["PAYMENT_CONFIRMED", "INSPECTION_SCHEDULED", "INSPECTED"] }
     }).sort({ approvedAt: -1 });
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
       const order = await Order.findById(t.orderId);
-      const user  = await User.findById(t.customerId);
-      
+      const user = await User.findById(t.customerId);
+
       // Fallback: if user not found, try to get customer name from order
       let customerName = "Unknown";
       let customerEmail = "";
-      
+
       if (user) {
         customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
         customerEmail = user.email || "";
@@ -219,17 +255,17 @@ exports.getVerifiedPayments = async (req, res) => {
         customerName = order.customerName;
         customerEmail = order.customerEmail || "";
       }
-      
+
       return {
-        _id:           t._id,
-        orderId:       order?.orderRef || t.orderId,
-        ticketId:      `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customerName:  customerName,
+        _id: t._id,
+        orderId: order?.orderRef || t.orderId,
+        ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customerName: customerName,
         customerEmail: customerEmail,
-        amount:        t.inspectionFee,
-        slipUrl:       t.slipUrl,
-        status:        t.status,
-        updatedAt:     t.approvedAt || t.updatedAt,
+        amount: t.inspectionFee,
+        slipUrl: t.slipUrl,
+        status: t.status,
+        updatedAt: t.approvedAt || t.updatedAt,
       };
     }));
     res.json(formatted);
@@ -244,15 +280,15 @@ exports.getRejectedPayments = async (req, res) => {
   try {
     const tickets = await InspectionTicket.find({ status: "PAYMENT_REJECTED" }).sort({ rejectedAt: -1 });
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
       const order = await Order.findById(t.orderId);
-      const user  = await User.findById(t.customerId);
-      
+      const user = await User.findById(t.customerId);
+
       // Fallback: if user not found, try to get customer name from order
       let customerName = "Unknown";
       let customerEmail = "";
-      
+
       if (user) {
         customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
         customerEmail = user.email || "";
@@ -260,18 +296,18 @@ exports.getRejectedPayments = async (req, res) => {
         customerName = order.customerName;
         customerEmail = order.customerEmail || "";
       }
-      
+
       return {
-        _id:             t._id,
-        orderId:         order?.orderRef || t.orderId,
-        ticketId:        `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
-        customerName:    customerName,
-        customerEmail:   customerEmail,
-        amount:          t.inspectionFee,
-        slipUrl:         t.slipUrl,
-        status:          t.status,
+        _id: t._id,
+        orderId: order?.orderRef || t.orderId,
+        ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
+        customerName: customerName,
+        customerEmail: customerEmail,
+        amount: t.inspectionFee,
+        slipUrl: t.slipUrl,
+        status: t.status,
         rejectionReason: t.rejectionReason,
-        updatedAt:       t.rejectedAt || t.updatedAt,
+        updatedAt: t.rejectedAt || t.updatedAt,
       };
     }));
     res.json(formatted);
@@ -287,7 +323,7 @@ exports.getAvailableDates = async (req, res) => {
     const { ticketId } = req.params;
     const ticket = await InspectionTicket.findById(ticketId);
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-    
+
     // Allow both initial scheduling and rescheduling
     if (!["PAYMENT_CONFIRMED", "INSPECTION_SCHEDULED"].includes(ticket.status))
       return res.status(400).json({ message: "Cannot schedule at this time" });
@@ -302,11 +338,11 @@ exports.getAvailableDates = async (req, res) => {
 
     // Count bookings per day
     const bookings = await InspectionTicket.find({
-      status:        { $in: ["INSPECTION_SCHEDULED", "ONGOING", "REPORT_RECORDED", "INSPECTED"] },
+      status: { $in: ["INSPECTION_SCHEDULED", "ONGOING", "REPORT_RECORDED", "INSPECTED"] },
       scheduledDate: { $gte: start, $lte: end },
     });
 
-    const bookingCounts={};
+    const bookingCounts = {};
     bookings.forEach((b) => {
       if (b.scheduledDate) {
         const dateKey = new Date(b.scheduledDate).toISOString().split("T")[0];
@@ -315,26 +351,26 @@ exports.getAvailableDates = async (req, res) => {
     });
 
     const calendar = [];
-    const current  = new Date(start);
+    const current = new Date(start);
 
     while (current <= end) {
-      const dateKey      = current.toISOString().split("T")[0];
-      const dayOfWeek    = current.getDay();
-      const isHoliday    = PUBLIC_HOLIDAYS.includes(dateKey);
-      const isWeekend    = dayOfWeek === 0 || dayOfWeek === 6;
+      const dateKey = current.toISOString().split("T")[0];
+      const dayOfWeek = current.getDay();
+      const isHoliday = PUBLIC_HOLIDAYS.includes(dateKey);
+      const isWeekend = dayOfWeek === 6; // Only Saturday (6), Sunday (0) is now available
       const bookingCount = bookingCounts[dateKey] || 0;
       const isFullyBooked = bookingCount >= SLOTS_PER_DAY;
 
       let status = "available";
-      if (isHoliday)      status = "holiday";
+      if (isHoliday) status = "holiday";
       else if (isWeekend) status = "unavailable";
       else if (isFullyBooked) status = "fully_booked";
 
       calendar.push({
-        date:          dateKey,
+        date: dateKey,
         status,
         bookingCount,
-        slotsLeft:     Math.max(0, SLOTS_PER_DAY - bookingCount),
+        slotsLeft: Math.max(0, SLOTS_PER_DAY - bookingCount),
         isHoliday,
         isWeekend,
         isFullyBooked,
@@ -359,7 +395,7 @@ exports.getAvailableDates = async (req, res) => {
 // ── CONFIRM scheduling ────────────────────────────────────────────────────────
 exports.confirmScheduling = async (req, res) => {
   try {
-    const { ticketId  } = req.params;
+    const { ticketId } = req.params;
     const { selectedDate } = req.body;
 
     if (!selectedDate)
@@ -377,7 +413,7 @@ exports.confirmScheduling = async (req, res) => {
     dateEnd.setHours(23, 59, 59, 999);
 
     const existingBookings = await InspectionTicket.countDocuments({
-      status:        { $in: ["INSPECTION_SCHEDULED", "INSPECTED"] },
+      status: { $in: ["INSPECTION_SCHEDULED", "INSPECTED"] },
       scheduledDate: { $gte: dateStart, $lte: dateEnd },
     });
 
@@ -393,14 +429,14 @@ exports.confirmScheduling = async (req, res) => {
       return res.status(400).json({ message: "Weekends are not available for inspection." });
 
     ticket.scheduledDate = new Date(selectedDate);
-    ticket.status        = "INSPECTION_SCHEDULED";
-    ticket.scheduledAt   = new Date();
+    ticket.status = "INSPECTION_SCHEDULED";
+    ticket.scheduledAt = new Date();
     await ticket.save();
 
     const Order = getOrderModel();
-    const User  = getUserModel();
+    const User = getUserModel();
     const order = await Order.findById(ticket.orderId);
-    const user  = await User.findById(ticket.customerId);
+    const user = await User.findById(ticket.customerId);
 
     // Send scheduling confirmation email with reschedule link
     if (user?.email) {
@@ -434,16 +470,16 @@ cron.schedule("0 8 * * *", async () => {
     dayEnd.setHours(23, 59, 59, 999);
 
     const tickets = await InspectionTicket.find({
-      status:        "INSPECTION_SCHEDULED",
+      status: "INSPECTION_SCHEDULED",
       scheduledDate: { $gte: tomorrow, $lte: dayEnd },
-      reminderSent:  false,
+      reminderSent: false,
     });
 
-    const User  = getUserModel();
+    const User = getUserModel();
     const Order = getOrderModel();
 
     for (const ticket of tickets) {
-      const user  = await User.findById(ticket.customerId);
+      const user = await User.findById(ticket.customerId);
       const order = await Order.findById(ticket.orderId);
 
       if (user?.email) {
@@ -502,8 +538,8 @@ exports.rescheduleInspection = async (req, res) => {
     newDateEnd.setHours(23, 59, 59, 999);
 
     const existingBookings = await InspectionTicket.countDocuments({
-      _id:           { $ne: ticket._id }, // Don't count current ticket
-      status:        { $in: ["INSPECTION_SCHEDULED", "INSPECTED"] },
+      _id: { $ne: ticket._id }, // Don't count current ticket
+      status: { $in: ["INSPECTION_SCHEDULED", "INSPECTED"] },
       scheduledDate: { $gte: newDateStart, $lte: newDateEnd },
     });
 

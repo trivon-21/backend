@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const { sendBuyOnlyRejectionEmail, sendBuyOnlyApprovalEmail } = require("../shared/notification/email.service");
-
+const { createLog } = require("./auditLog.controller");
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
 // Lazy-load Order model (created by another team)
@@ -33,11 +33,10 @@ const getUserModel = () => {
 const formatOrder = async (order) => {
   const User = getUserModel();
   const user = await User.findById(order.customer);
-  
   // Fallback: if user not found, try to use Order's customerName if available
   let customerName = "Unknown";
   let customerEmail = "";
-  
+
   if (user) {
     customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
     customerEmail = user?.email || "";
@@ -45,23 +44,23 @@ const formatOrder = async (order) => {
     customerName = order.customerName;
     customerEmail = order.customerEmail || "";
   }
-  
+
   return {
-    _id:             order._id,
-    orderId:         order.orderRef || order._id.toString(),
-    itemName:        order.itemName || "",
-    customerName:    customerName,
-    customerEmail:   customerEmail,
-    amount:          order.amount || 0,
-    slipUrl:         order.paymentSlipUrl || null,
-    paymentType:     "BUY_ONLY",
-    status:          order.paymentStatus === "Under Review" ? "PENDING"
-                   : order.paymentStatus === "Approved"     ? "APPROVED"
-                   : order.paymentStatus === "Rejected"     ? "REJECTED"
-                   : "PENDING",
+    _id: order._id,
+    orderId: order.orderRef || order._id.toString(),
+    itemName: order.itemName || "",
+    customerName: customerName,
+    customerEmail: customerEmail,
+    amount: order.amount || 0,
+    slipUrl: order.paymentSlipUrl || null,
+    paymentType: "BUY_ONLY",
+    status: order.paymentStatus === "Under Review" ? "PENDING"
+      : order.paymentStatus === "Approved" ? "APPROVED"
+        : order.paymentStatus === "Rejected" ? "REJECTED"
+          : "PENDING",
     rejectionReason: order.rejectionReason || null,
-    updatedAt:       order.updatedAt,
-    createdAt:       order.createdAt,
+    updatedAt: order.updatedAt,
+    createdAt: order.createdAt,
   };
 };
 
@@ -91,10 +90,24 @@ exports.approvePayment = async (req, res) => {
 
     order.paymentStatus = "Approved";
     order.rejectionReason = null;
-    await order.save();
+    const updatedOrder = await order.save();
 
     const User = getUserModel();
     const user = await User.findById(order.customer);
+
+    await createLog({
+      eventType: "PAYMENT_APPROVED",
+      paymentType: "BUY_ONLY",
+      orderId: order.orderRef || order._id.toString(),
+      customerId: order.customer,
+      customerName: user?.fullName || "Unknown",
+      customerEmail: user?.email || "",
+      amount: order.amount || 0,
+      slipUrl: order.paymentSlipUrl || null,
+      performedBy: "Finance Officer",
+    });
+    console.log("Order updated:", updatedOrder._id, "Status:", updatedOrder.paymentStatus);
+
     if (user?.email) {
       await sendBuyOnlyApprovalEmail(
         user.email,
@@ -103,7 +116,8 @@ exports.approvePayment = async (req, res) => {
       );
     }
 
-    res.json({ message: "Payment approved and email sent" });
+    const formatted = await formatOrder(updatedOrder);
+    res.json({ message: "Payment approved and email sent", payment: formatted });
   } catch (error) {
     console.error("approvePayment error:", error);
     res.status(500).json({ message: "Approval failed", error: error.message });
@@ -122,10 +136,24 @@ exports.rejectPayment = async (req, res) => {
 
     order.paymentStatus = "Rejected";
     order.rejectionReason = rejectionReason;
-    await order.save();
+    const updatedOrder = await order.save();
 
     const User = getUserModel();
     const user = await User.findById(order.customer);
+
+    await createLog({
+      eventType: "PAYMENT_REJECTED",
+      paymentType: "BUY_ONLY",
+      orderId: order.orderRef || order._id.toString(),
+      customerId: order.customer,
+      customerName: user?.fullName || "Unknown",
+      customerEmail: user?.email || "",
+      amount: order.amount || 0,
+      slipUrl: order.paymentSlipUrl || null,
+      rejectionReason: rejectionReason,
+      performedBy: "Finance Officer",
+    });
+    console.log("Order rejected:", updatedOrder._id, "Reason:", updatedOrder.rejectionReason);
 
     // Checkout/reupload link — same page used for original slip upload
     const reuploadLink = `${FRONTEND_URL}/checkout?orderId=${order._id}`;
@@ -141,7 +169,8 @@ exports.rejectPayment = async (req, res) => {
       );
     }
 
-    res.json({ message: "Payment rejected and email sent" });
+    const formatted = await formatOrder(updatedOrder);
+    res.json({ message: "Payment rejected and email sent", payment: formatted });
   } catch (error) {
     console.error("rejectPayment error:", error);
     res.status(500).json({ message: "Rejection failed", error: error.message });
