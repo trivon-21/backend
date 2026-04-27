@@ -1,6 +1,7 @@
 const Inventory = require('../../models/Inventory');
 const Activity = require('../../models/Activity');
 const Logistics = require('../../models/Logistics');
+const Supplier = require('../../models/Supplier');
 
 exports.getDashboardData = async (user) => {
   const inventory = await Inventory.find();
@@ -86,4 +87,33 @@ exports.getInventoryItem = async (id) => {
 
 exports.updateInventoryItem = async (id, data) => {
   return await Inventory.findByIdAndUpdate(id, data, { new: true });
+};
+
+exports.createInventoryItem = async (data) => {
+  // Calculate status based on availability and reorder level
+  const available = Number(data.available) || 0;
+  const reorderLevel = Number(data.reorderLevel) || 10;
+  
+  let status = 'normal';
+  if (available === 0) {
+    status = 'critical';
+  } else if (available <= reorderLevel) {
+    status = 'warning';
+  }
+
+  const newItem = new Inventory({
+    ...data,
+    status
+  });
+
+  return await newItem.save();
+};
+
+exports.getSuppliersList = async () => {
+  return await Supplier.find().sort({ name: 1 });
+};
+
+exports.createSupplier = async (name) => {
+  const newSupplier = new Supplier({ name });
+  return await newSupplier.save();
 };

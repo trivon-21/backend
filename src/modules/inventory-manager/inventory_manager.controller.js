@@ -38,3 +38,37 @@ exports.updateItem = async (req, res) => {
     res.status(500).json({ message: "Failed to update item" });
   }
 };
+
+exports.createItem = async (req, res) => {
+  try {
+    const data = await service.createInventoryItem(req.body);
+    res.status(201).json(data);
+  } catch (error) {
+    console.error('Item creation error:', error);
+    if (error.code === 11000) {
+      return res.status(400).json({ message: "SKU already exists" });
+    }
+    res.status(500).json({ message: "Failed to create item" });
+  }
+};
+
+exports.getSuppliers = async (req, res) => {
+  try {
+    const data = await service.getSuppliersList();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch suppliers" });
+  }
+};
+
+exports.createSupplier = async (req, res) => {
+  try {
+    const data = await service.createSupplier(req.body.name);
+    res.status(201).json(data);
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: "Supplier already exists" });
+    }
+    res.status(500).json({ message: "Failed to create supplier" });
+  }
+};

@@ -11,5 +11,10 @@ router.get("/list", protect, controller.getInventory);
 router.get("/item/:id", protect, controller.getItem);
 // Update item
 router.put("/item/:id", protect, controller.updateItem);
+// Create item
+router.post("/item", protect, controller.createItem);
+// Suppliers
+router.get("/suppliers", protect, controller.getSuppliers);
+router.post("/suppliers", protect, controller.createSupplier);
 
 module.exports = router;
