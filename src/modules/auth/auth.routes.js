@@ -1,30 +1,7 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
-const { signup, login, forgotPassword, resetPassword, verifyEmail, resendOtp, verifyPhone, resendOtpPhone } = require("./auth.controller");
+const { login } = require("./auth.controller");
 const { validate } = require("../../middleware/auth.middleware");
-const { protect } = require("../../middleware/protect");
-
-router.post(
-  "/signup",
-  [
-    body("fullName").isLength({ min: 3 }).withMessage("Full name must be at least 3 characters"),
-    body("password")
-      .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
-      .matches(/[A-Z]/).withMessage("Password must contain at least one uppercase letter")
-      .matches(/[a-z]/).withMessage("Password must contain at least one lowercase letter")
-      .matches(/[0-9]/).withMessage("Password must contain at least one number")
-      .matches(/[^A-Za-z0-9]/).withMessage("Password must contain at least one special character"),
-    body().custom((value, { req }) => {
-      const { identifier, email, phoneNumber } = req.body;
-      if (!identifier && !email && !phoneNumber) {
-        throw new Error("identifier (email or phone) is required");
-      }
-      return true;
-    })
-  ],
-  validate,
-  signup
-);
 
 router.post(
   "/login",
@@ -41,39 +18,5 @@ router.post(
   validate,
   login
 );
-
-router.post(
-  "/forgot-password",
-  [body("email").isEmail().withMessage("Valid email required")],
-  validate,
-  forgotPassword
-);
-
-router.get("/forgot-password", (req, res) =>
-  res.status(405).json({ message: "Method not allowed. Use POST to request a password reset." })
-);
-
-router.post(
-  "/reset-password/:token",
-  [
-    body("password")
-      .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
-      .matches(/[A-Z]/).withMessage("Password must contain at least one uppercase letter")
-      .matches(/[a-z]/).withMessage("Password must contain at least one lowercase letter")
-      .matches(/[0-9]/).withMessage("Password must contain at least one number")
-      .matches(/[^A-Za-z0-9]/).withMessage("Password must contain at least one special character")
-  ],
-  validate,
-  resetPassword
-);
-
-router.get("/reset-password/:token", (req, res) =>
-  res.status(405).json({ message: "Method not allowed. Use POST to submit your new password." })
-);
-
-router.post("/verify-email", protect, verifyEmail);
-router.post("/resend-otp", protect, resendOtp);
-router.post("/verify-phone", protect, verifyPhone);
-router.post("/resend-otp-phone", protect, resendOtpPhone);
 
 module.exports = router;
