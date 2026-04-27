@@ -7,5 +7,9 @@ const { protect } = require("../../middleware/protect");
 router.get("/dashboard", protect, controller.getDashboard);
 // Inventory list
 router.get("/list", protect, controller.getInventory);
+// Single item
+router.get("/item/:id", protect, controller.getItem);
+// Update item
+router.put("/item/:id", protect, controller.updateItem);
 
 module.exports = router;

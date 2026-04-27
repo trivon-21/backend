@@ -19,3 +19,22 @@ exports.getInventory = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch inventory data" });
   }
 };
+
+exports.getItem = async (req, res) => {
+  try {
+    const data = await service.getInventoryItem(req.params.id);
+    if (!data) return res.status(404).json({ message: "Item not found" });
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch item" });
+  }
+};
+
+exports.updateItem = async (req, res) => {
+  try {
+    const data = await service.updateInventoryItem(req.params.id, req.body);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update item" });
+  }
+};

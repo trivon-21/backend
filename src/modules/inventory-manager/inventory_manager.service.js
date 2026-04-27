@@ -79,3 +79,11 @@ exports.getDashboardData = async (user) => {
 exports.getInventoryList = async () => {
   return await Inventory.find().sort({ name: 1 });
 };
+
+exports.getInventoryItem = async (id) => {
+  return await Inventory.findById(id);
+};
+
+exports.updateInventoryItem = async (id, data) => {
+  return await Inventory.findByIdAndUpdate(id, data, { new: true });
+};
