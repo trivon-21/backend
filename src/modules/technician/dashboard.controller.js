@@ -3,7 +3,6 @@ const Inspection = require('../shared/inspection/Inspection');
 const Installation = require('../shared/installation/Installation');
 const ServiceRequest = require('../shared/serviceRequest/ServiceRequest');
 const ServiceTeam = require('../service-team/serviceTeam.model');
-const NewRequest = require('../shared/serviceRequest/NewRequest');
 const Customer = require('../customer/customer.model');
 const serviceTeamDashboardController = require('../service-team/dashboard.controller');
 const { WORKFLOW_STATUS, EXECUTION_STATUS, DEFAULTS } = require('../../constants/enums');
@@ -26,9 +25,7 @@ const ACTIVITY_TYPES = {
 
 const ALERTS = {
   MATERIAL_TYPE: 'material',
-  NEW_MATERIAL_REQUEST_TITLE: 'New Material Request',
   REVIEW_ACTION: 'Review',
-  UNKNOWN_CUSTOMER: 'Unknown',
 };
 
 const parseActivityLimit = (value) => {
@@ -257,18 +254,45 @@ exports.getUrgentAlerts = async (req, res) => {
   }
 
   try {
-    const newMaterialRequests = await NewRequest.find()
-      .sort({ createdAt: -1 })
-      .limit(DASHBOARD_LIMITS.ALERT_LIMIT)
-      .lean();
+    const stockAlertStatuses = [
+      WORKFLOW_STATUS.NEW,
+      WORKFLOW_STATUS.FINANCE_APPROVED,
+      WORKFLOW_STATUS.FINANCE_REJECTED,
+    ];
 
-    const customerNameMap = await loadCustomerNameMap(newMaterialRequests);
+    const [installationAlerts, serviceAlerts] = await Promise.all([
+      Installation.find({ status: { $in: stockAlertStatuses } })
+        .select('_id status ticketId updatedAt createdAt')
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .limit(DASHBOARD_LIMITS.ALERT_LIMIT)
+        .lean(),
+      ServiceRequest.find({ status: { $in: stockAlertStatuses } })
+        .select('_id status ticketId updatedAt createdAt')
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .limit(DASHBOARD_LIMITS.ALERT_LIMIT)
+        .lean(),
+    ]);
 
-    const alerts = newMaterialRequests.map((item) => ({
+    const mergedAlerts = [
+      ...installationAlerts.map((item) => ({
+        ...item,
+        source: ACTIVITY_TYPES.INSTALLATION,
+        timestamp: item.updatedAt || item.createdAt,
+      })),
+      ...serviceAlerts.map((item) => ({
+        ...item,
+        source: ACTIVITY_TYPES.SERVICE,
+        timestamp: item.updatedAt || item.createdAt,
+      })),
+    ]
+      .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+      .slice(0, DASHBOARD_LIMITS.ALERT_LIMIT);
+
+    const alerts = mergedAlerts.map((item) => ({
       type: ALERTS.MATERIAL_TYPE,
       id: item._id,
-      title: ALERTS.NEW_MATERIAL_REQUEST_TITLE,
-      subtitle: `Customer: ${resolveCustomerName(item, customerNameMap)}`,
+      title: `${item.source === ACTIVITY_TYPES.INSTALLATION ? 'Installation' : 'Service Request'} - ${item.status}`,
+      subtitle: `Reference: ${item.ticketId ? `#${item.ticketId}` : String(item._id).slice(-6).toUpperCase()}`,
       action: ALERTS.REVIEW_ACTION,
       urgent: true,
     }));
