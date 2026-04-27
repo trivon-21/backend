@@ -22,26 +22,26 @@ const managerRoutes = require("../modules/manager/manager.routes");
  * @param {Express.Application} app
  */
 function initializeRoutes(app) {
-  // Public/Auth routes (no auth required for signup, forgot-password)
+  // Public/Auth routes
   app.use("/api/auth", authRoutes);
 
-  // Super Admin routes (protected - super admin only)
+  // Inventory Manager routes
+  app.use("/api/inventory", inventoryManagerRoutes);
+
+  /* 
+  // Temporarily disabled other roles to focus on Inventory Manager
   app.use("/api/super-admin", superAdminRoutes);
-
-  // Customer routes (protected - customers only)
   app.use("/api/customer", customerRoutes);
-
-  // Role-specific routes (protected - role restricted)
   app.use("/api/technician", technicianRoutes);
   app.use("/api/service-team", serviceTeamRoutes);
   app.use("/api/sales", salesRoutes);
   app.use("/api/csa", csaRoutes);
   app.use("/api/finance", financeRoutes);
   app.use("/api/inspection", inspectionTeamRoutes);
-  app.use("/api/inventory", inventoryManagerRoutes);
   app.use("/api/manager", managerRoutes);
+  */
 
-  console.log("✅ All routes initialized");
+  console.log("✅ Routes initialized (Auth & Inventory Manager only)");
 }
 
 module.exports = initializeRoutes;
