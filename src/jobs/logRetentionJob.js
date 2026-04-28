@@ -17,7 +17,11 @@ async function executeLogRetentionJob() {
 
     // Get log retention policy from system config
     const config = await configCache.getSystemConfig();
-    const retentionDays = config?.logging?.logRetentionDays || 90;
+    // Prefer business rule if set, otherwise fall back to logging section, then default
+    const retentionDays =
+      (config && config.businessRules && typeof config.businessRules.logRetentionDays === 'number')
+        ? config.businessRules.logRetentionDays
+        : (config?.logging?.logRetentionDays || 30);
 
     console.log(`[Log Retention Job] Retention period: ${retentionDays} days`);
 

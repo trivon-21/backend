@@ -25,6 +25,7 @@ async function seedSystemConfig() {
     config = await SystemConfig.create({
       businessRules: {
         quotationApprovalThreshold: 1000000,
+        logRetentionDays: 30,
         paymentAutoCancelDays: 14,
         defaultWarrantyMonths: 24,
         amcContractMonths: 12,
@@ -49,6 +50,13 @@ async function seedSystemConfig() {
         systemName: 'AirLux',
         supportEmail: 'support@airlux.lk',
         supportPhoneNumber: '+94 11 234 5678',
+      },
+      logging: {
+        logRetentionDays: 30,
+        enableActivityLogs: true,
+        enableErrorLogs: true,
+        enableSecurityLogs: true,
+        logLevel: 'INFO',
       },
       updatedBy: null,
     });

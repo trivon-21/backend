@@ -21,7 +21,7 @@ class SystemConfigService {
   /**
    * Update business rules
    */
-  async updateBusinessRules(updates, performedBy, reason, ipAddress, userAgent) {
+  async updateBusinessRules(updates, performedBy, reason, ipAddress, userAgent, performedByRole) {
     const config = await this.getSystemConfig();
 
     // Store old values for audit trail
@@ -42,6 +42,10 @@ class SystemConfigService {
       } else if (key === 'paymentAutoCancelDays') {
         if (value < 1 || value > 365) {
           throw new Error('Payment auto-cancel days must be between 1 and 365');
+        }
+      } else if (key === 'logRetentionDays') {
+        if (typeof value !== 'number' || value < 7 || value > 730) {
+          throw new Error('logRetentionDays must be a number between 7 and 730');
         }
       } else if (key === 'defaultWarrantyMonths') {
         if (value < 1 || value > 60) {
@@ -75,7 +79,10 @@ class SystemConfigService {
 
     // Log the change
     await this._createAuditLog(
-      'UPDATE_BUSINESS_RULES',
+      'Update Business Rules',
+      'UPDATE',
+      'SYSTEM_CONFIG',
+      performedByRole || 'UNKNOWN',
       changes,
       config._id,
       performedBy,
@@ -93,7 +100,7 @@ class SystemConfigService {
   /**
    * Update feature flags
    */
-  async updateFeatureFlags(updates, performedBy, reason, ipAddress, userAgent) {
+  async updateFeatureFlags(updates, performedBy, reason, ipAddress, userAgent, performedByRole) {
     const config = await this.getSystemConfig();
     const oldValues = { ...config.featureFlags.toObject() };
     const changes = {};
@@ -124,7 +131,10 @@ class SystemConfigService {
     await config.save();
 
     await this._createAuditLog(
-      'UPDATE_FEATURE_FLAGS',
+      'Update Feature Flags',
+      'UPDATE',
+      'SYSTEM_CONFIG',
+      performedByRole || 'UNKNOWN',
       changes,
       config._id,
       performedBy,
@@ -142,7 +152,7 @@ class SystemConfigService {
   /**
    * Update maintenance settings
    */
-  async updateMaintenanceMode(updates, performedBy, reason, ipAddress, userAgent) {
+  async updateMaintenanceMode(updates, performedBy, reason, ipAddress, userAgent, performedByRole) {
     const config = await this.getSystemConfig();
     const oldValues = {
       isActive: config.maintenance.isActive,
@@ -153,6 +163,8 @@ class SystemConfigService {
     };
 
     const changes = {};
+    let isScheduled = false;
+    let isActivating = false;
 
     if (updates.hasOwnProperty('isActive')) {
       if (typeof updates.isActive !== 'boolean') {
@@ -164,6 +176,7 @@ class SystemConfigService {
           newValue: updates.isActive,
         };
         config.maintenance.isActive = updates.isActive;
+        isActivating = updates.isActive && !oldValues.isActive;
       }
     }
 
@@ -200,6 +213,7 @@ class SystemConfigService {
           newValue: newStart,
         };
         config.maintenance.scheduledStartTime = newStart;
+        isScheduled = true;
       }
     }
 
@@ -216,6 +230,7 @@ class SystemConfigService {
           newValue: newEnd,
         };
         config.maintenance.scheduledEndTime = newEnd;
+        isScheduled = true;
       }
     }
 
@@ -230,11 +245,29 @@ class SystemConfigService {
       throw new Error('No changes made to maintenance');
     }
 
+    // Determine maintenance type for audit log
+    const hasScheduledTimes = config.maintenance.scheduledStartTime && config.maintenance.scheduledEndTime;
+    const maintenanceType = isScheduled || hasScheduledTimes ? 'Scheduled' : 'Instant';
+    changes.maintenanceType = maintenanceType;
+
+    // Determine action name based on the type of change
+    let actionName = 'Update Maintenance Settings';
+    if (isScheduled) {
+      actionName = 'Schedule Maintenance';
+    } else if (isActivating) {
+      actionName = hasScheduledTimes ? 'Activate Scheduled Maintenance' : 'Activate Instant Maintenance';
+    } else if (updates.hasOwnProperty('isActive') && !updates.isActive) {
+      actionName = 'Deactivate Maintenance';
+    }
+
     config.updatedBy = performedBy;
     await config.save();
 
     await this._createAuditLog(
-      'UPDATE_MAINTENANCE_MODE',
+      actionName,
+      'UPDATE',
+      'SYSTEM_CONFIG',
+      performedByRole || 'UNKNOWN',
       changes,
       config._id,
       performedBy,
@@ -252,7 +285,7 @@ class SystemConfigService {
   /**
    * Update system info
    */
-  async updateSystemInfo(updates, performedBy, reason, ipAddress, userAgent) {
+  async updateSystemInfo(updates, performedBy, reason, ipAddress, userAgent, performedByRole) {
     const config = await this.getSystemConfig();
     const oldValues = {
       systemName: config.systemInfo.systemName,
@@ -312,7 +345,10 @@ class SystemConfigService {
     await config.save();
 
     await this._createAuditLog(
-      'UPDATE_SYSTEM_INFO',
+      'Update System Info',
+      'UPDATE',
+      'SYSTEM_CONFIG',
+      performedByRole || 'UNKNOWN',
       changes,
       config._id,
       performedBy,
@@ -322,6 +358,75 @@ class SystemConfigService {
     );
 
     // Clear cache
+    clearCache();
+    clearCache();
+
+    return config.populate('updatedBy', 'fullName email');
+  }
+
+  /**
+   * Update logging settings (logRetentionDays, enable flags, logLevel)
+   */
+  async updateLoggingSettings(updates, performedBy, reason, ipAddress, userAgent, performedByRole) {
+    const config = await this.getSystemConfig();
+    const oldValues = { ...config.logging.toObject() };
+    const changes = {};
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (!config.logging.hasOwnProperty(key)) {
+        throw new Error(`Invalid logging setting: ${key}`);
+      }
+
+      // Validation for specific fields
+      if (key === 'logRetentionDays') {
+        if (typeof value !== 'number' || value < 7 || value > 730) {
+          throw new Error('logRetentionDays must be a number between 7 and 730');
+        }
+      }
+
+      if (['enableActivityLogs', 'enableErrorLogs', 'enableSecurityLogs'].includes(key)) {
+        if (typeof value !== 'boolean') {
+          throw new Error(`${key} must be boolean`);
+        }
+      }
+
+      if (key === 'logLevel') {
+        const allowed = ['INFO', 'WARNING', 'ERROR', 'CRITICAL'];
+        if (!allowed.includes(value)) {
+          throw new Error('logLevel must be one of: ' + allowed.join(', '));
+        }
+      }
+
+      if (oldValues[key] !== value) {
+        changes[key] = {
+          oldValue: oldValues[key],
+          newValue: value,
+        };
+        config.logging[key] = value;
+      }
+    }
+
+    if (Object.keys(changes).length === 0) {
+      throw new Error('No changes made to logging settings');
+    }
+
+    config.updatedBy = performedBy;
+    await config.save();
+
+    await this._createAuditLog(
+      'Update Logging Settings',
+      'UPDATE',
+      'SYSTEM_CONFIG',
+      performedByRole || 'UNKNOWN',
+      changes,
+      config._id,
+      performedBy,
+      reason,
+      ipAddress,
+      userAgent
+    );
+
+    // Clear cache so new settings take effect
     clearCache();
 
     return config.populate('updatedBy', 'fullName email');
@@ -362,10 +467,16 @@ class SystemConfigService {
   /**
    * Create audit log entry
    */
-  async _createAuditLog(action, changes, entityId, performedBy, reason, ipAddress, userAgent) {
+  async _createAuditLog(action, actionCategory, module, performedByRole, changes, entityId, performedBy, reason, ipAddress, userAgent) {
     return await AuditLog.create({
       action,
-      changes,
+      actionCategory,
+      module,
+      performedByRole,
+      changes: {
+        before: {},
+        after: changes,
+      },
       entity: 'SYSTEM_CONFIG',
       entityId,
       performedBy,

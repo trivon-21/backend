@@ -144,6 +144,12 @@ exports.forgotPassword = async (req, res) => {
 
     return res.json({ message: "If that email is registered, a reset link has been sent." });
   } catch (err) {
+    if (err.message === "RESET_EMAIL_SEND_FAILED" || err.message === "EMAIL_NOT_CONFIGURED") {
+      return res.status(503).json({
+        message: "Password reset email could not be delivered right now. Please try again later."
+      });
+    }
+
     return res.status(500).json({ message: "Server error", error: err.message });
   }
 };

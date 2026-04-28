@@ -71,7 +71,11 @@ class LoggingService {
     const path = String(endpoint || '').toLowerCase();
 
     // Helper to detect path segments without IDs
-    const cleaned = path.replace(/\/[0-9a-f]{24}/g, '/:id').replace(/\/[0-9]+/g, '/:id');
+    const cleaned = path
+      .replace(/\/[0-9a-f]{24}(?=\/|$)/g, '/:id')
+      .replace(/\/[0-9]+(?=\/|$)/g, '/:id')
+      // Replace long token/hash-like segments (e.g. password reset token)
+      .replace(/\/[a-z0-9_-]{32,}(?=\/|$)/g, '/:token');
 
     const routes = [
       { test: (p) => p.includes('/api/customer/profile/photo'), map: { DELETE: 'Delete Profile Photo', POST: 'Upload Profile Photo', PUT: 'Update Profile Photo', GET: 'View Profile Photo' } },
@@ -80,6 +84,7 @@ class LoggingService {
       { test: (p) => p.includes('/api/auth/signup'), name: 'Signup' },
       { test: (p) => p.includes('/api/auth/logout'), name: 'Logout' },
       { test: (p) => p.includes('/api/auth/forgot-password'), name: 'Forgot Password Request' },
+      { test: (p) => p.includes('/api/auth/reset-password'), name: 'Reset Password' },
       { test: (p) => p.includes('/api/order') || p.includes('/orders'), map: { POST: 'Create Order', GET: 'Get Orders', PUT: 'Update Order', DELETE: 'Delete Order' } },
       { test: (p) => p.includes('/api/service-request'), map: { POST: 'Create Service Request', GET: 'Get Service Requests', PUT: 'Update Service Request', DELETE: 'Delete Service Request' } },
       { test: (p) => p.includes('/api/feedback'), map: { POST: 'Submit Feedback', GET: 'Get Feedback' } },

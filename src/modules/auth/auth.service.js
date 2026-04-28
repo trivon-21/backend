@@ -47,6 +47,24 @@ function signToken(user, rememberMe = true) {
   );
 }
 
+function getEmailTransporter() {
+  const emailUser = String(process.env.EMAIL_USER || "").trim();
+  // Gmail app passwords are often copied with spaces; strip them safely.
+  const emailPass = String(process.env.EMAIL_PASS || "").replace(/\s+/g, "");
+
+  if (!emailUser || !emailPass) {
+    throw new Error("EMAIL_NOT_CONFIGURED");
+  }
+
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: emailUser, pass: emailPass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000
+  });
+}
+
 /**
  * Send OTP email
  */
@@ -475,11 +493,28 @@ exports.login = async (authInput, password, rememberMe = true) => {
  * Forgot password
  */
 exports.forgotPassword = async (email) => {
-  const user = await User.findOne({ email: email.toLowerCase() });
+  const normalizedEmail = String(email || "").toLowerCase().trim();
+  let user = await User.findOne({ email: normalizedEmail });
+  let recipientEmail = normalizedEmail;
+
+  if (!user) {
+    user = await User.findOne({
+      additionalEmails: {
+        $elemMatch: {
+          email: normalizedEmail,
+          verified: true
+        }
+      }
+    });
+  }
 
   if (!user) {
     // Always respond successfully to prevent email enumeration
-    return;
+    return { userFound: false, emailSent: false };
+  }
+
+  if (user.email && user.email.toLowerCase() === normalizedEmail) {
+    recipientEmail = user.email;
   }
 
   const rawToken = crypto.randomBytes(32).toString("hex");
@@ -498,32 +533,33 @@ exports.forgotPassword = async (email) => {
   console.log(resetUrl);
   console.log("===========================\n");
 
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    try {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 10000
-      });
-
-      await transporter.sendMail({
-        from: `AirLux <${process.env.EMAIL_USER}>`,
-        to: user.email,
-        subject: "AirLux — Password Reset Request",
-        html: `
-          <p>Hi ${user.fullName},</p>
-          <p>You requested a password reset. Click the link below to reset your password:</p>
-          <p><a href="${resetUrl}">${resetUrl}</a></p>
-          <p>This link expires in <strong>1 hour</strong>.</p>
-          <p>If you did not request this, please ignore this email.</p>
-        `
-      });
-    } catch (emailErr) {
-      console.error("Failed to send reset email:", emailErr.message);
-    }
+  try {
+    const transporter = getEmailTransporter();
+    await transporter.sendMail({
+      from: `AirLux <${String(process.env.EMAIL_USER || "").trim()}>`,
+      to: recipientEmail,
+      subject: "AirLux — Password Reset Request",
+      html: `
+        <p>Hi ${user.fullName},</p>
+        <p>You requested a password reset. Click the link below to reset your password:</p>
+        <p style="margin: 20px 0;">
+          <a
+            href="${resetUrl}"
+            style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600;"
+          >Reset Password</a>
+        </p>
+        <p style="font-size:13px;color:#555;">If the button does not work, copy and paste this URL into your browser:</p>
+        <p><a href="${resetUrl}">${resetUrl}</a></p>
+        <p>This link expires in <strong>1 hour</strong>.</p>
+        <p>If you did not request this, please ignore this email.</p>
+      `
+    });
+  } catch (emailErr) {
+    console.error("Failed to send reset email:", emailErr);
+    throw new Error("RESET_EMAIL_SEND_FAILED");
   }
+
+  return { userFound: true, emailSent: true };
 };
 
 /**

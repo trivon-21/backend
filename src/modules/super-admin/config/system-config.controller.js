@@ -38,13 +38,15 @@ class SystemConfigController {
 
       const ipAddress = req.ip || req.connection.remoteAddress;
       const userAgent = req.get('user-agent');
+      const performedByRole = req.user.role || 'UNKNOWN';
 
       const config = await systemConfigService.updateBusinessRules(
         businessRules,
         req.user._id,
         reason,
         ipAddress,
-        userAgent
+        userAgent,
+        performedByRole
       );
 
       res.status(200).json({
@@ -78,13 +80,15 @@ class SystemConfigController {
 
       const ipAddress = req.ip || req.connection.remoteAddress;
       const userAgent = req.get('user-agent');
+      const performedByRole = req.user.role || 'UNKNOWN';
 
       const config = await systemConfigService.updateFeatureFlags(
         featureFlags,
         req.user._id,
         reason,
         ipAddress,
-        userAgent
+        userAgent,
+        performedByRole
       );
 
       res.status(200).json({
@@ -118,13 +122,15 @@ class SystemConfigController {
 
       const ipAddress = req.ip || req.connection.remoteAddress;
       const userAgent = req.get('user-agent');
+      const performedByRole = req.user.role || 'UNKNOWN';
 
       const config = await systemConfigService.updateMaintenanceMode(
         maintenance,
         req.user._id,
         reason,
         ipAddress,
-        userAgent
+        userAgent,
+        performedByRole
       );
 
       res.status(200).json({
@@ -158,13 +164,15 @@ class SystemConfigController {
 
       const ipAddress = req.ip || req.connection.remoteAddress;
       const userAgent = req.get('user-agent');
+      const performedByRole = req.user.role || 'UNKNOWN';
 
       const config = await systemConfigService.updateSystemInfo(
         systemInfo,
         req.user._id,
         reason,
         ipAddress,
-        userAgent
+        userAgent,
+        performedByRole
       );
 
       res.status(200).json({
@@ -177,6 +185,48 @@ class SystemConfigController {
       res.status(400).json({
         success: false,
         message: error.message || 'Failed to update system info',
+      });
+    }
+  }
+
+  /**
+   * PUT /api/super-admin/system-config/logging
+   * Update logging settings (retention days, enable flags, log level)
+   */
+  async updateLoggingSettings(req, res) {
+    try {
+      const { logging, reason } = req.body;
+
+      if (!logging || typeof logging !== 'object') {
+        return res.status(400).json({
+          success: false,
+          message: 'logging object is required',
+        });
+      }
+
+      const ipAddress = req.ip || req.connection.remoteAddress;
+      const userAgent = req.get('user-agent');
+      const performedByRole = req.user.role || 'UNKNOWN';
+
+      const config = await systemConfigService.updateLoggingSettings(
+        logging,
+        req.user._id,
+        reason,
+        ipAddress,
+        userAgent,
+        performedByRole
+      );
+
+      res.status(200).json({
+        success: true,
+        message: 'Logging settings updated successfully',
+        data: config,
+      });
+    } catch (error) {
+      console.error('Error updating logging settings:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to update logging settings',
       });
     }
   }

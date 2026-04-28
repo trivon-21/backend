@@ -448,6 +448,13 @@ exports.forgotPassword = async (req, res) => {
           html: `
             <p>Hi ${user.fullName},</p>
             <p>You requested a password reset. Click the link below to reset your password:</p>
+            <p style="margin: 20px 0;">
+              <a
+                href="${resetUrl}"
+                style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600;"
+              >Reset Password</a>
+            </p>
+            <p style="font-size:13px;color:#555;">If the button does not work, copy and paste this URL into your browser:</p>
             <p><a href="${resetUrl}">${resetUrl}</a></p>
             <p>This link expires in <strong>1 hour</strong>.</p>
             <p>If you did not request this, please ignore this email.</p>

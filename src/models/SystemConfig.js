@@ -9,6 +9,13 @@ const systemConfigSchema = new mongoose.Schema(
         min: 0,
         max: 10000000,
       },
+      logRetentionDays: {
+        type: Number,
+        default: 30,
+        min: 7,
+        max: 730,
+        description: 'Number of days to retain logs before auto-deletion (managed by business rules)',
+      },
       paymentAutoCancelDays: {
         type: Number,
         default: 14,
@@ -101,7 +108,7 @@ const systemConfigSchema = new mongoose.Schema(
     logging: {
       logRetentionDays: {
         type: Number,
-        default: 90,
+        default: 30,
         min: 7,
         max: 730,
         description: 'Number of days to retain logs before auto-deletion',

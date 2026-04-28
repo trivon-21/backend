@@ -13,6 +13,7 @@ const EXCLUDED_PATH_PATTERNS = [
   '/auth/login',        // Handled with explicit logging after auth
   '/auth/register',     // Handled with explicit logging after registration
   '/auth/logout',       // Handled with explicit logging after logout
+  '/super-admin/system-config', // Handled with detailed audit logging in service
 ];
 
 const MAJOR_GET_PATH_HINTS = [

@@ -24,6 +24,9 @@ router.put('/maintenance', systemConfigController.updateMaintenanceMode);
 // Update system info
 router.put('/system-info', systemConfigController.updateSystemInfo);
 
+// Update logging settings (retention, flags, log level)
+router.put('/logging', systemConfigController.updateLoggingSettings);
+
 // Get audit logs
 router.get('/audit-logs', systemConfigController.getAuditLogs);
 
