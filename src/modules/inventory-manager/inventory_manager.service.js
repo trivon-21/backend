@@ -49,9 +49,9 @@ exports.getDashboardData = async (user) => {
     .filter(i => i.status !== 'normal')
     .map(i => ({
       id: i._id,
-      itemName: i.name,
-      avail: i.available,
-      rsvd: i.reserved,
+      name: i.name,
+      available: i.available,
+      reserved: i.reserved,
       status: i.status
     }));
 
