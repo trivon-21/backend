@@ -399,15 +399,19 @@ async function sendDeactivationEmail(toEmail, userName, reason, reactivationLink
 /**
  * Send reactivation decision email to user
  */
-async function sendReactivationDecisionEmail(toEmail, userName, approved, adminResponse) {
+async function sendReactivationDecisionEmail(toEmail, userName, approved, adminResponse, isDirectReactivation = false) {
   const subject = approved
     ? "AirLux — Your Account Has Been Reactivated"
     : "AirLux — Reactivation Request Status";
 
+  const approvedText = isDirectReactivation
+    ? "Great news! Your account has been <strong>REACTIVATED</strong> by our administrative team."
+    : "Great news! Your account reactivation request has been <strong>APPROVED</strong>.";
+
   const html = approved
     ? `
       <p>Hi ${userName},</p>
-      <p>Great news! Your account reactivation request has been <strong>APPROVED</strong>.</p>
+      <p>${approvedText}</p>
       <p>Your account is now active and you can login immediately.</p>
       ${adminResponse ? `<p><strong>Message from our team:</strong> ${adminResponse}</p>` : ""}
       <p>You can now access your account at: <a href="${process.env.FRONTEND_URL || "http://localhost:4200"}/login">Login Here</a></p>
@@ -544,14 +548,16 @@ exports.handleReactivationRequest = async (userId, approve, adminResponse = "") 
 
   // Find the most recent pending request
   const pendingRequest = user.reactivationRequests.find(req => req.status === "pending");
-  if (!pendingRequest) {
-    throw new Error("No pending reactivation request found");
+  if (!pendingRequest && !approve) {
+    throw new Error("No pending reactivation request found to reject");
   }
 
   const now = new Date();
-  pendingRequest.status = approve ? "approved" : "rejected";
-  pendingRequest.respondedAt = now;
-  pendingRequest.adminResponse = adminResponse;
+  if (pendingRequest) {
+    pendingRequest.status = approve ? "approved" : "rejected";
+    pendingRequest.respondedAt = now;
+    pendingRequest.adminResponse = adminResponse;
+  }
 
   if (approve) {
     user.isActive = true;
@@ -565,7 +571,8 @@ exports.handleReactivationRequest = async (userId, approve, adminResponse = "") 
   // Send email notification to user (only if approved or before deletion for rejected)
   if (user.email) {
     try {
-      await sendReactivationDecisionEmail(user.email, user.fullName, approve, adminResponse);
+      const isDirectReactivation = !pendingRequest;
+      await sendReactivationDecisionEmail(user.email, user.fullName, approve, adminResponse, isDirectReactivation);
     } catch (emailErr) {
       console.error("Failed to send reactivation decision email:", emailErr.message);
     }
