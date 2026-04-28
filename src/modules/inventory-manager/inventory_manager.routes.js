@@ -27,4 +27,11 @@ router.patch("/orders/:id", protect, controller.updateOrder);
 router.get("/material-requests", protect, controller.getMaterialRequests);
 router.patch("/material-requests/:id", protect, controller.updateMaterialRequest);
 
+// Asset Management
+router.get("/technicians", protect, controller.getTechnicians);
+router.get("/asset-loans", protect, controller.getAssetLoans);
+router.post("/asset-loans", protect, controller.checkOutTool);
+router.post("/asset-loans/return/:id", protect, controller.returnTool);
+router.get("/asset-return-logs", protect, controller.getAssetReturnLogs);
+
 module.exports = router;

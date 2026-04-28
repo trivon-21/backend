@@ -117,3 +117,48 @@ exports.updateMaterialRequest = async (req, res) => {
     res.status(500).json({ message: "Failed to update material request" });
   }
 };
+
+exports.getTechnicians = async (req, res) => {
+  try {
+    const data = await service.getTechnicians();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch technicians" });
+  }
+};
+
+exports.getAssetLoans = async (req, res) => {
+  try {
+    const data = await service.getAssetLoans();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch asset loans" });
+  }
+};
+
+exports.checkOutTool = async (req, res) => {
+  try {
+    const data = await service.checkOutTool(req.body);
+    res.status(201).json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to check out tool" });
+  }
+};
+
+exports.returnTool = async (req, res) => {
+  try {
+    const data = await service.returnTool(req.params.id);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to return tool" });
+  }
+};
+
+exports.getAssetReturnLogs = async (req, res) => {
+  try {
+    const data = await service.getAssetReturnLogs();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch return logs" });
+  }
+};

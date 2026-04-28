@@ -5,6 +5,9 @@ const Supplier = require('../../models/Supplier');
 const Procurement = require('../../models/Procurement');
 const Order = require('../../models/Order');
 const MaterialRequest = require('../../models/MaterialRequest');
+const AssetLoan = require('../../models/AssetLoan');
+const AssetReturnLog = require('../../models/AssetReturnLog');
+const mongoose = require('mongoose');
 
 exports.getDashboardData = async (user) => {
   const inventory = await Inventory.find();
@@ -172,4 +175,38 @@ exports.updateMaterialRequest = async (id, data) => {
     return await MaterialRequest.findOneAndUpdate({ requestId: id }, { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: restData }, { new: true });
   }
   return await MaterialRequest.findOneAndUpdate({ requestId: id }, data, { new: true });
+};
+
+exports.getTechnicians = async () => {
+  const dassanaDb = mongoose.connection.useDb('Dassana');
+  return await dassanaDb.collection('TechTeamMembers').find({}).toArray();
+};
+
+exports.getAssetLoans = async () => {
+  return await AssetLoan.find().sort({ checkedOutAt: -1 });
+};
+
+exports.checkOutTool = async (data) => {
+  const newLoan = new AssetLoan(data);
+  return await newLoan.save();
+};
+
+exports.returnTool = async (loanId) => {
+  const loan = await AssetLoan.findById(loanId);
+  if (!loan) throw new Error('Loan not found');
+
+  const returnLog = new AssetReturnLog({
+    toolName: loan.toolName,
+    assetTag: loan.assetTag,
+    technicianName: loan.technicianName,
+    checkedOutAt: loan.checkedOutAt,
+    returnedAt: new Date()
+  });
+
+  await returnLog.save();
+  return await AssetLoan.findByIdAndDelete(loanId);
+};
+
+exports.getAssetReturnLogs = async () => {
+  return await AssetReturnLog.find().sort({ returnedAt: -1 });
 };
