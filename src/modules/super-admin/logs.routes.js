@@ -41,4 +41,8 @@ router.get('/user/:userId', LogsController.getUserActivityTimeline);
 router.get('/role/:role', LogsController.getRoleActivitySummary);
 router.get('/:id', LogsController.getLogById);
 
+// Deletion routes
+router.delete('/:id', LogsController.deleteLog);
+router.post('/bulk-delete', LogsController.bulkDeleteLogs);
+
 module.exports = router;

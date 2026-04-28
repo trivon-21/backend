@@ -48,6 +48,42 @@ class LogsService {
   }
 
   /**
+   * Delete a single log by ID
+   */
+  static async deleteLogById(logId) {
+    try {
+      const result = await AuditLog.deleteOne({ _id: logId });
+      return {
+        success: true,
+        deletedCount: result.deletedCount || 0,
+      };
+    } catch (error) {
+      console.error('[LogsService] Error deleting log:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk delete logs by array of IDs
+   */
+  static async bulkDeleteLogs(ids = []) {
+    try {
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return { success: false, deletedCount: 0, message: 'No ids provided' };
+      }
+
+      const result = await AuditLog.deleteMany({ _id: { $in: ids } });
+      return {
+        success: true,
+        deletedCount: result.deletedCount || 0,
+      };
+    } catch (error) {
+      console.error('[LogsService] Error bulk deleting logs:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get log details by ID
    */
   static async getLogById(logId) {

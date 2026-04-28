@@ -74,6 +74,44 @@ class LogsController {
   }
 
   /**
+   * Delete a single log by ID
+   * DELETE /api/super-admin/logs/:id
+   */
+  static async deleteLog(req, res) {
+    try {
+      const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ success: false, message: 'Log id is required' });
+      }
+
+      const result = await LogsService.deleteLogById(id);
+      return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+      console.error('[LogsController] Error deleting log:', error.message);
+      return res.status(500).json({ success: false, message: 'Error deleting log', error: error.message });
+    }
+  }
+
+  /**
+   * Bulk delete logs
+   * POST /api/super-admin/logs/bulk-delete
+   */
+  static async bulkDeleteLogs(req, res) {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ success: false, message: 'Array of ids is required' });
+      }
+
+      const result = await LogsService.bulkDeleteLogs(ids);
+      return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+      console.error('[LogsController] Error bulk deleting logs:', error.message);
+      return res.status(500).json({ success: false, message: 'Error deleting logs', error: error.message });
+    }
+  }
+
+  /**
    * Get activity logs
    * GET /api/super-admin/logs/activity
    */
