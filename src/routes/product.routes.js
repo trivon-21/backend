@@ -4,7 +4,8 @@ const {
     getAllProducts,
     getFilterOptions,
     getProductById,
-    createProduct
+    createProduct,
+    addProductReview
 } = require('../controllers/product.controller');
 
 // GET /api/products/filters/options  ← must come BEFORE /:id
@@ -18,5 +19,8 @@ router.get('/:id', getProductById);
 
 // POST /api/products
 router.post('/', createProduct);
+
+// POST /api/products/:id/reviews
+router.post('/:id/reviews', addProductReview);
 
 module.exports = router;

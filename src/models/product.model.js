@@ -77,7 +77,48 @@ const productSchema = new mongoose.Schema({
     inStock: {
         type: Boolean,
         default: true
+    },
+    // User reviews
+    reviews: {
+        type: [
+            {
+                userName: { type: String, required: true, trim: true },
+                rating: { type: Number, required: true, min: 1, max: 5 },
+                comment: { type: String, required: true, trim: true },
+                date: { type: Date, default: Date.now }
+            }
+        ],
+        default: []
+    },
+    // Calculated rating data
+    averageRating: {
+        type: Number,
+        default: 0
+    },
+    reviewCount: {
+        type: Number,
+        default: 0
     }
+}, { timestamps: true });
+
+// Add indexes for faster filtering and sorting
+productSchema.index({ brand: 1 });
+productSchema.index({ category: 1 });
+productSchema.index({ capacity: 1 });
+productSchema.index({ price: 1 });
+productSchema.index({ createdAt: -1 });
+
+// Middleware to update averageRating and reviewCount before saving
+productSchema.pre('save', function(next) {
+    if (this.reviews && this.reviews.length > 0) {
+        this.reviewCount = this.reviews.length;
+        const total = this.reviews.reduce((sum, r) => sum + r.rating, 0);
+        this.averageRating = parseFloat((total / this.reviewCount).toFixed(1));
+    } else {
+        this.reviewCount = 0;
+        this.averageRating = 0;
+    }
+    next();
 });
 
 const Product = mongoose.model('Product', productSchema);

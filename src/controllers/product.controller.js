@@ -56,7 +56,7 @@ const getAllProducts = async (req, res) => {
         const skip = (pageNum - 1) * limitNum;
 
         const products = await Product.find(filter)
-            .sort({ created_at: -1 })
+            .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limitNum);
 
@@ -131,19 +131,45 @@ const getProductById = async (req, res) => {
     }
 };
 
-// POST /api/products — Add new product
-const createProduct = async (req, res) => {
+// POST /api/products/:id/reviews — Add a new review
+const addProductReview = async (req, res) => {
     try {
-        const product = new Product(req.body);
-        await product.save();
-        res.status(201).json({ success: true, data: product });
-    } catch (error) {
-        if (error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map(e => e.message);
-            return res.status(400).json({ success: false, message: messages.join(', ') });
+        const { id } = req.params;
+        const { userName, rating, comment } = req.body;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({ success: false, message: 'Invalid product ID format' });
         }
-        console.error('createProduct error:', error);
-        res.status(500).json({ success: false, message: 'Server error while creating product' });
+
+        const product = await Product.findById(id);
+        if (!product) {
+            return res.status(404).json({ success: false, message: 'Product not found' });
+        }
+
+        const newReview = {
+            userName,
+            rating: Number(rating),
+            comment,
+            date: new Date()
+        };
+
+        product.reviews.push(newReview);
+        
+        // The pre('save') hook will update averageRating and reviewCount
+        await product.save();
+
+        res.status(201).json({ 
+            success: true, 
+            message: 'Review added successfully',
+            data: {
+                averageRating: product.averageRating,
+                reviewCount: product.reviewCount,
+                reviews: product.reviews
+            }
+        });
+    } catch (error) {
+        console.error('addProductReview error:', error);
+        res.status(500).json({ success: false, message: 'Server error while adding review' });
     }
 };
 
@@ -151,5 +177,6 @@ module.exports = {
     getAllProducts,
     getFilterOptions,
     getProductById,
-    createProduct
+    createProduct,
+    addProductReview
 };
