@@ -71,7 +71,7 @@ exports.getPendingPayments = async (req, res) => {
     const orders = await Order.find({
       orderType: "Buy Only",
       paymentStatus: "Under Review",
-    }).sort({ updatedAt: -1 });
+    }).sort({ createdAt: 1 });
 
     const formatted = await Promise.all(orders.map(formatOrder));
     res.json(formatted);
@@ -184,7 +184,7 @@ exports.getApprovedPayments = async (req, res) => {
     const orders = await Order.find({
       orderType: "Buy Only",
       paymentStatus: "Approved",
-    }).sort({ updatedAt: -1 });
+    }).sort({ createdAt: -1 });
 
     const formatted = await Promise.all(orders.map(formatOrder));
     res.json(formatted);
@@ -200,7 +200,7 @@ exports.getRejectedPayments = async (req, res) => {
     const orders = await Order.find({
       orderType: "Buy Only",
       paymentStatus: "Rejected",
-    }).sort({ updatedAt: -1 });
+    }).sort({ createdAt: -1 });
 
     const formatted = await Promise.all(orders.map(formatOrder));
     res.json(formatted);

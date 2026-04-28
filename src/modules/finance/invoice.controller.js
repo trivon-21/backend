@@ -4,7 +4,7 @@ const cron = require("node-cron");
 const PDFDocument = require("pdfkit");
 const { createLog } = require("./auditLog.controller");
 
-// ── Lazy model loaders ────────────────────────────────────────────────────────
+// Lazy model loaders 
 const getOrderModel = () => {
   try { return mongoose.model("Order"); }
   catch {
@@ -320,16 +320,6 @@ exports.generateInvoice = async (req, res) => {
       rate: installationCharge,
       amount: installationCharge,
     });
-    // 4. Inspection fee from L_Charges
-    /* const inspectionCharge = await getCharge("inspection") || 2500;
-     items.push({
-       no:          itemNo++,
-       itemName:    "Inspection Fee",
-       description: "Site inspection fee",
-       qty:         1,
-       rate:        inspectionCharge,
-       amount:      inspectionCharge,
-     });*/
 
     // ── Totals ────────────────────────────────────────────────────────────────
     const subTotal = items.reduce((s, i) => s + (i.amount || 0), 0);
@@ -633,13 +623,48 @@ exports.getRejectedInvoices = async (req, res) => {
 // ── GET paid invoices ─────────────────────────────────────────────────────────
 exports.getPaidInvoices = async (req, res) => {
   try {
-    const invoices = await Invoice.find({ status: "PAID" }).sort({ paidAt: -1 });
-    res.json(invoices);
+    const Invoice = mongoose.model("Invoice");
+    const invoices = await Invoice.find({ status: "PAID" })
+      .sort({ paidAt: -1, updatedAt: -1 });
+
+    // For any PAID invoice missing paidAt, use updatedAt as fallback
+    const result = invoices.map(inv => {
+      const obj = inv.toObject();
+      if (!obj.paidAt) obj.paidAt = obj.updatedAt;
+      return obj;
+    });
+
+    res.json(result);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch", error: error.message });
+    res.status(500).json({ message: "Failed", error: error.message });
   }
 };
+// ── MARK AS PAID ──────────────────────────────────────────────────────────────
+exports.markAsPaid = async (req, res) => {
+  try {
+    const invoice = await Invoice.findByIdAndUpdate(
+      req.params.id,
+      { status: "PAID", paidAt: new Date() },
+      { new: true }
+    );
+    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
 
+    await createLog({
+      paymentType:   "INVOICE",
+      eventType:     "INVOICE_PAID",
+      orderId:       invoice.orderId?.toString() || "",
+      invoiceId:     invoice.invoiceNumber || invoice._id.toString(),
+      customerName:  invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount:        invoice.grandTotal,
+      performedBy:   "Finance Officer",
+    });
+
+    res.json({ message: "Invoice marked as paid", invoice });
+  } catch (error) {
+    res.status(500).json({ message: "Failed", error: error.message });
+  }
+};
 // ── GET auto cancelled invoices ───────────────────────────────────────────────
 exports.getAutoCancelledInvoices = async (req, res) => {
   try {

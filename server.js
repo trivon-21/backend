@@ -4,6 +4,7 @@ require("./src/modules/shared/L_inventories.model");
 require("./src/modules/shared/L_charges.model");
 require("./src/modules/shared/L_sellingPrice.model");
 require("./src/modules/shared/L_serviceReport.model");
+require("./src/modules/shared/L_bankDetails.model");
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");

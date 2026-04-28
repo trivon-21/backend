@@ -24,5 +24,15 @@ router.get("/customer/:invoiceId", controller.getInvoiceForCustomer);
 router.put("/accept/:invoiceId", controller.acceptInvoice);
 router.put("/reject/:invoiceId", controller.rejectInvoice);
 router.put("/cancel-rejection/:invoiceId", controller.cancelRejection);
-
+router.put("/mark-paid/:id", controller.markAsPaid);
+router.get("/by-number/:invoiceNumber", async (req, res) => {
+    try {
+        const inv = await require("./Invoice.model").findOne({ invoiceNumber: req.params.invoiceNumber })
+            || await require("./Invoice.model").findById(req.params.invoiceNumber).catch(() => null);
+        if (!inv) return res.status(404).json({ message: "Invoice not found" });
+        res.json(inv);
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
 module.exports = router;

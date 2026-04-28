@@ -6,6 +6,24 @@ const { createLog } = require("./auditLog.controller");
 const SLOTS_PER_DAY = 4;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
+const getLCharge = async (name) => {
+  try {
+    const LCharge = mongoose.model("L_Charge");
+    const charge = await LCharge.findOne({ name });
+    return charge ? charge.amount : null;
+  } catch { return null; }
+};
+
+const getBankDetails = async () => {
+  try {
+    const LBankDetail = mongoose.model("L_BankDetail");
+    const bd = await LBankDetail.findOne({ type: "inspection" });
+    if (bd) return { bankName: bd.bankName, branchName: bd.branchName, accountName: bd.accountName, accountNo: bd.accountNo };
+  } catch {}
+  // fallback if model not registered or no doc found
+  return { bankName: "Commercial Bank", branchName: "Colombo 03", accountName: "AirLux Pvt Ltd", accountNo: "1234567890" };
+};
+
 const getOrderModel = () => {
   try { return mongoose.model("Order"); }
   catch {
@@ -59,33 +77,37 @@ exports.getOrCreateTicket = async (req, res) => {
     const user = await User.findById(order.customer);
     let ticket = await InspectionTicket.findOne({ orderId: order._id });
     if (!ticket) {
+      const inspFee = await getLCharge("inspection") || 2500;
       ticket = await InspectionTicket.create({
         orderId: order._id,
         customerId: order.customer,
         status: "PENDING_PAYMENT",
-        inspectionFee: 5000,
+        inspectionFee: inspFee,
       });
     }
-    res.json({
-      ticket,
-      order: {
-        orderId: order.orderRef || order._id,
-        customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Customer",
-        customerEmail: user?.email || "",
-        itemName: order.itemName,
-        items: [order.itemName],
-        quantity: order.quantity,
-        amount: order.amount,
-        orderType: order.orderType,
-      },
-      bankDetails: {
-        bankName: "Commercial Bank",
-        branchName: "Colombo 03",
-        accountName: "AirLux Pvt Ltd",
-        accountNo: "1234567890",
-        inspectionFee: ticket.inspectionFee,
-      },
-    });
+
+const bank = await getBankDetails();
+res.json({
+  ticket,
+  order: {
+    orderId: order.orderRef || order._id,
+    customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Customer",
+    customerEmail: user?.email || "",
+    itemName: order.itemName,
+    items: [order.itemName],
+    quantity: order.quantity,
+    amount: order.amount,
+    orderType: order.orderType,
+  },
+  bankDetails: {
+    bankName:      bank.bankName,
+    branchName:    bank.branchName,
+    accountName:   bank.accountName,
+    accountNo:     bank.accountNo,
+    inspectionFee: ticket.inspectionFee,
+  },
+});
+
   } catch (error) {
     console.error("getOrCreateTicket error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
@@ -117,7 +139,7 @@ exports.uploadSlip = async (req, res) => {
 // ── GET pending verification ──────────────────────────────────────────────────
 exports.getPendingVerification = async (req, res) => {
   try {
-    const tickets = await InspectionTicket.find({ status: "PAYMENT_UNDER_REVIEW" }).sort({ updatedAt: -1 });
+    const tickets = await InspectionTicket.find({ status: "PAYMENT_UNDER_REVIEW" }).sort({ createdAt: 1 });
     const Order = getOrderModel();
     const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
@@ -178,7 +200,7 @@ exports.approvePayment = async (req, res) => {
       customerId: ticket.customerId,
       customerName: user?.fullName || "Unknown",
       customerEmail: user?.email || "",
-      amount: ticket.inspectionFee && ticket.inspectionFee > 0 ? ticket.inspectionFee : 5000,
+      amount: ticket.inspectionFee && ticket.inspectionFee > 0 ? ticket.inspectionFee : (await getLCharge("inspection") || 2500),
       slipUrl: ticket.slipUrl || null,
       performedBy: "Finance Officer",
     });
@@ -216,7 +238,7 @@ exports.rejectPayment = async (req, res) => {
       customerId: ticket.customerId,
       customerName: user?.fullName || "Unknown",
       customerEmail: user?.email || "",
-      amount: ticket.inspectionFee && ticket.inspectionFee > 0 ? ticket.inspectionFee : 5000,
+      amount: ticket.inspectionFee && ticket.inspectionFee > 0 ? ticket.inspectionFee : (await getLCharge("inspection") || 2500),
       slipUrl: ticket.slipUrl || null,
       rejectionReason: rejectionReason,
       performedBy: "Finance Officer",
@@ -357,7 +379,7 @@ exports.getAvailableDates = async (req, res) => {
       const dateKey = current.toISOString().split("T")[0];
       const dayOfWeek = current.getDay();
       const isHoliday = PUBLIC_HOLIDAYS.includes(dateKey);
-      const isWeekend = dayOfWeek === 6; // Only Saturday (6), Sunday (0) is now available
+      const isWeekend = dayOfWeek === 6;
       const bookingCount = bookingCounts[dateKey] || 0;
       const isFullyBooked = bookingCount >= SLOTS_PER_DAY;
 
