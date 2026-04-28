@@ -98,6 +98,32 @@ const systemConfigSchema = new mongoose.Schema(
         default: '+94 11 234 5678',
       },
     },
+    logging: {
+      logRetentionDays: {
+        type: Number,
+        default: 90,
+        min: 7,
+        max: 730,
+        description: 'Number of days to retain logs before auto-deletion',
+      },
+      enableActivityLogs: {
+        type: Boolean,
+        default: true,
+      },
+      enableErrorLogs: {
+        type: Boolean,
+        default: true,
+      },
+      enableSecurityLogs: {
+        type: Boolean,
+        default: true,
+      },
+      logLevel: {
+        type: String,
+        enum: ['INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        default: 'INFO',
+      },
+    },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

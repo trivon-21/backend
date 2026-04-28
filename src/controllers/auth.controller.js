@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const User = require("../models/User");
+const LoggingService = require("../utils/logging-service");
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -278,6 +279,25 @@ exports.login = async (req, res) => {
 
       const token = signToken(user, rememberMe !== false);
 
+      // Log successful login
+      await LoggingService.logActivity({
+        userId: user._id,
+        userRole: user.role,
+        module: 'AUTH',
+        action: 'Login',
+        actionCategory: 'LOGIN',
+        entity: 'User',
+        entityId: user._id,
+        reason: 'Email authentication',
+        metadata: {
+          authMethod: 'EMAIL',
+          email: user.email,
+        },
+        request: req,
+        status: 'SUCCESS',
+        statusCode: 200,
+      });
+
       return res.json({
         message: "Login successful",
         token,
@@ -342,6 +362,25 @@ exports.login = async (req, res) => {
       });
 
       const token = signToken(user, rememberMe !== false);
+
+      // Log successful login
+      await LoggingService.logActivity({
+        userId: user._id,
+        userRole: user.role,
+        module: 'AUTH',
+        action: 'Login',
+        actionCategory: 'LOGIN',
+        entity: 'User',
+        entityId: user._id,
+        reason: 'Phone authentication',
+        metadata: {
+          authMethod: 'PHONE',
+          phoneNumber: user.phoneNumber,
+        },
+        request: req,
+        status: 'SUCCESS',
+        statusCode: 200,
+      });
 
       return res.json({
         message: "Login successful",

@@ -1,5 +1,12 @@
 const authService = require("./auth.service");
 const systemConfigService = require("../super-admin/config/system-config.service");
+const LoggingService = require("../../utils/logging-service");
+
+const inferLoginMethod = (identifier = "") => {
+  const input = String(identifier || "").trim();
+  if (!input) return "UNKNOWN";
+  return input.includes("@") ? "EMAIL" : "PHONE";
+};
 
 exports.getMaintenanceStatus = async (req, res) => {
   try {
@@ -42,15 +49,55 @@ exports.signup = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
+  let authInput = null;
+
   try {
     const { email, password, rememberMe, identifier, phoneNumber } = req.body;
-    const authInput = identifier || email || phoneNumber;
+    authInput = identifier || email || phoneNumber;
 
     if (!authInput || !password) {
+      // Log failed login attempt - missing credentials
+      await LoggingService.logActivity({
+        userId: null,
+        userRole: 'UNKNOWN',
+        module: 'AUTH',
+        action: 'LOGIN_FAILED',
+        actionCategory: 'LOGIN',
+        entity: 'User',
+        status: 'FAILED',
+        reason: 'Missing credentials',
+        metadata: {
+          missingFields: ['authInput', 'password'],
+          loginMethod: inferLoginMethod(authInput),
+        },
+        request: req,
+      }).catch(logErr => console.error('Logging error:', logErr));
       return res.status(400).json({ message: "identifier (email or phone) and password are required" });
     }
 
     const result = await authService.login(authInput, password, rememberMe !== false);
+
+    // Log successful login
+    await LoggingService.logActivity({
+      userId: result.user.id,
+      userRole: result.user.role,
+      module: 'AUTH',
+      action: 'LOGIN_SUCCESS',
+      actionCategory: 'LOGIN',
+      entity: 'User',
+      entityId: result.user.id,
+      status: 'SUCCESS',
+      metadata: {
+        loginMethod: inferLoginMethod(authInput),
+        rememberMe: rememberMe !== false,
+        userRole: result.user.role,
+        loginIdentifier: authInput,
+        userEmail: result.user.email || null,
+        userPhone: result.user.phoneNumber || null,
+        userName: result.user.fullName || null,
+      },
+      request: req,
+    }).catch(logErr => console.error('Logging error:', logErr));
 
     return res.json({
       message: "Login successful",
@@ -58,10 +105,33 @@ exports.login = async (req, res) => {
       user: result.user
     });
   } catch (err) {
-    if (err.message.includes("Account locked")) {
-      return res.status(423).json({ message: err.message });
+    const failureMessage = err?.message || 'Authentication failed';
+
+    // Log login errors (invalid credentials, account locked, etc.)
+    await LoggingService.logActivity({
+      userId: err?.userId || null,
+      userRole: err?.userRole || 'UNKNOWN',
+      module: 'AUTH',
+      action: 'LOGIN_ERROR',
+      actionCategory: 'LOGIN',
+      entity: 'User',
+      status: 'FAILED',
+      reason: failureMessage,
+      metadata: {
+        errorType: err?.code || 'AUTH_ERROR',
+        loginMethod: err?.loginMethod || inferLoginMethod(authInput),
+        loginIdentifier: err?.loginIdentifier || authInput || null,
+        userEmail: err?.userEmail || null,
+        userPhone: err?.userPhone || null,
+        userName: err?.userName || null,
+      },
+      request: req,
+    }).catch(logErr => console.error('Logging error:', logErr));
+
+    if (failureMessage.includes("Account locked")) {
+      return res.status(423).json({ message: failureMessage });
     }
-    return res.status(401).json({ message: err.message });
+    return res.status(401).json({ message: failureMessage });
   }
 };
 

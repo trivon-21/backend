@@ -10,6 +10,32 @@ const User = require("../../models/User");
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
+function createLoginError(message, code, context = {}) {
+  const error = new Error(message);
+  error.code = code;
+  Object.assign(error, context);
+  return error;
+}
+
+function buildUserContext(user, loginMethod, loginIdentifier) {
+  if (!user) {
+    return {
+      loginMethod,
+      loginIdentifier,
+    };
+  }
+
+  return {
+    userId: user._id,
+    userRole: user.role,
+    userEmail: user.email || null,
+    userPhone: user.phoneNumber || null,
+    userName: user.fullName || null,
+    loginMethod,
+    loginIdentifier,
+  };
+}
+
 /**
  * Sign JWT token
  */
@@ -268,7 +294,10 @@ exports.signup = async (authInput, fullName, password, options = {}) => {
 exports.login = async (authInput, password, rememberMe = true) => {
   const authType = identifyAuthType(authInput);
   if (authType === "invalid") {
-    throw new Error("Invalid email or phone number format");
+    throw createLoginError("Invalid email or phone number format", "INVALID_IDENTIFIER_FORMAT", {
+      loginMethod: "UNKNOWN",
+      loginIdentifier: authInput,
+    });
   }
 
   if (authType === "email") {
@@ -281,22 +310,30 @@ exports.login = async (authInput, password, rememberMe = true) => {
         additionalEmails: { $elemMatch: { email: normalizedEmail, verified: true } }
       });
     }
-    if (!user) throw new Error("Invalid email or password");
+    if (!user) {
+      throw createLoginError("Invalid email or password", "INVALID_CREDENTIALS", {
+        loginMethod: "EMAIL",
+        loginIdentifier: normalizedEmail,
+      });
+    }
 
     // Check if account is deactivated
     if (!user.isActive) {
-      throw {
-        code: "ACCOUNT_DEACTIVATED",
-        message: "This account has been deactivated",
+      throw createLoginError("This account has been deactivated", "ACCOUNT_DEACTIVATED", {
+        ...buildUserContext(user, "EMAIL", normalizedEmail),
         deactivationReason: user.deactivationReason || "",
-        canReactivate: true
-      };
+        canReactivate: true,
+      });
     }
 
     // Check if account is locked
     if (user.lockUntil && user.lockUntil > Date.now()) {
       const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
-      throw new Error(`Account locked. Try again in ${minutesLeft} minute${minutesLeft > 1 ? "s" : ""}.`);
+      throw createLoginError(
+        `Account locked. Try again in ${minutesLeft} minute${minutesLeft > 1 ? "s" : ""}.`,
+        "ACCOUNT_LOCKED",
+        buildUserContext(user, "EMAIL", normalizedEmail)
+      );
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
@@ -309,12 +346,20 @@ exports.login = async (authInput, password, rememberMe = true) => {
         updates.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
         updates.loginAttempts = 0;
         await User.findByIdAndUpdate(user._id, { $set: updates });
-        throw new Error("Account locked for 15 minutes due to too many failed login attempts.");
+        throw createLoginError(
+          "Account locked for 15 minutes due to too many failed login attempts.",
+          "ACCOUNT_LOCKED",
+          buildUserContext(user, "EMAIL", normalizedEmail)
+        );
       }
 
       await User.findByIdAndUpdate(user._id, { $set: updates });
       const remaining = MAX_LOGIN_ATTEMPTS - newAttempts;
-      throw new Error(`Invalid email or password. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining before account lock.`);
+      throw createLoginError(
+        `Invalid email or password. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining before account lock.`,
+        "INVALID_CREDENTIALS",
+        buildUserContext(user, "EMAIL", normalizedEmail)
+      );
     }
 
     // Successful login — clear lock fields
@@ -342,30 +387,39 @@ exports.login = async (authInput, password, rememberMe = true) => {
   if (authType === "phone") {
     // LOGIN WITH PHONE
     if (!validatePhoneFormat(authInput)) {
-      throw new Error("Invalid phone number format");
+      throw createLoginError("Invalid phone number format", "INVALID_PHONE_FORMAT", {
+        loginMethod: "PHONE",
+        loginIdentifier: authInput,
+      });
     }
 
     const normalizedPhone = normalizePhoneNumber(authInput);
     const user = await User.findOne({ phoneNumber: normalizedPhone });
 
     if (!user) {
-      throw new Error("Invalid phone number or password");
+      throw createLoginError("Invalid phone number or password", "INVALID_CREDENTIALS", {
+        loginMethod: "PHONE",
+        loginIdentifier: normalizedPhone,
+      });
     }
 
     // Check if account is deactivated
     if (!user.isActive) {
-      throw {
-        code: "ACCOUNT_DEACTIVATED",
-        message: "This account has been deactivated",
+      throw createLoginError("This account has been deactivated", "ACCOUNT_DEACTIVATED", {
+        ...buildUserContext(user, "PHONE", normalizedPhone),
         deactivationReason: user.deactivationReason || "",
-        canReactivate: true
-      };
+        canReactivate: true,
+      });
     }
 
     // Check if account is locked
     if (user.lockUntil && user.lockUntil > Date.now()) {
       const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
-      throw new Error(`Account locked. Try again in ${minutesLeft} minute${minutesLeft > 1 ? "s" : ""}.`);
+      throw createLoginError(
+        `Account locked. Try again in ${minutesLeft} minute${minutesLeft > 1 ? "s" : ""}.`,
+        "ACCOUNT_LOCKED",
+        buildUserContext(user, "PHONE", normalizedPhone)
+      );
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
@@ -378,12 +432,20 @@ exports.login = async (authInput, password, rememberMe = true) => {
         updates.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
         updates.loginAttempts = 0;
         await User.findByIdAndUpdate(user._id, { $set: updates });
-        throw new Error("Account locked for 15 minutes due to too many failed login attempts.");
+        throw createLoginError(
+          "Account locked for 15 minutes due to too many failed login attempts.",
+          "ACCOUNT_LOCKED",
+          buildUserContext(user, "PHONE", normalizedPhone)
+        );
       }
 
       await User.findByIdAndUpdate(user._id, { $set: updates });
       const remaining = MAX_LOGIN_ATTEMPTS - newAttempts;
-      throw new Error(`Invalid phone number or password. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining before account lock.`);
+      throw createLoginError(
+        `Invalid phone number or password. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining before account lock.`,
+        "INVALID_CREDENTIALS",
+        buildUserContext(user, "PHONE", normalizedPhone)
+      );
     }
 
     // Successful login — clear lock fields

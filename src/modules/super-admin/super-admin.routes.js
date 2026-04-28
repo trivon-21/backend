@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const controller = require("./super-admin.controller");
 const systemConfigRoutes = require("./config/system-config.routes");
+const logsRoutes = require("./logs.routes");
 const { protect } = require("../../middleware/protect");
 const { authorize } = require("../../middleware/role.middleware");
 
@@ -56,5 +57,10 @@ router.patch("/reactivation-requests/:userId", controller.handleReactivationRequ
  * System Configuration Routes
  */
 router.use("/system-config", systemConfigRoutes);
+
+/**
+ * Logs Management Routes
+ */
+router.use("/logs", logsRoutes);
 
 module.exports = router;

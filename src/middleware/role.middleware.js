@@ -20,4 +20,4 @@ const authorize = (requiredRoles = []) => {
   };
 };
 
-module.exports = { authorize };
+module.exports = { authorize, restrictTo: authorize };
