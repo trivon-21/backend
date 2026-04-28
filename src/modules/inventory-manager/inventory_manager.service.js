@@ -11,7 +11,9 @@ const mongoose = require('mongoose');
 
 exports.getDashboardData = async (user) => {
   const inventory = await Inventory.find();
-  const activities = await Activity.find().sort({ timestamp: -1 }).limit(10);
+  const activities = await Activity.find({ 
+    type: { $in: ['return', 'dispatch', 'request', 'grn', 'alert'] } 
+  }).sort({ timestamp: -1 }).limit(10);
   const logistics = await Logistics.find();
 
   const orders = await Order.find();
