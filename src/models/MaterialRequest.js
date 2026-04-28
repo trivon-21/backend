@@ -14,6 +14,7 @@ const MaterialRequestSchema = new mongoose.Schema({
   location: { type: String, required: true },
   status: { type: String, enum: ['pending', 'reserved', 'completed'], default: 'pending' },
   items: [MaterialItemSchema],
+  serviceTeam: { type: String },
   completedAt: { type: String },
   lastMovedAt: { type: Date }
 }, { 

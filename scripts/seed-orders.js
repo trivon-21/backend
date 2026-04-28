@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const Order = require('../src/models/Order');
 const MaterialRequest = require('../src/models/MaterialRequest');
-require('dotenv').config({ path: '../.env' }); // Make sure to load env
+require('dotenv').config({ path: '.env' }); // Make sure to load env
 
 const seedData = async () => {
   try {
