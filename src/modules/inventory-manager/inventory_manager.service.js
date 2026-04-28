@@ -156,7 +156,8 @@ exports.getOrders = async () => {
 
 exports.updateOrder = async (id, data) => {
   if (data.lastMovedAt === null) {
-    return await Order.findOneAndUpdate({ orderId: id }, { $unset: { lastMovedAt: 1, completedAt: 1 }, ...data }, { new: true });
+    const { lastMovedAt, completedAt, ...restData } = data;
+    return await Order.findOneAndUpdate({ orderId: id }, { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: restData }, { new: true });
   }
   return await Order.findOneAndUpdate({ orderId: id }, data, { new: true });
 };
@@ -167,7 +168,8 @@ exports.getMaterialRequests = async () => {
 
 exports.updateMaterialRequest = async (id, data) => {
   if (data.lastMovedAt === null) {
-    return await MaterialRequest.findOneAndUpdate({ requestId: id }, { $unset: { lastMovedAt: 1, completedAt: 1 }, ...data }, { new: true });
+    const { lastMovedAt, completedAt, ...restData } = data;
+    return await MaterialRequest.findOneAndUpdate({ requestId: id }, { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: restData }, { new: true });
   }
   return await MaterialRequest.findOneAndUpdate({ requestId: id }, data, { new: true });
 };
