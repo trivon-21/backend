@@ -1,9 +1,9 @@
 const express = require('express');
 
-const inspectionReportRoutes = require('../modules/inspection-team/inspection.routes');
-const inspectionRoutes = require('../modules/shared/inspection/inspection.route');
-const installationRoutes = require('../modules/shared/installation/installation.route');
-const serviceRequestRoutes = require('../modules/shared/serviceRequest/serviceRequest.route');
+const inspectionReportRoutes = require('../modules/shared/inspection/inspectionReport.routes');
+const inspectionRoutes = require('../modules/shared/inspection/inspection.routes');
+const installationRoutes = require('../modules/shared/installation/installation.routes');
+const serviceRequestRoutes = require('../modules/shared/serviceRequest/serviceRequest.routes');
 const materialRequestRoutes = require('../modules/shared/inventory/inventory.routes');
 const techTeamRoutes = require('../modules/service-team/serviceTeam.routes');
 const serviceTeamTaskController = require('../modules/service-team/task.controller');
@@ -36,3 +36,4 @@ router.get(API_SEGMENTS.TEAM_DETAILS, serviceTeamMemberController.getTeamDetails
 router.get(API_SEGMENTS.SERVICE_HISTORY, serviceHistoryController.getCustomerHistory);
 
 module.exports = router;
+

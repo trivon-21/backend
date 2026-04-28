@@ -1,6 +1,6 @@
-const Installation = require('../shared/installation/Installation');
-const ServiceRequest = require('../shared/serviceRequest/ServiceRequest');
-const TechTeam = require('../shared/tech-teams/TechTeam');
+const Installation = require('../shared/installation/installation.model');
+const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
+const TechTeam = require('../shared/tech-teams/techTeam.model');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
 const {
   getRequestedTeamName,

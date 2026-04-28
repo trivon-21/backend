@@ -1,7 +1,7 @@
 // src/routes/inspectionReport.route.js
 const express = require('express');
 const router = express.Router();
-const controller = require('./inspection.controller');
+const controller = require('./inspectionReport.controller');
 
 router.get('/', controller.getAllReports);
 router.get('/:id', controller.getReportById);

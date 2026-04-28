@@ -1,11 +1,11 @@
-// src/routes/materialRequest.route.js
 const express = require('express');
 const router = express.Router();
 const materialController = require('./inventory.controller');
-const NewRequest = require('../serviceRequest/NewRequest');
-const ServiceRequest = require('../serviceRequest/ServiceRequest');
-const Installation = require('../installation/Installation');
+const NewRequest = require('../serviceRequest/newRequest.model');
+const ServiceRequest = require('../serviceRequest/serviceRequest.model');
+const Installation = require('../installation/installation.model');
 const Customer = require('../../customer/customer.model');
+const { calculateWarrantyStatus } = require('../../../utils/warranty.utils');
 const {
     WORKFLOW_STATUS,
     EXECUTION_STATUS,
@@ -104,27 +104,13 @@ router.get('/', async (req, res) => {
             });
 
         const newRequestsFormatted = await Promise.all(newRequests.map(async (req) => {
-            let isUnderWarranty = false;
-            let isFreeOfCharge = false;
             const customerId = toCustomerId(req.customerId);
             const populatedCustomer = req.customerId && typeof req.customerId === 'object' ? req.customerId : null;
             const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
             const customerObjectId = customerId || req.customerId;
 
-            const installation = await Installation.findOne({ customerId: customerObjectId, status: EXECUTION_STATUS.COMPLETED }).lean();
-            if (installation) {
-                const installDate = new Date(installation.serviceDate || installation.date);
-                const twoYearsLater = new Date(installDate);
-                twoYearsLater.setFullYear(twoYearsLater.getFullYear() + 2);
-                isUnderWarranty = new Date() <= twoYearsLater;
-
-                const completedCount = await ServiceRequest.countDocuments({
-                    customerId: customerObjectId,
-                    status: EXECUTION_STATUS.COMPLETED,
-                    createdAt: { $gte: installDate, $lte: twoYearsLater }
-                });
-                isFreeOfCharge = isUnderWarranty && completedCount < 3;
-            }
+            // Calculate warranty status for this customer
+            const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(customerObjectId);
 
             return {
                 ...req,

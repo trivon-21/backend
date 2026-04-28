@@ -15,6 +15,7 @@ const serviceReportSchema = new mongoose.Schema({
     enum: ['ServiceRequest', 'Installation'] // Supports both request types
   },
   serviceType: { type: String, default: 'Repair' }, 
+  teamName: String,
   customer: {
     name: String, phone: String, email: String, address: String
   },
@@ -26,6 +27,7 @@ const serviceReportSchema = new mongoose.Schema({
   materialsUsed: [{ item: String, quantity: String }],
   notesFromMainTechnician: String,
   technicianComment: String, 
+  reviewNotes: String,
   finalStatus: { type: String, default: EXECUTION_STATUS.COMPLETED },        
   submittedAt: { type: Date, default: Date.now }
 }, { timestamps: true });

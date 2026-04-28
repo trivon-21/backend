@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
-const ServiceRequest = require('../shared/serviceRequest/ServiceRequest');
-const Installation = require('../shared/installation/Installation');
-const Inspection = require('../shared/inspection/inspection');
+const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
+const Installation = require('../shared/installation/installation.model');
+const Inspection = require('../shared/inspection/inspection.model');
 const ServiceReport = require('../technician/technician.model');
 const Customer = require('../customer/customer.model');
 const { getLocalApiBaseUrl, DEFAULT_TEAM_NAME } = require('../../config/app.config');
@@ -272,9 +272,9 @@ exports.getCustomerHistory = async (req, res) => {
       ...teamFilteredInstallations.map((item) => toHistoryItem(item, REQUEST_TYPES.INSTALLATION)),
       ...teamFilteredInspections.map((item) => toHistoryItem(item, REQUEST_TYPES.INSPECTION)),
     ].sort((a, b) => {
-      const aTime = a.date ? new Date(a.date).getTime() : Number.POSITIVE_INFINITY;
-      const bTime = b.date ? new Date(b.date).getTime() : Number.POSITIVE_INFINITY;
-      return aTime - bTime;
+      const aTime = a.date ? new Date(a.date).getTime() : Number.NEGATIVE_INFINITY;
+      const bTime = b.date ? new Date(b.date).getTime() : Number.NEGATIVE_INFINITY;
+      return bTime - aTime;
     });
 
     const latestInstallation = teamFilteredInstallations

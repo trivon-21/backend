@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const Installation = require('./Installation');
+const Installation = require('./installation.model');
 const Customer = require('../../customer/customer.model');
 const TechTeam = require('../../service-team/serviceTeam.model');
 const { STATUS_GROUPS, DEFAULTS } = require('../../../constants/enums');

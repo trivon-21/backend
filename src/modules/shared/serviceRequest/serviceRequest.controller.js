@@ -1,6 +1,6 @@
-const ServiceRequest = require('./ServiceRequest');
-const Installation = require('../installation/Installation');
-const Inspection = require('../inspection/Inspection');
+const ServiceRequest = require('./serviceRequest.model');
+const Installation = require('../installation/installation.model');
+const Inspection = require('../inspection/inspection.model');
 const Customer = require('../../customer/customer.model');
 const mongoose = require('mongoose');
 const {

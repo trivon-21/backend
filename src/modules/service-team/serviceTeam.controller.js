@@ -2,9 +2,9 @@
 const TechTeam = require('./serviceTeam.model');
 const TechTeamMember = require('./serviceTeamMember.model');
 const Customer = require('../customer/customer.model');
-const ServiceRequest = require('../shared/serviceRequest/ServiceRequest');
-const Installation = require('../shared/installation/Installation');
-const Inspection = require('../shared/inspection/Inspection');
+const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
+const Installation = require('../shared/installation/installation.model');
+const Inspection = require('../shared/inspection/inspection.model');
 const mongoose = require('mongoose');
 const {
   WORKFLOW_STATUS,

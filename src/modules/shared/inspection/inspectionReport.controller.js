@@ -1,11 +1,10 @@
-// src/controllers/inspectionReport.controller.js
-const InspectionReport = require('./inspection.model');
-const Installation = require('../shared/installation/Installation');
-const Customer = require('../customer/customer.model');
+const InspectionReport = require('./inspectionReport.model');
+const Installation = require('../installation/installation.model');
+const Customer = require('../../customer/customer.model');
 const {
   WORKFLOW_STATUS,
   INSPECTION_REVIEW_STATUS,
-} = require('../../constants/enums');
+} = require('../../../constants/enums');
 
 const toCustomerId = (value) => {
   if (!value) return null;

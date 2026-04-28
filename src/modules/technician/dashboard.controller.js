@@ -1,7 +1,7 @@
-const InspectionReport = require('../inspection-team/inspection.model');
-const Inspection = require('../shared/inspection/Inspection');
-const Installation = require('../shared/installation/Installation');
-const ServiceRequest = require('../shared/serviceRequest/ServiceRequest');
+const InspectionReport = require('../shared/inspection/inspectionReport.model');
+const Inspection = require('../shared/inspection/inspection.model');
+const Installation = require('../shared/installation/installation.model');
+const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
 const ServiceTeam = require('../service-team/serviceTeam.model');
 const Customer = require('../customer/customer.model');
 const serviceTeamDashboardController = require('../service-team/dashboard.controller');
@@ -292,7 +292,7 @@ exports.getUrgentAlerts = async (req, res) => {
       type: ALERTS.MATERIAL_TYPE,
       id: item._id,
       title: `${item.source === ACTIVITY_TYPES.INSTALLATION ? 'Installation' : 'Service Request'} - ${item.status}`,
-      subtitle: `Reference: ${item.ticketId ? `#${item.ticketId}` : String(item._id).slice(-6).toUpperCase()}`,
+      subtitle: '',
       action: ALERTS.REVIEW_ACTION,
       urgent: true,
     }));

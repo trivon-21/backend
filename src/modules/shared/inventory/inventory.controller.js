@@ -1,8 +1,8 @@
-// src/controllers/materialRequest.controller.js
-const NewRequest = require('../serviceRequest/NewRequest');
-const ServiceRequest = require('../serviceRequest/ServiceRequest');
-const Installation = require('../installation/Installation');
+const NewRequest = require('../serviceRequest/newRequest.model');
+const ServiceRequest = require('../serviceRequest/serviceRequest.model');
+const Installation = require('../installation/installation.model');
 const Customer = require('../../customer/customer.model');
+const { calculateWarrantyStatus } = require('../../../utils/warranty.utils');
 const {
   WORKFLOW_STATUS,
   EXECUTION_STATUS,
@@ -85,38 +85,13 @@ exports.getNewServiceTickets = async (req, res) => {
 
     // Transform new requests
     const newRequestsData = await Promise.all(newRequests.map(async (request) => {
-      let isUnderWarranty = false;
-      let isFreeOfCharge = false;
       const customerId = toCustomerId(request.customerId);
       const populatedCustomer = request.customerId && typeof request.customerId === 'object' ? request.customerId : null;
       const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
       const customerObjectId = customerId || request.customerId;
 
-      
-      const installation = await Installation.findOne({
-        customerId: customerObjectId,
-        status: EXECUTION_STATUS.COMPLETED
-      }).lean();
-
-      if (installation) {
-        // Calculate warranty period: 2 years
-        const installDate = new Date(installation.serviceDate || installation.date);
-        const warrantyExpiryDate = new Date(installDate);
-        warrantyExpiryDate.setFullYear(warrantyExpiryDate.getFullYear() + 2);
-        
-        // Check if current date is within warranty period
-        isUnderWarranty = new Date() <= warrantyExpiryDate;
-
-        // Count services completed within warranty period (for free service eligibility)
-        const completedWithinWarranty = await ServiceRequest.countDocuments({
-          customerId: customerObjectId,
-          status: EXECUTION_STATUS.COMPLETED,
-          createdAt: { $gte: installDate, $lte: warrantyExpiryDate }
-        });
-
-        // First 3 services are free
-        isFreeOfCharge = isUnderWarranty && completedWithinWarranty < 3;
-      }
+      // Calculate warranty status for this customer
+      const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(customerObjectId);
 
       return {
         ticketId: request._id,

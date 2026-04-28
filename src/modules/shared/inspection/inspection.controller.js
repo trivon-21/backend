@@ -1,4 +1,4 @@
-const Inspection = require('./Inspection');
+const Inspection = require('./inspection.model');
 
 exports.getAllInspections = async (req, res) => {
   try {

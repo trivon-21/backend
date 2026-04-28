@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
-const Installation = require('../shared/installation/Installation');
-const ServiceRequest = require('../shared/serviceRequest/ServiceRequest');
+const Installation = require('../shared/installation/installation.model');
+const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
+const ServiceReport = require('../technician/technician.model');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
 const {
   getRequestedTeamName,
@@ -85,6 +86,30 @@ const findTaskRecord = async (id) => {
     return { source: 'service', record: request };
   }
 
+  if (mongoose.Types.ObjectId.isValid(normalizedId)) {
+    const report = await ServiceReport.findById(normalizedId).lean();
+    if (report) {
+      const linkedModel = report.onModel === 'Installation' ? Installation : ServiceRequest;
+      const linkedRecord = await linkedModel.findById(report.serviceRequestId)
+        .populate('customerId', 'name customerName address phone email')
+        .lean();
+
+      if (linkedRecord) {
+        return {
+          source: report.onModel === 'Installation' ? REQUEST_TYPES.INSTALLATION.toLowerCase() : 'service',
+          record: linkedRecord,
+          serviceReport: report,
+        };
+      }
+
+      return {
+        source: report.onModel === 'Installation' ? REQUEST_TYPES.INSTALLATION.toLowerCase() : 'service',
+        record: report,
+        serviceReport: report,
+      };
+    }
+  }
+
   return null;
 };
 
@@ -118,6 +143,9 @@ exports.getTaskById = async (req, res) => {
     }
 
     const formatted = formatTask(task.record, task.source);
+    if (task.serviceReport?.notesFromMainTechnician) {
+      formatted.notesFromTechnician = task.serviceReport.notesFromMainTechnician;
+    }
     res.json(formatted);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -141,6 +169,13 @@ exports.updateTaskStatus = async (req, res) => {
     const updated = task.source === 'installation'
       ? await Installation.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean()
       : await ServiceRequest.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+
+    if (task.serviceReport) {
+      await ServiceReport.findByIdAndUpdate(task.serviceReport._id, {
+        finalStatus: normalizedStatus,
+        notesFromMainTechnician: task.serviceReport.notesFromMainTechnician || task.record.notesFromTechnician || '',
+      });
+    }
 
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Task not found' });
