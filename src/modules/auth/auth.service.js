@@ -1,6 +1,9 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const User = require("../../models/User");
 
@@ -86,6 +89,30 @@ function normalizePhoneNumber(phoneNumber) {
   return withoutSpaces;
 }
 
+function initializeFirebaseAdmin() {
+  if (admin.apps.length > 0) {
+    return;
+  }
+
+  const credentialsPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
+  if (!credentialsPath) {
+    throw new Error("Firebase admin credentials are not configured. Set FIREBASE_SERVICE_ACCOUNT_PATH or GOOGLE_APPLICATION_CREDENTIALS.");
+  }
+
+  const resolvedPath = path.isAbsolute(credentialsPath) ? credentialsPath : path.resolve(credentialsPath);
+  const serviceAccount = JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+}
+
+async function verifyFirebasePhoneToken(idToken) {
+  initializeFirebaseAdmin();
+  return admin.auth().verifyIdToken(idToken);
+}
+
 /**
  * Generate and save phone OTP
  */
@@ -104,7 +131,7 @@ async function generateAndSavePhoneOtp(userId) {
 /**
  * Signup with email or phone
  */
-exports.signup = async (authInput, fullName, password) => {
+exports.signup = async (authInput, fullName, password, options = {}) => {
   const authType = identifyAuthType(authInput);
   if (authType === "invalid") {
     throw new Error("Invalid email or phone number format");
@@ -178,6 +205,26 @@ exports.signup = async (authInput, fullName, password) => {
       throw new Error("Phone number already registered");
     }
 
+    let firebaseVerified = false;
+
+    if (options.firebaseIdToken) {
+      const decodedToken = await verifyFirebasePhoneToken(options.firebaseIdToken);
+
+      if (!decodedToken.phone_number) {
+        throw new Error("Firebase verification did not include a phone number");
+      }
+
+      if (decodedToken.phone_number !== normalizedPhone) {
+        throw new Error("Firebase phone verification does not match the submitted phone number");
+      }
+
+      if (options.firebasePhoneNumber && options.firebasePhoneNumber !== decodedToken.phone_number) {
+        throw new Error("Firebase phone verification mismatch");
+      }
+
+      firebaseVerified = true;
+    }
+
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
@@ -186,15 +233,18 @@ exports.signup = async (authInput, fullName, password) => {
       phoneNumber: normalizedPhone,
       passwordHash,
       role: "CUSTOMER",
+      phoneVerified: firebaseVerified,
       authMethods: ["phone"]
     });
 
-    const otp = await generateAndSavePhoneOtp(user._id);
+    if (!firebaseVerified) {
+      const otp = await generateAndSavePhoneOtp(user._id);
 
-    // Always log OTP for development/testing
-    console.log("\n=== PHONE VERIFICATION OTP ===");
-    console.log(`OTP for ${user.phoneNumber}: ${otp}`);
-    console.log("===============================\n");
+      // Always log OTP for development/testing
+      console.log("\n=== PHONE VERIFICATION OTP ===");
+      console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+      console.log("===============================\n");
+    }
 
     const token = signToken(user);
 
@@ -205,7 +255,7 @@ exports.signup = async (authInput, fullName, password) => {
         fullName: user.fullName,
         phoneNumber: user.phoneNumber,
         role: user.role,
-        phoneVerified: false,
+        phoneVerified: firebaseVerified,
         authMethods: ['phone']
       }
     };

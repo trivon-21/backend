@@ -17,14 +17,17 @@ exports.getMaintenanceStatus = async (req, res) => {
 
 exports.signup = async (req, res) => {
   try {
-    const { fullName, email, password, identifier, phoneNumber } = req.body;
+    const { fullName, email, password, identifier, phoneNumber, firebaseIdToken, firebasePhoneNumber } = req.body;
     const authInput = identifier || email || phoneNumber;
 
     if (!authInput || !password || !fullName) {
       return res.status(400).json({ message: "fullName, password, and identifier (email or phone) are required" });
     }
 
-    const result = await authService.signup(authInput, fullName, password);
+    const result = await authService.signup(authInput, fullName, password, {
+      firebaseIdToken,
+      firebasePhoneNumber,
+    });
 
     return res.status(201).json({
       message: "Signup successful",
