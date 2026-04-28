@@ -34,4 +34,11 @@ router.post("/asset-loans", protect, controller.checkOutTool);
 router.post("/asset-loans/return/:id", protect, controller.returnTool);
 router.get("/asset-return-logs", protect, controller.getAssetReturnLogs);
 
+// Order Creation
+router.get("/order-requests", protect, controller.getOrderRequests);
+router.post("/order-requests", protect, controller.createOrderRequest);
+router.patch("/order-requests/:id/approve", protect, controller.approveOrderRequest);
+router.patch("/order-requests/:id/reject", protect, controller.rejectOrderRequest);
+router.get("/suggested-orders", protect, controller.getSuggestedOrders);
+
 module.exports = router;

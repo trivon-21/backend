@@ -7,6 +7,7 @@ const Order = require('../../models/Order');
 const MaterialRequest = require('../../models/MaterialRequest');
 const AssetLoan = require('../../models/AssetLoan');
 const AssetReturnLog = require('../../models/AssetReturnLog');
+const OrderRequest = require('../../models/OrderRequest');
 const mongoose = require('mongoose');
 
 exports.getDashboardData = async (user) => {
@@ -234,4 +235,117 @@ exports.returnTool = async (loanId) => {
 
 exports.getAssetReturnLogs = async () => {
   return await AssetReturnLog.find().sort({ returnedAt: -1 });
+};
+
+// ── Order Creation Methods ──
+
+exports.getOrderRequests = async () => {
+  return await OrderRequest.find().sort({ createdAt: -1 });
+};
+
+exports.createOrderRequest = async (data, user) => {
+  // Auto-generate request ID
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const requestId = `ORD-${year}${month}${day}-${hours}${minutes}${seconds}`;
+
+  // Calculate totals
+  const items = (data.items || []).map(item => ({
+    ...item,
+    estimatedTotal: (item.quantity || 0) * (item.unitCost || 0)
+  }));
+  const totalEstimate = items.reduce((sum, item) => sum + item.estimatedTotal, 0);
+
+  const newRequest = new OrderRequest({
+    requestId,
+    items,
+    supplierName: data.supplierName,
+    totalEstimate,
+    status: 'pending-approval',
+    requestedBy: user?.fullName || 'Inventory Manager',
+    priority: data.priority || 'normal',
+    notes: data.notes || '',
+    source: data.source || 'manual'
+  });
+
+  const saved = await newRequest.save();
+
+  // Log Activity
+  const activity = new Activity({
+    type: 'request',
+    title: 'Order Request Created',
+    description: `New purchase order ${requestId} submitted for ${data.supplierName} (${items.length} items, LKR ${totalEstimate.toLocaleString()})`,
+    actionLabel: 'View Order'
+  });
+  await activity.save();
+
+  return saved;
+};
+
+exports.approveOrderRequest = async (id, user) => {
+  const request = await OrderRequest.findOne({ requestId: id });
+  if (!request) throw new Error('Order request not found');
+
+  request.status = 'approved';
+  request.approvedBy = user?.fullName || 'Finance Officer';
+  request.approvedAt = new Date();
+  await request.save();
+
+  // Auto-create Procurement record for each item
+  for (const item of request.items) {
+    const procurement = new Procurement({
+      invoiceNumber: `AWAITING-${request.requestId}`,
+      poNumber: request.requestId,
+      supplierName: request.supplierName,
+      itemName: item.name,
+      sku: item.sku,
+      quantity: item.quantity,
+      unit: 'units',
+      receivedBy: request.approvedBy
+    });
+    await procurement.save();
+  }
+
+  // Log Activity
+  const activity = new Activity({
+    type: 'grn',
+    title: 'Order Approved',
+    description: `Purchase order ${request.requestId} approved by ${request.approvedBy}. Procurement records created.`,
+    actionLabel: 'View Procurement'
+  });
+  await activity.save();
+
+  return request;
+};
+
+exports.rejectOrderRequest = async (id, reason, user) => {
+  const request = await OrderRequest.findOne({ requestId: id });
+  if (!request) throw new Error('Order request not found');
+
+  request.status = 'rejected';
+  request.rejectionReason = reason || 'No reason provided';
+  request.rejectedAt = new Date();
+  await request.save();
+
+  // Log Activity
+  const activity = new Activity({
+    type: 'alert',
+    title: 'Order Rejected',
+    description: `Purchase order ${request.requestId} was rejected. Reason: ${request.rejectionReason}`,
+    actionLabel: 'View Order'
+  });
+  await activity.save();
+
+  return request;
+};
+
+exports.getSuggestedOrders = async () => {
+  return await Inventory.find({ status: { $in: ['warning', 'critical'] } })
+    .sort({ available: 1 })
+    .select('name sku available reserved reorderLevel unitCost unit status category brand');
 };

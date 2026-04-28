@@ -176,3 +176,53 @@ exports.getAssetReturnLogs = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch return logs" });
   }
 };
+
+// ── Order Creation Endpoints ──
+
+exports.getOrderRequests = async (req, res) => {
+  try {
+    const data = await service.getOrderRequests();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch order requests" });
+  }
+};
+
+exports.createOrderRequest = async (req, res) => {
+  try {
+    const data = await service.createOrderRequest(req.body, req.user);
+    res.status(201).json(data);
+  } catch (error) {
+    console.error('Order request creation error:', error);
+    res.status(500).json({ message: "Failed to create order request" });
+  }
+};
+
+exports.approveOrderRequest = async (req, res) => {
+  try {
+    const data = await service.approveOrderRequest(req.params.id, req.user);
+    res.json(data);
+  } catch (error) {
+    console.error('Order approval error:', error);
+    res.status(500).json({ message: error.message || "Failed to approve order request" });
+  }
+};
+
+exports.rejectOrderRequest = async (req, res) => {
+  try {
+    const data = await service.rejectOrderRequest(req.params.id, req.body.reason, req.user);
+    res.json(data);
+  } catch (error) {
+    console.error('Order rejection error:', error);
+    res.status(500).json({ message: error.message || "Failed to reject order request" });
+  }
+};
+
+exports.getSuggestedOrders = async (req, res) => {
+  try {
+    const data = await service.getSuggestedOrders();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch suggested orders" });
+  }
+};
