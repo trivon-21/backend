@@ -16,6 +16,15 @@ router.post("/item", protect, controller.createItem);
 // Suppliers
 router.get("/suppliers", protect, controller.getSuppliers);
 router.post("/suppliers", protect, controller.createSupplier);
+// Procurements
 router.get("/procurements", protect, controller.getProcurements);
+
+// Orders (Dispatch & Logistics)
+router.get("/orders", protect, controller.getOrders);
+router.patch("/orders/:id", protect, controller.updateOrder);
+
+// Material Requests
+router.get("/material-requests", protect, controller.getMaterialRequests);
+router.patch("/material-requests/:id", protect, controller.updateMaterialRequest);
 
 module.exports = router;

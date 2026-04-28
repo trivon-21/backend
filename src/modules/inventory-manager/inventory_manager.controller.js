@@ -81,3 +81,39 @@ exports.createSupplier = async (req, res) => {
     res.status(500).json({ message: "Failed to create supplier" });
   }
 };
+
+exports.getOrders = async (req, res) => {
+  try {
+    const data = await service.getOrders();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch orders" });
+  }
+};
+
+exports.updateOrder = async (req, res) => {
+  try {
+    const data = await service.updateOrder(req.params.id, req.body);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update order" });
+  }
+};
+
+exports.getMaterialRequests = async (req, res) => {
+  try {
+    const data = await service.getMaterialRequests();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch material requests" });
+  }
+};
+
+exports.updateMaterialRequest = async (req, res) => {
+  try {
+    const data = await service.updateMaterialRequest(req.params.id, req.body);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update material request" });
+  }
+};

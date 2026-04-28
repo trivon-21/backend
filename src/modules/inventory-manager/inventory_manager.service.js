@@ -3,6 +3,8 @@ const Activity = require('../../models/Activity');
 const Logistics = require('../../models/Logistics');
 const Supplier = require('../../models/Supplier');
 const Procurement = require('../../models/Procurement');
+const Order = require('../../models/Order');
+const MaterialRequest = require('../../models/MaterialRequest');
 
 exports.getDashboardData = async (user) => {
   const inventory = await Inventory.find();
@@ -146,4 +148,26 @@ exports.getSuppliersList = async () => {
 exports.createSupplier = async (name) => {
   const newSupplier = new Supplier({ name });
   return await newSupplier.save();
+};
+
+exports.getOrders = async () => {
+  return await Order.find().sort({ createdAt: -1 });
+};
+
+exports.updateOrder = async (id, data) => {
+  if (data.lastMovedAt === null) {
+    return await Order.findOneAndUpdate({ orderId: id }, { $unset: { lastMovedAt: 1, completedAt: 1 }, ...data }, { new: true });
+  }
+  return await Order.findOneAndUpdate({ orderId: id }, data, { new: true });
+};
+
+exports.getMaterialRequests = async () => {
+  return await MaterialRequest.find().sort({ createdAt: -1 });
+};
+
+exports.updateMaterialRequest = async (id, data) => {
+  if (data.lastMovedAt === null) {
+    return await MaterialRequest.findOneAndUpdate({ requestId: id }, { $unset: { lastMovedAt: 1, completedAt: 1 }, ...data }, { new: true });
+  }
+  return await MaterialRequest.findOneAndUpdate({ requestId: id }, data, { new: true });
 };
