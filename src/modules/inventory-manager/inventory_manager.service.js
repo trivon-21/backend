@@ -14,31 +14,33 @@ exports.getDashboardData = async (user) => {
   const activities = await Activity.find().sort({ timestamp: -1 }).limit(10);
   const logistics = await Logistics.find();
 
+  const orders = await Order.find();
+  const loans = await AssetLoan.find();
+
   // Calculate Stats
   const materialReservationsTotal = inventory
-    .filter(i => i.reserved > 0)
-    .reduce((acc, curr) => acc + 1, 0); // Count items with reservations
+    .reduce((acc, curr) => acc + (curr.reserved || 0), 0);
 
   const stats = {
     materialReservations: {
       total: materialReservationsTotal,
       subStats: [
-        { label: 'Installation Kits', value: inventory.filter(i => i.category === 'Installation Kits' && i.reserved > 0).length },
-        { label: 'Repair Parts', value: inventory.filter(i => i.category === 'Repair Parts' && i.reserved > 0).length }
+        { label: 'Installation Kits', value: inventory.filter(i => i.category === 'Installation Kits').reduce((acc, curr) => acc + (curr.reserved || 0), 0) },
+        { label: 'Repair Parts', value: inventory.filter(i => i.category === 'Repair Parts').reduce((acc, curr) => acc + (curr.reserved || 0), 0) }
       ]
     },
     dispatchQueue: {
-      total: 8, // Mock for now as we don't have Orders yet
+      total: orders.filter(o => o.status === 'to-pack' || o.status === 'ready').length,
       subStats: [
-        { label: 'Awaiting Partner', value: 3 },
-        { label: 'Missing Track ID', value: 5 }
+        { label: 'To Pack', value: orders.filter(o => o.status === 'to-pack').length },
+        { label: 'Ready for Pickup', value: orders.filter(o => o.status === 'ready').length }
       ]
     },
     assetHealth: {
-      total: 112, // Mock for now as we don't have Assets yet
+      total: loans.length,
       subStats: [
-        { label: 'Tools in Field', value: 110 },
-        { label: 'Overdue/Calibrate', value: 2 }
+        { label: 'Tools in Field', value: loans.length },
+        { label: 'Overdue Returns', value: loans.filter(l => new Date(l.dueDate) < new Date()).length }
       ]
     },
     stockAlerts: {
@@ -61,9 +63,9 @@ exports.getDashboardData = async (user) => {
     }));
 
   return {
-    managerName: user.fullName.split(' ')[0],
+    managerName: user?.fullName?.split(' ')[0] || 'Manager',
     currentDate: new Date(),
-    status: 'Operational',
+    status: mongoose.connection.readyState === 1 ? 'Operational' : 'Offline',
     stats,
     recentActivity: activities.map(a => ({
       id: a._id,
@@ -188,7 +190,18 @@ exports.getAssetLoans = async () => {
 
 exports.checkOutTool = async (data) => {
   const newLoan = new AssetLoan(data);
-  return await newLoan.save();
+  const savedLoan = await newLoan.save();
+
+  // Log Activity
+  const activity = new Activity({
+    type: 'request',
+    title: 'Tool Checked Out',
+    description: `${data.technicianName} checked out ${data.toolName} (${data.assetTag})`,
+    actionLabel: 'View Asset'
+  });
+  await activity.save();
+
+  return savedLoan;
 };
 
 exports.returnTool = async (loanId) => {
@@ -204,6 +217,16 @@ exports.returnTool = async (loanId) => {
   });
 
   await returnLog.save();
+
+  // Log Activity
+  const activity = new Activity({
+    type: 'return',
+    title: 'Tool Returned',
+    description: `${loan.technicianName} returned ${loan.toolName} (${loan.assetTag})`,
+    actionLabel: 'View Log'
+  });
+  await activity.save();
+
   return await AssetLoan.findByIdAndDelete(loanId);
 };
 

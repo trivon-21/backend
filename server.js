@@ -24,9 +24,11 @@ const PORT = process.env.PORT || 5000;
 
 connectDB()
   .then(() => {
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    console.log("MongoDB connected successfully");
   })
   .catch((err) => {
-    console.error("DB connection failed:", err.message);
-    process.exit(1);
+    console.error("DB connection failed initially:", err.message);
+    console.log("Server will continue to run in Offline mode.");
   });
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

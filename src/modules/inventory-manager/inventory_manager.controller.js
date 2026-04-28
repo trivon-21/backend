@@ -6,7 +6,21 @@ exports.getDashboard = async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Dashboard fetch error:', error);
-    res.status(500).json({ message: "Failed to fetch dashboard data" });
+    // Return a partial "Offline" state instead of failing, so the dashboard shell still renders
+    res.json({
+      managerName: req.user?.fullName?.split(' ')[0] || 'Manager',
+      currentDate: new Date(),
+      status: 'Offline',
+      stats: {
+        materialReservations: { total: 0, subStats: [] },
+        dispatchQueue: { total: 0, subStats: [] },
+        assetHealth: { total: 0, subStats: [] },
+        stockAlerts: { total: 0, subStats: [] }
+      },
+      recentActivity: [],
+      reorderList: [],
+      logistics: []
+    });
   }
 };
 
