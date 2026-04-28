@@ -41,7 +41,7 @@ exports.updateItem = async (req, res) => {
 
 exports.createItem = async (req, res) => {
   try {
-    const data = await service.createInventoryItem(req.body);
+    const data = await service.createInventoryItem(req.body, req.user);
     res.status(201).json(data);
   } catch (error) {
     console.error('Item creation error:', error);
@@ -49,6 +49,15 @@ exports.createItem = async (req, res) => {
       return res.status(400).json({ message: "SKU already exists" });
     }
     res.status(500).json({ message: "Failed to create item" });
+  }
+};
+
+exports.getProcurements = async (req, res) => {
+  try {
+    const data = await service.getRecentProcurements();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch procurements" });
   }
 };
 

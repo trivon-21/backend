@@ -16,5 +16,6 @@ router.post("/item", protect, controller.createItem);
 // Suppliers
 router.get("/suppliers", protect, controller.getSuppliers);
 router.post("/suppliers", protect, controller.createSupplier);
+router.get("/procurements", protect, controller.getProcurements);
 
 module.exports = router;

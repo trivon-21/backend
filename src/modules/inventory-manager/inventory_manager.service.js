@@ -2,6 +2,7 @@ const Inventory = require('../../models/Inventory');
 const Activity = require('../../models/Activity');
 const Logistics = require('../../models/Logistics');
 const Supplier = require('../../models/Supplier');
+const Procurement = require('../../models/Procurement');
 
 exports.getDashboardData = async (user) => {
   const inventory = await Inventory.find();
@@ -89,7 +90,7 @@ exports.updateInventoryItem = async (id, data) => {
   return await Inventory.findByIdAndUpdate(id, data, { new: true });
 };
 
-exports.createInventoryItem = async (data) => {
+exports.createInventoryItem = async (data, user) => {
   // Calculate status based on availability and reorder level
   const available = Number(data.available) || 0;
   const reorderLevel = Number(data.reorderLevel) || 10;
@@ -106,7 +107,36 @@ exports.createInventoryItem = async (data) => {
     status
   });
 
-  return await newItem.save();
+  const savedItem = await newItem.save();
+
+  // Log as Procurement/GRN
+  if (data.supplierName && data.invoiceNumber) {
+    const procurement = new Procurement({
+      invoiceNumber: data.invoiceNumber,
+      supplierName: data.supplierName,
+      itemName: data.name,
+      sku: data.sku,
+      quantity: available,
+      unit: data.unit || 'units',
+      receivedBy: user ? user.fullName : 'Inventory Manager'
+    });
+    await procurement.save();
+
+    // Log Activity
+    const activity = new Activity({
+      type: 'grn',
+      title: 'Goods Received',
+      description: `Received ${available} ${data.unit || 'units'} of ${data.name} from ${data.supplierName}`,
+      actionLabel: 'View GRN'
+    });
+    await activity.save();
+  }
+
+  return savedItem;
+};
+
+exports.getRecentProcurements = async () => {
+  return await Procurement.find().sort({ timestamp: -1 }).limit(10);
 };
 
 exports.getSuppliersList = async () => {
