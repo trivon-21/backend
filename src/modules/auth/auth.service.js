@@ -3,7 +3,6 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const User = require("../../models/User");
-const { sendPhoneOtp } = require("../../config/twilio");
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -192,15 +191,7 @@ exports.signup = async (authInput, fullName, password) => {
 
     const otp = await generateAndSavePhoneOtp(user._id);
 
-    // Send OTP via Twilio SMS
-    try {
-      await sendPhoneOtp(user.phoneNumber, otp);
-      console.log(`SMS OTP sent to ${user.phoneNumber}`);
-    } catch (smsErr) {
-      console.error("Failed to send SMS:", smsErr.message);
-    }
-
-    // Always log OTP for development/testing (in case SMS delivery fails)
+    // Always log OTP for development/testing
     console.log("\n=== PHONE VERIFICATION OTP ===");
     console.log(`OTP for ${user.phoneNumber}: ${otp}`);
     console.log("===============================\n");
@@ -538,14 +529,7 @@ exports.resendPhoneOtp = async (userId) => {
 
   const otp = await generateAndSavePhoneOtp(user._id);
 
-  try {
-    await sendPhoneOtp(user.phoneNumber, otp);
-    console.log(`SMS OTP resent to ${user.phoneNumber}`);
-  } catch (smsErr) {
-    console.error("Failed to send SMS:", smsErr.message);
-  }
-
-  // Always log OTP for development/testing (in case SMS delivery fails)
+  // Always log OTP for development/testing
   console.log("\n=== PHONE VERIFICATION OTP ===");
   console.log(`OTP for ${user.phoneNumber}: ${otp}`);
   console.log("===============================\n");

@@ -3,7 +3,6 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const User = require("../models/User");
-const { sendPhoneOtp } = require("../config/twilio");
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -186,17 +185,10 @@ exports.signup = async (req, res) => {
 
       const otp = await generateAndSavePhoneOtp(user._id);
 
-      // Send OTP via Twilio SMS
-      try {
-        await sendPhoneOtp(user.phoneNumber, otp);
-        console.log(`SMS OTP sent to ${user.phoneNumber}`);
-      } catch (smsErr) {
-        console.error("Failed to send SMS:", smsErr.message);
-        // For development: still log OTP to console if SMS fails
-        console.log("\n=== PHONE VERIFICATION OTP (CONSOLE FALLBACK) ===");
-        console.log(`OTP for ${user.phoneNumber}: ${otp}`);
-        console.log("=================================================\n");
-      }
+      // For development: log OTP to console
+      console.log("\n=== PHONE VERIFICATION OTP (CONSOLE) ===");
+      console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+      console.log("========================================\n");
 
       const token = signToken(user);
 
@@ -596,17 +588,10 @@ exports.resendOtpPhone = async (req, res) => {
 
     const otp = await generateAndSavePhoneOtp(user._id);
 
-    // Send OTP via Twilio SMS
-    try {
-      await sendPhoneOtp(user.phoneNumber, otp);
-      console.log(`SMS OTP resent to ${user.phoneNumber}`);
-    } catch (smsErr) {
-      console.error("Failed to send SMS:", smsErr.message);
-      // For development: still log OTP to console if SMS fails
-      console.log("\n=== PHONE VERIFICATION OTP (CONSOLE FALLBACK) ===");
-      console.log(`OTP for ${user.phoneNumber}: ${otp}`);
-      console.log("=================================================\n");
-    }
+    // For development: log OTP to console
+    console.log("\n=== PHONE VERIFICATION OTP (CONSOLE) ===");
+    console.log(`OTP for ${user.phoneNumber}: ${otp}`);
+    console.log("========================================\n");
 
     return res.json({ message: "A new OTP has been sent to your phone number." });
   } catch (err) {

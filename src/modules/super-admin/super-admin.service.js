@@ -5,7 +5,6 @@ const User = require("../../models/User");
 const Order = require("../../models/Order");
 const Inquiry = require("../../models/Inquiry");
 const ServiceRequest = require("../../models/ServiceRequest");
-const { sendPhoneOtp } = require("../../config/twilio");
 
 // Email transporter setup
 const transporter = nodemailer.createTransport({
@@ -82,14 +81,6 @@ async function sendOtpEmail(toEmail, userName, otp) {
     `
   });
   console.log(`[DEV] Email OTP for ${toEmail}: ${otp}`);
-}
-
-/**
- * Send SMS OTP to new user
- */
-async function sendSmsOtp(phoneNumber, otp) {
-  await sendPhoneOtp(phoneNumber, otp);
-  console.log(`[DEV] SMS OTP for ${phoneNumber}: ${otp}`);
 }
 
 /**
