@@ -16,8 +16,8 @@ const OrderRequestSchema = new mongoose.Schema({
   totalEstimate: { type: Number, default: 0 },
   status: { 
     type: String, 
-    enum: ['pending-approval', 'approved', 'rejected'], 
-    default: 'pending-approval' 
+    enum: ['draft', 'pending-approval', 'approved', 'rejected'], 
+    default: 'draft' 
   },
   requestedBy: { type: String, required: true },
   priority: { type: String, enum: ['normal', 'urgent'], default: 'normal' },

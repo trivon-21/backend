@@ -198,6 +198,16 @@ exports.createOrderRequest = async (req, res) => {
   }
 };
 
+exports.updateOrderRequest = async (req, res) => {
+  try {
+    const data = await service.updateOrderRequest(req.params.id, req.body);
+    res.json(data);
+  } catch (error) {
+    console.error('Order request update error:', error);
+    res.status(500).json({ message: "Failed to update order request" });
+  }
+};
+
 exports.approveOrderRequest = async (req, res) => {
   try {
     const data = await service.approveOrderRequest(req.params.id, req.user);

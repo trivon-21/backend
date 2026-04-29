@@ -266,7 +266,7 @@ exports.createOrderRequest = async (data, user) => {
     items,
     supplierName: data.supplierName,
     totalEstimate,
-    status: 'pending-approval',
+    status: data.status || 'draft',
     requestedBy: user?.fullName || 'Inventory Manager',
     priority: data.priority || 'normal',
     notes: data.notes || '',
@@ -285,6 +285,28 @@ exports.createOrderRequest = async (data, user) => {
   await activity.save();
 
   return saved;
+};
+
+exports.updateOrderRequest = async (id, data) => {
+  const request = await OrderRequest.findOne({ requestId: id });
+  if (!request) throw new Error('Order request not found');
+
+  // Calculate totals if items are provided
+  if (data.items) {
+    data.items = data.items.map(item => ({
+      ...item,
+      estimatedTotal: (item.quantity || 0) * (item.unitCost || 0)
+    }));
+    data.totalEstimate = data.items.reduce((sum, item) => sum + item.estimatedTotal, 0);
+  }
+
+  const updated = await OrderRequest.findOneAndUpdate(
+    { requestId: id },
+    { $set: data },
+    { new: true }
+  );
+
+  return updated;
 };
 
 exports.approveOrderRequest = async (id, user) => {
