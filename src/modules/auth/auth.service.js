@@ -9,9 +9,13 @@ const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
  * Sign JWT token
  */
 function signToken(user, rememberMe = true) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET is not defined in environment variables");
+  }
   return jwt.sign(
     { id: user._id, role: user.role, email: user.email },
-    process.env.JWT_SECRET,
+    secret,
     { expiresIn: rememberMe ? (process.env.JWT_EXPIRES_IN || "7d") : "24h" }
   );
 }
