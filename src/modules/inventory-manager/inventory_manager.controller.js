@@ -1,12 +1,15 @@
 const service = require("./inventory_manager.service");
 
+/**
+ * Handles dashboard data retrieval.
+ * Returns an offline state if the service fails, ensuring the UI remains stable.
+ */
 exports.getDashboard = async (req, res) => {
   try {
     const data = await service.getDashboardData(req.user);
     res.json(data);
   } catch (error) {
     console.error('Dashboard fetch error:', error);
-    // Return a partial "Offline" state instead of failing, so the dashboard shell still renders
     res.json({
       managerName: req.user?.fullName?.split(' ')[0] || 'Manager',
       currentDate: new Date(),
@@ -24,6 +27,9 @@ exports.getDashboard = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves the full inventory list.
+ */
 exports.getInventory = async (req, res) => {
   try {
     const data = await service.getInventoryList();
@@ -34,6 +40,9 @@ exports.getInventory = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves details for a specific inventory item.
+ */
 exports.getItem = async (req, res) => {
   try {
     const data = await service.getInventoryItem(req.params.id);
@@ -44,6 +53,9 @@ exports.getItem = async (req, res) => {
   }
 };
 
+/**
+ * Updates a specific inventory item.
+ */
 exports.updateItem = async (req, res) => {
   try {
     const data = await service.updateInventoryItem(req.params.id, req.body);
@@ -53,6 +65,9 @@ exports.updateItem = async (req, res) => {
   }
 };
 
+/**
+ * Creates a new inventory item.
+ */
 exports.createItem = async (req, res) => {
   try {
     const data = await service.createInventoryItem(req.body, req.user);
@@ -66,6 +81,9 @@ exports.createItem = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves recent procurement records.
+ */
 exports.getProcurements = async (req, res) => {
   try {
     const data = await service.getRecentProcurements();
@@ -75,6 +93,9 @@ exports.getProcurements = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves all registered suppliers.
+ */
 exports.getSuppliers = async (req, res) => {
   try {
     const data = await service.getSuppliersList();
@@ -84,6 +105,9 @@ exports.getSuppliers = async (req, res) => {
   }
 };
 
+/**
+ * Registers a new supplier.
+ */
 exports.createSupplier = async (req, res) => {
   try {
     const data = await service.createSupplier(req.body.name);
@@ -96,6 +120,9 @@ exports.createSupplier = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves all logistics orders.
+ */
 exports.getOrders = async (req, res) => {
   try {
     const data = await service.getOrders();
@@ -105,6 +132,9 @@ exports.getOrders = async (req, res) => {
   }
 };
 
+/**
+ * Updates a specific logistics order.
+ */
 exports.updateOrder = async (req, res) => {
   try {
     const data = await service.updateOrder(req.params.id, req.body);
@@ -114,6 +144,9 @@ exports.updateOrder = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves all material requests.
+ */
 exports.getMaterialRequests = async (req, res) => {
   try {
     const data = await service.getMaterialRequests();
@@ -123,6 +156,9 @@ exports.getMaterialRequests = async (req, res) => {
   }
 };
 
+/**
+ * Updates a specific material request.
+ */
 exports.updateMaterialRequest = async (req, res) => {
   try {
     const data = await service.updateMaterialRequest(req.params.id, req.body);
@@ -132,6 +168,9 @@ exports.updateMaterialRequest = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves a list of available technicians.
+ */
 exports.getTechnicians = async (req, res) => {
   try {
     const data = await service.getTechnicians();
@@ -141,6 +180,9 @@ exports.getTechnicians = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves all current asset loans.
+ */
 exports.getAssetLoans = async (req, res) => {
   try {
     const data = await service.getAssetLoans();
@@ -150,6 +192,9 @@ exports.getAssetLoans = async (req, res) => {
   }
 };
 
+/**
+ * Processes a tool checkout request.
+ */
 exports.checkOutTool = async (req, res) => {
   try {
     const data = await service.checkOutTool(req.body);
@@ -159,6 +204,9 @@ exports.checkOutTool = async (req, res) => {
   }
 };
 
+/**
+ * Processes a tool return request.
+ */
 exports.returnTool = async (req, res) => {
   try {
     const data = await service.returnTool(req.params.id);
@@ -168,6 +216,9 @@ exports.returnTool = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves all historical asset return logs.
+ */
 exports.getAssetReturnLogs = async (req, res) => {
   try {
     const data = await service.getAssetReturnLogs();
@@ -179,6 +230,9 @@ exports.getAssetReturnLogs = async (req, res) => {
 
 // ── Order Creation Endpoints ──
 
+/**
+ * Retrieves all purchase order requests.
+ */
 exports.getOrderRequests = async (req, res) => {
   try {
     const data = await service.getOrderRequests();
@@ -188,6 +242,9 @@ exports.getOrderRequests = async (req, res) => {
   }
 };
 
+/**
+ * Creates a new purchase order request.
+ */
 exports.createOrderRequest = async (req, res) => {
   try {
     const data = await service.createOrderRequest(req.body, req.user);
@@ -198,6 +255,9 @@ exports.createOrderRequest = async (req, res) => {
   }
 };
 
+/**
+ * Updates a specific purchase order request.
+ */
 exports.updateOrderRequest = async (req, res) => {
   try {
     const data = await service.updateOrderRequest(req.params.id, req.body);
@@ -208,6 +268,9 @@ exports.updateOrderRequest = async (req, res) => {
   }
 };
 
+/**
+ * Approves a purchase order request.
+ */
 exports.approveOrderRequest = async (req, res) => {
   try {
     const data = await service.approveOrderRequest(req.params.id, req.user);
@@ -218,6 +281,9 @@ exports.approveOrderRequest = async (req, res) => {
   }
 };
 
+/**
+ * Rejects a purchase order request.
+ */
 exports.rejectOrderRequest = async (req, res) => {
   try {
     const data = await service.rejectOrderRequest(req.params.id, req.body.reason, req.user);
@@ -228,6 +294,9 @@ exports.rejectOrderRequest = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves suggested purchase orders based on low stock levels.
+ */
 exports.getSuggestedOrders = async (req, res) => {
   try {
     const data = await service.getSuggestedOrders();
@@ -237,6 +306,9 @@ exports.getSuggestedOrders = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves the full activity log.
+ */
 exports.getActivityLog = async (req, res) => {
   try {
     const data = await service.getActivityLog();
