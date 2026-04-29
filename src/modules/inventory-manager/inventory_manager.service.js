@@ -19,17 +19,18 @@ exports.getDashboardData = async (user) => {
 
   const orders = await Order.find();
   const loans = await AssetLoan.find();
+  const materialRequests = await MaterialRequest.find();
 
   // Calculate Stats
-  const materialReservationsTotal = inventory
-    .reduce((acc, curr) => acc + (curr.reserved || 0), 0);
+  const pendingRequestsCount = materialRequests.filter(r => r.status === 'pending').length;
+  const reservedRequestsCount = materialRequests.filter(r => r.status === 'reserved').length;
 
   const stats = {
     materialReservations: {
-      total: materialReservationsTotal,
+      total: pendingRequestsCount + reservedRequestsCount,
       subStats: [
-        { label: 'Installation Kits', value: inventory.filter(i => i.category === 'Installation Kits').reduce((acc, curr) => acc + (curr.reserved || 0), 0) },
-        { label: 'Repair Parts', value: inventory.filter(i => i.category === 'Repair Parts').reduce((acc, curr) => acc + (curr.reserved || 0), 0) }
+        { label: 'Pending Requests', value: pendingRequestsCount },
+        { label: 'Reserved/Kitted', value: reservedRequestsCount }
       ]
     },
     dispatchQueue: {
@@ -43,7 +44,7 @@ exports.getDashboardData = async (user) => {
       total: loans.length,
       subStats: [
         { label: 'Tools in Field', value: loans.length },
-        { label: 'Overdue Returns', value: loans.filter(l => new Date(l.dueDate) < new Date()).length }
+        { label: 'Overdue Returns', value: loans.filter(l => new Date(l.dueDate) < new Date() && !l.returnDate).length }
       ]
     },
     stockAlerts: {
