@@ -41,5 +41,6 @@ router.patch("/order-requests/:id", protect, controller.updateOrderRequest);
 router.patch("/order-requests/:id/approve", protect, controller.approveOrderRequest);
 router.patch("/order-requests/:id/reject", protect, controller.rejectOrderRequest);
 router.get("/suggested-orders", protect, controller.getSuggestedOrders);
+router.get("/activity", protect, controller.getActivityLog);
 
 module.exports = router;

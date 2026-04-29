@@ -371,3 +371,9 @@ exports.getSuggestedOrders = async () => {
     .sort({ available: 1 })
     .select('name sku available reserved reorderLevel unitCost unit status category brand');
 };
+
+exports.getActivityLog = async () => {
+  return await Activity.find({ 
+    type: { $in: ['return', 'dispatch', 'request', 'grn', 'alert'] } 
+  }).sort({ timestamp: -1 });
+};

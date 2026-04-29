@@ -236,3 +236,12 @@ exports.getSuggestedOrders = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch suggested orders" });
   }
 };
+
+exports.getActivityLog = async (req, res) => {
+  try {
+    const data = await service.getActivityLog();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch activity log" });
+  }
+};
