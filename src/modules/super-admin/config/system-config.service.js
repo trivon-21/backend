@@ -1,6 +1,7 @@
 const SystemConfig = require('../../../models/SystemConfig');
 const AuditLog = require('../../../models/AuditLog');
 const { clearCache } = require('../../../utils/config-cache');
+const maintenanceNotificationService = require('../../../services/maintenance-notification.service');
 
 class SystemConfigService {
   /**
@@ -278,6 +279,16 @@ class SystemConfigService {
 
     // Clear cache
     clearCache();
+
+    // Send maintenance notifications if maintenance is being activated or scheduled
+    if (isActivating || isScheduled) {
+      try {
+        await maintenanceNotificationService.sendMaintenanceNotifications(config.maintenance);
+      } catch (error) {
+        console.error('Failed to send maintenance notifications:', error);
+        // Don't throw - maintenance should still be activated even if notifications fail
+      }
+    }
 
     return config.populate('updatedBy', 'fullName email');
   }

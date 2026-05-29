@@ -11,14 +11,48 @@ const inferLoginMethod = (identifier = "") => {
 exports.getMaintenanceStatus = async (req, res) => {
   try {
     const config = await systemConfigService.getSystemConfig();
+
+    if (!config) {
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to retrieve system configuration',
+      });
+    }
+
+    const maintenance = config.maintenance || {};
+
+    // Check if system is under maintenance (instant or scheduled)
+    const now = new Date();
+    let isUnderMaintenance = maintenance.isActive;
+    let maintenanceType = 'instant';
+
+    if (!isUnderMaintenance && maintenance.scheduledStartTime && maintenance.scheduledEndTime) {
+      isUnderMaintenance = now >= maintenance.scheduledStartTime && now <= maintenance.scheduledEndTime;
+      maintenanceType = 'scheduled';
+    } else if (maintenance.scheduledStartTime && maintenance.scheduledEndTime) {
+      maintenanceType = 'scheduled';
+    }
+
     return res.json({
       success: true,
       data: {
-        maintenance: config.maintenance
-      }
+        maintenance: {
+          isActive: isUnderMaintenance,
+          type: maintenanceType,
+          message: maintenance.message,
+          reason: maintenance.reason,
+          scheduledStartTime: maintenance.scheduledStartTime,
+          scheduledEndTime: maintenance.scheduledEndTime,
+        },
+      },
     });
   } catch (err) {
-    return res.status(500).json({ message: "Server error", error: err.message });
+    console.error('Error fetching maintenance status:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: err.message,
+    });
   }
 };
 
