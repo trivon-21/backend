@@ -169,6 +169,27 @@ exports.login = async (req, res) => {
   }
 };
 
+exports.googleAuth = async (req, res) => {
+  try {
+    const { idToken, rememberMe } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ message: "Google ID token is required" });
+    }
+
+    const result = await authService.googleAuth(idToken, rememberMe !== false);
+
+    return res.json({
+      message: result.isNewUser ? "Google signup successful" : "Login successful",
+      token: result.token,
+      user: result.user,
+      isNewUser: result.isNewUser
+    });
+  } catch (err) {
+    return res.status(401).json({ message: err.message || "Google authentication failed" });
+  }
+};
+
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;

@@ -157,6 +157,31 @@ async function verifyFirebasePhoneToken(idToken) {
   return admin.auth().verifyIdToken(idToken);
 }
 
+async function verifyFirebaseGoogleToken(idToken) {
+  initializeFirebaseAdmin();
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+
+  if (decodedToken.firebase?.sign_in_provider && decodedToken.firebase.sign_in_provider !== "google.com") {
+    throw new Error("Google sign-in token is invalid");
+  }
+
+  return decodedToken;
+}
+
+function getGoogleDisplayName(decodedToken, email) {
+  const displayName = String(decodedToken.name || decodedToken.displayName || "").trim();
+
+  if (displayName) {
+    return displayName;
+  }
+
+  if (email) {
+    return email.split("@")[0];
+  }
+
+  return "Google User";
+}
+
 /**
  * Generate and save phone OTP
  */
@@ -335,6 +360,14 @@ exports.login = async (authInput, password, rememberMe = true) => {
       });
     }
 
+    if (!user.passwordHash) {
+      throw createLoginError(
+        "This account uses Google sign-in. Please continue with Google.",
+        "GOOGLE_ONLY_ACCOUNT",
+        buildUserContext(user, "EMAIL", normalizedEmail)
+      );
+    }
+
     // Check if account is deactivated
     if (!user.isActive) {
       throw createLoginError("This account has been deactivated", "ACCOUNT_DEACTIVATED", {
@@ -487,6 +520,102 @@ exports.login = async (authInput, password, rememberMe = true) => {
       }
     };
   }
+};
+
+// POST /api/auth/google
+exports.googleAuth = async (idToken, rememberMe = true) => {
+  const decodedToken = await verifyFirebaseGoogleToken(idToken);
+  const normalizedEmail = String(decodedToken.email || "").toLowerCase().trim();
+
+  if (!normalizedEmail) {
+    throw new Error("Google account did not provide an email address");
+  }
+
+  const displayName = getGoogleDisplayName(decodedToken, normalizedEmail);
+  const profilePhoto = String(decodedToken.picture || "").trim();
+
+  let user = await User.findOne({ googleUid: decodedToken.uid });
+
+  if (!user) {
+    user = await User.findOne({ email: normalizedEmail });
+  }
+
+  if (!user) {
+    user = await User.findOne({
+      additionalEmails: { $elemMatch: { email: normalizedEmail, verified: true } }
+    });
+  }
+
+  if (user && !user.isActive) {
+    throw createLoginError("This account has been deactivated", "ACCOUNT_DEACTIVATED", {
+      ...buildUserContext(user, "GOOGLE", normalizedEmail),
+      deactivationReason: user.deactivationReason || "",
+      canReactivate: true,
+    });
+  }
+
+  if (user && user.role !== "CUSTOMER") {
+    throw new Error("Google sign-in is only available for customer accounts.");
+  }
+
+  const isNewUser = !user;
+
+  if (!user) {
+    user = await User.create({
+      fullName: displayName,
+      email: normalizedEmail,
+      passwordHash: "",
+      role: "CUSTOMER",
+      googleUid: decodedToken.uid,
+      profilePhoto,
+      emailVerified: true,
+      authMethods: ["google"]
+    });
+  } else {
+    const authMethods = Array.from(new Set([...(user.authMethods || []), "google"]));
+    const updates = {
+      googleUid: decodedToken.uid,
+      emailVerified: true,
+      loginAttempts: 0,
+      authMethods
+    };
+
+    if (!user.fullName && displayName) {
+      updates.fullName = displayName;
+    }
+
+    if (profilePhoto && !user.profilePhoto) {
+      updates.profilePhoto = profilePhoto;
+    }
+
+    if (!user.email && normalizedEmail) {
+      updates.email = normalizedEmail;
+    }
+
+    await User.findByIdAndUpdate(user._id, {
+      $set: updates,
+      $unset: { emailOtp: "", emailOtpExpires: "", lockUntil: "" }
+    });
+
+    user = await User.findById(user._id);
+  }
+
+  const token = signToken(user, rememberMe !== false);
+
+  return {
+    token,
+    isNewUser,
+    user: {
+      id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      profilePhoto: user.profilePhoto || profilePhoto || "",
+      emailVerified: true,
+      authMethods: user.authMethods || ["google"],
+      needsPasswordChange: user.needsPasswordChange || false
+    }
+  };
 };
 
 /**

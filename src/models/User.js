@@ -5,7 +5,8 @@ const userSchema = new mongoose.Schema(
     fullName: { type: String, required: true, trim: true },
     lastName: { type: String, trim: true, default: "" },
     email: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
-    passwordHash: { type: String, required: true },
+    passwordHash: { type: String, required: false, default: "" },
+    googleUid: { type: String, unique: true, sparse: true, trim: true },
     role: {
       type: String,
       enum: ["SUPER_ADMIN", "CUSTOMER", "CSA", "INSPECTION", "MAIN_TECH", "SERVICE_TEAM", "FINANCE", "INVENTORY", "MANAGER"],
@@ -30,7 +31,7 @@ const userSchema = new mongoose.Schema(
     phoneVerified: { type: Boolean, default: false },
     phoneOtp: { type: String },
     phoneOtpExpires: { type: Date },
-    authMethods: { type: [String], enum: ["email", "phone"], default: ["email"] },
+    authMethods: { type: [String], enum: ["email", "phone", "google"], default: ["email"] },
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date },
     resetPasswordToken: { type: String },
