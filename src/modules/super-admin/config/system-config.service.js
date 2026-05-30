@@ -216,6 +216,7 @@ class SystemConfigService {
           newValue: newStart,
         };
         config.maintenance.scheduledStartTime = newStart;
+        config.maintenance.scheduledStartEmailSentAt = null;
         isScheduled = true;
       }
     }
@@ -233,6 +234,7 @@ class SystemConfigService {
           newValue: newEnd,
         };
         config.maintenance.scheduledEndTime = newEnd;
+        config.maintenance.scheduledStartEmailSentAt = null;
         isScheduled = true;
       }
     }

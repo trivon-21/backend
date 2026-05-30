@@ -32,6 +32,197 @@ class MaintenanceNotificationService {
   }
 
   /**
+   * Get shared branding and contact details for maintenance emails.
+   */
+  getEmailBranding() {
+    const supportEmail = String(process.env.SUPPORT_EMAIL || 'support@airlux.lk').trim();
+
+    return {
+      appUrl: String(process.env.FRONTEND_URL || process.env.APP_URL || 'https://airlux.lk').trim(),
+      supportEmail,
+      supportPhone: String(process.env.SUPPORT_PHONE || '+94 11 234 5678').trim(),
+      companyAddress: String(process.env.COMPANY_ADDRESS || '123 Galle Road, Colombo 03, Sri Lanka').trim(),
+      unsubscribeHref: String(
+        process.env.UNSUBSCRIBE_URL ||
+          `mailto:${supportEmail}?subject=${encodeURIComponent('Unsubscribe from AirLux maintenance emails')}`
+      ).trim(),
+    };
+  }
+
+  /**
+   * Escape user-provided content before inserting it into email HTML.
+   */
+  escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Format dates in a human-friendly, email-safe way.
+   */
+  formatEmailDate(value) {
+    return new Date(value).toLocaleString('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }
+
+  /**
+   * Return a plain-English maintenance window summary.
+   */
+  formatWindowSummary(startTime, endTime) {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const durationMinutes = Math.max(0, Math.round((end - start) / (1000 * 60)));
+
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+      return null;
+    }
+
+    if (durationMinutes < 60) {
+      return `${durationMinutes} minute${durationMinutes === 1 ? '' : 's'}`;
+    }
+
+    const hours = Math.floor(durationMinutes / 60);
+    const minutes = durationMinutes % 60;
+
+    if (minutes === 0) {
+      return `${hours} hour${hours === 1 ? '' : 's'}`;
+    }
+
+    return `${hours} hour${hours === 1 ? '' : 's'} ${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+
+  /**
+   * Build the branded header shown at the top of every email.
+   */
+  buildLogoBlock(accentColor) {
+    return `
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:0 0 24px 0;">
+        <tr>
+          <td style="padding:0; vertical-align:middle;">
+            <div style="display:inline-block; width:46px; height:46px; border-radius:14px; background:${accentColor}; text-align:center; line-height:46px; font-family: Arial, Helvetica, sans-serif; font-size:18px; font-weight:700; color:#ffffff;">AL</div>
+          </td>
+          <td style="padding:0 0 0 14px; vertical-align:middle; font-family: Arial, Helvetica, sans-serif;">
+            <div style="font-size:13px; line-height:1; letter-spacing:0.12em; text-transform:uppercase; color:#6b7280; margin-bottom:4px;">AirLux</div>
+            <div style="font-size:22px; line-height:1.1; font-weight:700; color:#12221d;">AirLux maintenance update</div>
+          </td>
+        </tr>
+      </table>
+    `;
+  }
+
+  /**
+   * Build a single prominent CTA button.
+   */
+  buildButton(label, href, backgroundColor) {
+    return `
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:28px 0 0 0;">
+        <tr>
+          <td align="center" bgcolor="${backgroundColor}" style="border-radius:999px;">
+            <a href="${href}" style="display:inline-block; padding:14px 24px; font-family: Arial, Helvetica, sans-serif; font-size:15px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:999px;">${label}</a>
+          </td>
+        </tr>
+      </table>
+    `;
+  }
+
+  /**
+   * Build the shared footer with unsubscribe and support details.
+   */
+  buildFooter({ supportEmail, supportPhone, companyAddress, unsubscribeHref, accentColor }) {
+    return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin-top:28px; border-top:1px solid #e5e7eb; padding-top:18px;">
+        <tr>
+          <td style="font-family: Arial, Helvetica, sans-serif; font-size:12px; line-height:1.6; color:#6b7280;">
+            <div style="margin-bottom:8px;">
+              Need a hand? <a href="mailto:${supportEmail}" style="color:${accentColor}; text-decoration:none; font-weight:700;">Contact Support</a>
+              <span style="color:#9ca3af;">&nbsp;|&nbsp;</span>
+              <a href="${unsubscribeHref}" style="color:${accentColor}; text-decoration:none;">Unsubscribe</a>
+            </div>
+            <div style="margin-bottom:2px;">${this.escapeHtml(companyAddress)}</div>
+            <div style="margin-bottom:2px;">Support: <a href="mailto:${supportEmail}" style="color:${accentColor}; text-decoration:none;">${this.escapeHtml(supportEmail)}</a></div>
+            <div>Phone: <a href="tel:${supportPhone.replace(/[^+\d]/g, '')}" style="color:${accentColor}; text-decoration:none;">${this.escapeHtml(supportPhone)}</a></div>
+          </td>
+        </tr>
+      </table>
+    `;
+  }
+
+  /**
+   * Wrap email content in a consistent branded layout.
+   */
+  buildEmailShell({
+    accentColor,
+    preheader,
+    title,
+    introHtml,
+    bodyHtml,
+    ctaLabel,
+    ctaHref,
+    footerNote,
+    borderColor,
+    badgeText,
+  }) {
+    const branding = this.getEmailBranding();
+    const cardBorderColor = borderColor || '#e5e7eb';
+
+    return `
+      <!doctype html>
+      <html lang="en">
+        <body style="margin:0; padding:0; background:#f3f5f7;">
+          <div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all; font-size:1px; line-height:1px; color:#f3f5f7;">
+            ${this.escapeHtml(preheader)}
+          </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; background:#f3f5f7; width:100%;">
+            <tr>
+              <td align="center" style="padding:32px 16px;">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; width:100%; max-width:600px; margin:0 auto;">
+                  <tr>
+                    <td style="padding:0 0 18px 0;">${this.buildLogoBlock(accentColor)}</td>
+                  </tr>
+                  <tr>
+                    <td style="background:#ffffff; border:1px solid ${cardBorderColor}; border-radius:20px; overflow:hidden; box-shadow:0 10px 30px rgba(17,24,39,0.08);">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                        <tr>
+                          <td style="height:8px; background:${accentColor}; line-height:8px; font-size:0;">&nbsp;</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:34px 34px 8px 34px; font-family: Arial, Helvetica, sans-serif; color:#12221d;">
+                            <div style="display:inline-block; margin-bottom:14px; padding:6px 12px; border-radius:999px; background:${accentColor}15; color:${accentColor}; font-size:12px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;">
+                              ${this.escapeHtml(badgeText)}
+                            </div>
+                            <h1 style="margin:0 0 16px 0; font-size:28px; line-height:1.25; color:#12221d;">${this.escapeHtml(title)}</h1>
+                            <p style="margin:0 0 16px 0; font-size:16px; line-height:1.7; color:#334155;">${introHtml}</p>
+                            ${bodyHtml}
+                            ${ctaLabel ? this.buildButton(ctaLabel, ctaHref, accentColor) : ''}
+                            ${footerNote ? `<p style="margin:22px 0 0 0; font-size:14px; line-height:1.7; color:#475569;">${footerNote}</p>` : ''}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:0 34px 28px 34px;">${this.buildFooter(branding)}</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `;
+  }
+
+  /**
    * Calculate time remaining until scheduled maintenance
    */
   calculateTimeRemaining(startTime) {
@@ -66,84 +257,84 @@ class MaintenanceNotificationService {
    * Generate scheduled maintenance email HTML
    */
   generateScheduledMaintenanceEmailHtml(userName, startTime, endTime, message, reason, timeRemaining) {
-    const startDate = new Date(startTime).toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
+    const branding = this.getEmailBranding();
+    const startDate = this.formatEmailDate(startTime);
+    const endDate = this.formatEmailDate(endTime);
+    const windowSummary = this.formatWindowSummary(startTime, endTime);
+    const safeUserName = this.escapeHtml(userName || 'there');
+    const messageText = message ? this.escapeHtml(message) : 'a few behind-the-scenes improvements';
+    const reasonText = reason ? this.escapeHtml(reason) : 'a smoother experience when you return';
 
-    const endDate = new Date(endTime).toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-
-    return `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #ff6b6b;">Scheduled System Maintenance</h2>
-
-        <p>Hi ${userName},</p>
-
-        <p>We will be performing scheduled maintenance on the AirLux system.</p>
-
-        <div style="background-color: #f0f0f0; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <p><strong>Maintenance Window:</strong></p>
-          <p>📅 Start: ${startDate}</p>
-          <p>📅 End: ${endDate}</p>
-          <p style="color: #ff6b6b; font-size: 16px; font-weight: bold;">⏱️ Time remaining: ${timeRemaining.timeString}</p>
-        </div>
-
-        ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
-        ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
-
-        <p>During this maintenance window, the system will be temporarily unavailable. We apologize for any inconvenience this may cause.</p>
-
-        <p>If you have any questions, please contact our support team at ${process.env.SUPPORT_EMAIL || 'support@airlux.lk'}.</p>
-
-        <p>Thank you for your patience.</p>
-
-        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
-        <p style="font-size: 12px; color: #888;">AirLux Team</p>
-      </div>
+    const bodyHtml = `
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.7; color:#334155;">We’re keeping the maintenance window short so you’re back up quickly.</p>
+      <p style="margin:0 0 18px 0; font-size:16px; line-height:1.7; color:#334155;">This update covers ${messageText}${reason ? ` and focuses on ${reasonText}` : ''}. We’ll use the window to make sure everything is ready for a smoother, steadier AirLux experience.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:0 0 18px 0;">
+        <tr>
+          <td style="background:#fff7ed; border:1px solid #fed7aa; border-left:4px solid #f59e0b; border-radius:14px; padding:18px; font-family: Arial, Helvetica, sans-serif; color:#7c2d12;">
+            <div style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; color:#c2410c;">Maintenance window</div>
+            <div style="font-size:15px; line-height:1.7; margin-bottom:6px;">Starts: ${this.escapeHtml(startDate)}</div>
+            <div style="font-size:15px; line-height:1.7; margin-bottom:6px;">Ends: ${this.escapeHtml(endDate)}</div>
+            <div style="font-size:15px; line-height:1.7; font-weight:700;">Expected downtime: about ${this.escapeHtml(windowSummary)}</div>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0; font-size:16px; line-height:1.7; color:#334155;">If you need a hand while we’re making these updates, just use the support button below and we’ll jump in.</p>
     `;
+
+    return this.buildEmailShell({
+      accentColor: '#d97706',
+      preheader: 'AirLux scheduled maintenance starts soon.',
+      title: `Hi ${safeUserName}, your AirLux maintenance reminder is here`,
+      badgeText: 'Scheduled maintenance',
+      introHtml: 'We’re getting a few things ready behind the scenes so AirLux comes back in better shape for you.',
+      bodyHtml,
+      ctaLabel: 'Contact Support',
+      ctaHref: `mailto:${branding.supportEmail}?subject=${encodeURIComponent('AirLux scheduled maintenance support')}`,
+      footerNote: 'Thanks for bearing with us while we finish the work. We’ve kept the window short so you’re back up quickly.',
+      borderColor: '#fde68a',
+    });
   }
 
   /**
    * Generate instant maintenance email HTML
    */
-  generateInstantMaintenanceEmailHtml(userName, message, reason) {
-    return `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #ff6b6b;">System Maintenance in Progress</h2>
+  generateInstantMaintenanceEmailHtml(userName, message, reason, estimatedBackOnlineAt) {
+    const branding = this.getEmailBranding();
+    const safeUserName = this.escapeHtml(userName || 'there');
+    const messageText = message ? this.escapeHtml(message) : 'a short round of behind-the-scenes improvements';
+    const reasonText = reason ? this.escapeHtml(reason) : 'getting everything running more smoothly';
 
-        <p>Hi ${userName},</p>
+    const backOnlineText = estimatedBackOnlineAt
+      ? `Estimated back online: ${this.escapeHtml(this.formatEmailDate(estimatedBackOnlineAt))}`
+      : 'Estimated back online: as soon as the work is finished and the checks pass.';
 
-        <p>The AirLux system is currently under maintenance and temporarily unavailable.</p>
-
-        <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107;">
-          <p style="margin: 0;"><strong>⚠️ The system is currently undergoing maintenance.</strong></p>
-          <p style="margin: 10px 0 0 0;">We will be back online as soon as possible.</p>
-        </div>
-
-        ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
-        ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
-
-        <p>If you have any questions, please contact our support team at ${process.env.SUPPORT_EMAIL || 'support@airlux.lk'}.</p>
-
-        <p>Thank you for your patience.</p>
-
-        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
-        <p style="font-size: 12px; color: #888;">AirLux Team</p>
-      </div>
+    const bodyHtml = `
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.7; color:#334155;">We’re doing some behind-the-scenes work to improve your experience, and AirLux is temporarily offline while we wrap it up.</p>
+      <p style="margin:0 0 18px 0; font-size:16px; line-height:1.7; color:#334155;">The current maintenance covers ${messageText}${reason ? ` and is focused on ${reasonText}` : ''}.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:0 0 18px 0;">
+        <tr>
+          <td style="background:#fef2f2; border:1px solid #fecaca; border-left:4px solid #ef4444; border-radius:14px; padding:18px; font-family: Arial, Helvetica, sans-serif; color:#7f1d1d;">
+            <div style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; color:#b91c1c;">What to expect</div>
+            <div style="font-size:16px; line-height:1.7; font-weight:700; margin-bottom:6px;">${this.escapeHtml(backOnlineText)}</div>
+            <div style="font-size:15px; line-height:1.7;">We’re keeping an eye on it and will bring everything back as soon as the checks are complete.</div>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0; font-size:16px; line-height:1.7; color:#334155;">If you’re waiting to get something done, reach out and we’ll help you work out the best next step.</p>
     `;
+
+    return this.buildEmailShell({
+      accentColor: '#dc2626',
+      preheader: 'AirLux is undergoing maintenance and will be back shortly.',
+      title: `Hi ${safeUserName}, AirLux is currently undergoing maintenance`,
+      badgeText: 'Maintenance alert',
+      introHtml: 'We’re making a few careful updates so the platform comes back cleaner and more reliable for you.',
+      bodyHtml,
+      ctaLabel: 'Contact Support',
+      ctaHref: `mailto:${branding.supportEmail}?subject=${encodeURIComponent('AirLux maintenance support')}`,
+      footerNote: 'Thanks for sticking with us while we get things ready again.',
+      borderColor: '#fecaca',
+    });
   }
 
   /**
@@ -174,7 +365,7 @@ class MaintenanceNotificationService {
 
           if (isScheduled) {
             const timeRemaining = this.calculateTimeRemaining(maintenance.scheduledStartTime);
-            subject = `[SCHEDULED] AirLux System Maintenance - ${timeRemaining.timeString} remaining`;
+            subject = 'Reminder: AirLux scheduled maintenance is coming up';
             html = this.generateScheduledMaintenanceEmailHtml(
               user.fullName,
               maintenance.scheduledStartTime,
@@ -184,11 +375,12 @@ class MaintenanceNotificationService {
               timeRemaining
             );
           } else if (isActive) {
-            subject = '[ALERT] AirLux System Under Maintenance';
+            subject = "AirLux is currently undergoing maintenance — we'll be back shortly";
             html = this.generateInstantMaintenanceEmailHtml(
               user.fullName,
               maintenance.message,
-              maintenance.reason
+              maintenance.reason,
+              maintenance.endTime || maintenance.scheduledEndTime
             );
           } else {
             continue;
@@ -215,6 +407,101 @@ class MaintenanceNotificationService {
       return { sent, failed, errors, total: emailUsers.length };
     } catch (error) {
       console.error('Error sending maintenance emails:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send the instant-style email when a scheduled maintenance window actually starts.
+   */
+  async sendScheduledMaintenanceStartEmailsToAllUsers(maintenance) {
+    try {
+      const transporter = this.getEmailTransporter();
+      const users = await this.getMaintenanceRecipients();
+      const emailUsers = users.filter((user) => typeof user.email === 'string' && user.email.trim());
+
+      if (emailUsers.length === 0) {
+        console.log('No non-super-admin users with email found for scheduled maintenance start notification');
+        return { sent: 0, failed: 0, errors: [] };
+      }
+
+      let sent = 0;
+      let failed = 0;
+      const errors = [];
+      const estimatedBackOnlineAt = maintenance.endTime || maintenance.scheduledEndTime;
+
+      for (const user of emailUsers) {
+        try {
+          const html = this.generateInstantMaintenanceEmailHtml(
+            user.fullName,
+            maintenance.message,
+            maintenance.reason,
+            estimatedBackOnlineAt
+          );
+
+          await transporter.sendMail({
+            from: `AirLux <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: "AirLux is currently undergoing maintenance — we'll be back shortly",
+            html,
+          });
+
+          sent++;
+        } catch (error) {
+          failed++;
+          errors.push({
+            email: user.email,
+            error: error.message,
+          });
+          console.error(`Failed to send scheduled maintenance start email to ${user.email}:`, error);
+        }
+      }
+
+      return { sent, failed, errors, total: emailUsers.length };
+    } catch (error) {
+      console.error('Error sending scheduled maintenance start emails:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check whether a scheduled maintenance window has started and send the one-time email.
+   */
+  async processScheduledMaintenanceStartNotifications() {
+    try {
+      const config = await require('../utils/config-cache').getSystemConfig();
+      const maintenance = config.maintenance;
+
+      if (!maintenance?.scheduledStartTime || !maintenance?.scheduledEndTime) {
+        return { skipped: true, reason: 'NO_SCHEDULED_MAINTENANCE' };
+      }
+
+      if (maintenance.scheduledStartEmailSentAt) {
+        return { skipped: true, reason: 'ALREADY_SENT' };
+      }
+
+      const now = new Date();
+      const startTime = new Date(maintenance.scheduledStartTime);
+      const endTime = new Date(maintenance.scheduledEndTime);
+
+      if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+        return { skipped: true, reason: 'INVALID_SCHEDULE' };
+      }
+
+      if (now < startTime || now > endTime) {
+        return { skipped: true, reason: 'NOT_STARTED_YET' };
+      }
+
+      const result = await this.sendScheduledMaintenanceStartEmailsToAllUsers(maintenance);
+
+      config.maintenance.scheduledStartEmailSentAt = new Date();
+      await config.save();
+
+      require('../utils/config-cache').clearCache();
+
+      return { skipped: false, result };
+    } catch (error) {
+      console.error('Error processing scheduled maintenance start notifications:', error);
       throw error;
     }
   }
@@ -290,26 +577,34 @@ class MaintenanceNotificationService {
    * Generate maintenance finished email HTML
    */
   generateMaintenanceFinishedEmailHtml(userName) {
-    return `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #28a745;">✓ System Maintenance Complete</h2>
+    const branding = this.getEmailBranding();
+    const safeUserName = this.escapeHtml(userName || 'there');
 
-        <p>Hi ${userName},</p>
-
-        <p>The AirLux system maintenance has been completed successfully.</p>
-
-        <div style="background-color: #d4edda; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745;">
-          <p style="margin: 0; color: #155724;"><strong>✓ The system is now back online and fully operational.</strong></p>
-        </div>
-
-        <p>Thank you for your patience during this maintenance window. If you experience any issues, please contact our support team at ${process.env.SUPPORT_EMAIL || 'support@airlux.lk'}.</p>
-
-        <p>Best regards,</p>
-
-        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
-        <p style="font-size: 12px; color: #888;">AirLux Team</p>
-      </div>
+    const bodyHtml = `
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.7; color:#334155;">You’re all set — everything is running normally again.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:0 0 18px 0;">
+        <tr>
+          <td style="background:#ecfdf5; border:1px solid #bbf7d0; border-left:4px solid #16a34a; border-radius:14px; padding:18px; font-family: Arial, Helvetica, sans-serif; color:#14532d;">
+            <div style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; color:#15803d;">Status</div>
+            <div style="font-size:16px; line-height:1.7; font-weight:700;">The platform is live and ready whenever you are.</div>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0; font-size:16px; line-height:1.7; color:#334155;">If you were waiting to jump back in, you can head straight back to AirLux now.</p>
     `;
+
+    return this.buildEmailShell({
+      accentColor: '#16a34a',
+      preheader: 'AirLux maintenance is complete and the system is back online.',
+      title: `Hi ${safeUserName}, AirLux is back online ✓`,
+      badgeText: 'Maintenance complete',
+      introHtml: 'Thanks for hanging in there while we finished the update.',
+      bodyHtml,
+      ctaLabel: 'Go to AirLux',
+      ctaHref: branding.appUrl,
+      footerNote: 'Thanks for bearing with us — if anything feels off, we’re just an email away.',
+      borderColor: '#bbf7d0',
+    });
   }
 
   /**
@@ -337,7 +632,7 @@ class MaintenanceNotificationService {
           await transporter.sendMail({
             from: `AirLux <${process.env.EMAIL_USER}>`,
             to: user.email,
-            subject: '✓ AirLux System Maintenance Complete',
+            subject: 'AirLux is back online ✓',
             html,
           });
 

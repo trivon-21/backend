@@ -88,6 +88,10 @@ const systemConfigSchema = new mongoose.Schema(
         type: Date,
         default: null,
       },
+      scheduledStartEmailSentAt: {
+        type: Date,
+        default: null,
+      },
     },
     systemInfo: {
       systemName: {
