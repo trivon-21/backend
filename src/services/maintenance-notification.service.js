@@ -287,6 +287,79 @@ class MaintenanceNotificationService {
   }
 
   /**
+   * Generate maintenance finished email HTML
+   */
+  generateMaintenanceFinishedEmailHtml(userName) {
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #28a745;">✓ System Maintenance Complete</h2>
+
+        <p>Hi ${userName},</p>
+
+        <p>The AirLux system maintenance has been completed successfully.</p>
+
+        <div style="background-color: #d4edda; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745;">
+          <p style="margin: 0; color: #155724;"><strong>✓ The system is now back online and fully operational.</strong></p>
+        </div>
+
+        <p>Thank you for your patience during this maintenance window. If you experience any issues, please contact our support team at ${process.env.SUPPORT_EMAIL || 'support@airlux.lk'}.</p>
+
+        <p>Best regards,</p>
+
+        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+        <p style="font-size: 12px; color: #888;">AirLux Team</p>
+      </div>
+    `;
+  }
+
+  /**
+   * Send maintenance finished emails to all users
+   */
+  async sendMaintenanceFinishedEmailsToAllUsers() {
+    try {
+      const transporter = this.getEmailTransporter();
+      const users = await this.getMaintenanceRecipients();
+      const emailUsers = users.filter((user) => typeof user.email === 'string' && user.email.trim());
+
+      if (emailUsers.length === 0) {
+        console.log('No non-super-admin users with email found for maintenance finished notification');
+        return { sent: 0, failed: 0, errors: [] };
+      }
+
+      let sent = 0;
+      let failed = 0;
+      const errors = [];
+
+      for (const user of emailUsers) {
+        try {
+          const html = this.generateMaintenanceFinishedEmailHtml(user.fullName);
+
+          await transporter.sendMail({
+            from: `AirLux <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: '✓ AirLux System Maintenance Complete',
+            html,
+          });
+
+          sent++;
+        } catch (error) {
+          failed++;
+          errors.push({
+            email: user.email,
+            error: error.message,
+          });
+          console.error(`Failed to send maintenance finished email to ${user.email}:`, error);
+        }
+      }
+
+      return { sent, failed, errors, total: emailUsers.length };
+    } catch (error) {
+      console.error('Error sending maintenance finished emails:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Send maintenance notifications (both email and in-app)
    */
   async sendMaintenanceNotifications(maintenance) {
@@ -329,6 +402,98 @@ class MaintenanceNotificationService {
     }
 
     return results;
+  }
+
+  /**
+   * Send maintenance finished notifications (email and in-app)
+   */
+  async sendMaintenanceFinishedNotifications() {
+    const results = {
+      emails: null,
+      notifications: null,
+      errors: [],
+    };
+
+    try {
+      // Send emails
+      try {
+        results.emails = await this.sendMaintenanceFinishedEmailsToAllUsers();
+        console.log('Maintenance finished emails sent:', results.emails);
+      } catch (error) {
+        console.error('Error sending maintenance finished emails:', error);
+        results.errors.push({
+          type: 'EMAIL_SEND_FAILED',
+          message: error.message,
+        });
+      }
+
+      // Create notifications
+      try {
+        results.notifications = await this.createMaintenanceFinishedNotificationsForAllUsers();
+        console.log('Maintenance finished notifications created:', results.notifications);
+      } catch (error) {
+        console.error('Error creating maintenance finished notifications:', error);
+        results.errors.push({
+          type: 'NOTIFICATION_CREATE_FAILED',
+          message: error.message,
+        });
+      }
+    } catch (error) {
+      console.error('Error sending maintenance finished notifications:', error);
+      results.errors.push({
+        type: 'NOTIFICATION_SERVICE_ERROR',
+        message: error.message,
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Create maintenance finished notifications for all users
+   */
+  async createMaintenanceFinishedNotificationsForAllUsers() {
+    try {
+      const users = await this.getMaintenanceRecipients();
+
+      if (users.length === 0) {
+        console.log('No non-super-admin users found for maintenance finished notification');
+        return { created: 0, failed: 0 };
+      }
+
+      let created = 0;
+      let failed = 0;
+
+      for (const user of users) {
+        try {
+          await User.findByIdAndUpdate(
+            user._id,
+            {
+              $push: {
+                notifications: {
+                  type: 'general',
+                  title: 'System Maintenance Complete',
+                  message: 'The scheduled system maintenance has been completed successfully. The system is now online.',
+                  read: false,
+                  createdAt: new Date(),
+                },
+              },
+            },
+            { new: true }
+          );
+
+          created++;
+        } catch (error) {
+          failed++;
+          console.error(`Failed to create maintenance finished notification for user ${user._id}:`, error);
+        }
+      }
+
+      return { created, failed, total: users.length };
+    } catch (error) {
+      console.error('Error creating maintenance finished notifications:', error);
+      throw error;
+    }
   }
 }
 

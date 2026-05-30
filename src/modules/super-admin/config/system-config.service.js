@@ -166,6 +166,7 @@ class SystemConfigService {
     const changes = {};
     let isScheduled = false;
     let isActivating = false;
+    let isDeactivating = false;
 
     if (updates.hasOwnProperty('isActive')) {
       if (typeof updates.isActive !== 'boolean') {
@@ -178,6 +179,7 @@ class SystemConfigService {
         };
         config.maintenance.isActive = updates.isActive;
         isActivating = updates.isActive && !oldValues.isActive;
+        isDeactivating = !updates.isActive && oldValues.isActive;
       }
     }
 
@@ -287,6 +289,16 @@ class SystemConfigService {
       } catch (error) {
         console.error('Failed to send maintenance notifications:', error);
         // Don't throw - maintenance should still be activated even if notifications fail
+      }
+    }
+
+    // Send maintenance finished notifications when maintenance is being deactivated
+    if (isDeactivating) {
+      try {
+        await maintenanceNotificationService.sendMaintenanceFinishedNotifications();
+      } catch (error) {
+        console.error('Failed to send maintenance finished notifications:', error);
+        // Don't throw - maintenance should still be deactivated even if notifications fail
       }
     }
 
