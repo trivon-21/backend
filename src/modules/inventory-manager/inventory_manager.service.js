@@ -8,6 +8,9 @@ const MaterialRequest = require('../../models/MaterialRequest');
 const AssetLoan = require('../../models/AssetLoan');
 const AssetReturnLog = require('../../models/AssetReturnLog');
 const OrderRequest = require('../../models/OrderRequest');
+const LeftoverReturn = require('../../models/LeftoverReturn');
+const RmaCase = require('../../models/RmaCase');
+const QuarantineItem = require('../../models/QuarantineItem');
 const mongoose = require('mongoose');
 
 /**
@@ -439,4 +442,281 @@ exports.getActivityLog = async () => {
   return await Activity.find({ 
     type: { $in: ['return', 'dispatch', 'request', 'grn', 'alert'] } 
   }).sort({ timestamp: -1 });
+};
+
+// ── Returns & RMA Methods ──
+
+/**
+ * Generates a unique ID with the given prefix and current timestamp.
+ */
+function generateId(prefix) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  return `${prefix}-${year}${month}${day}-${hours}${minutes}${seconds}`;
+}
+
+/**
+ * Fetches all leftover returns sorted by most recent first.
+ */
+exports.getLeftoverReturns = async () => {
+  return await LeftoverReturn.find().sort({ createdAt: -1 });
+};
+
+/**
+ * Creates a new leftover return record.
+ * - If condition is 'good': restores quantity to inventory stock.
+ * - If condition is 'damaged' or 'scrap': creates a quarantine item.
+ * Logs an activity for the return.
+ */
+exports.createLeftoverReturn = async (data, user) => {
+  const returnId = generateId('LR');
+  const returnedBy = user?.fullName || 'Inventory Manager';
+
+  const leftoverReturn = new LeftoverReturn({
+    returnId,
+    jobId: data.jobId,
+    itemId: data.itemId || null,
+    itemName: data.itemName,
+    itemSku: data.itemSku || '',
+    quantityReturned: data.quantityReturned,
+    condition: data.condition,
+    returnedBy,
+    notes: data.notes || '',
+    restoredToStock: false,
+    movedToQuarantine: false,
+  });
+
+  // Business logic: update stock or quarantine based on condition
+  if (data.condition === 'good') {
+    // Restore to inventory
+    if (data.itemId) {
+      const item = await Inventory.findById(data.itemId);
+      if (item) {
+        item.available = (item.available || 0) + data.quantityReturned;
+        // Recalculate stock status
+        if (item.available === 0) {
+          item.status = 'critical';
+        } else if (item.available <= (item.reorderLevel || 10)) {
+          item.status = 'warning';
+        } else {
+          item.status = 'normal';
+        }
+        await item.save();
+      }
+    }
+    leftoverReturn.restoredToStock = true;
+  } else {
+    // Damaged or scrap → move to quarantine
+    const quarantineId = generateId('QZ');
+    const quarantineItem = new QuarantineItem({
+      quarantineId,
+      itemName: data.itemName,
+      quantity: data.quantityReturned,
+      unit: data.unit || 'units',
+      reason: data.condition === 'scrap'
+        ? `Scrap from job ${data.jobId}: ${data.notes || 'No details'}`
+        : `Damaged from job ${data.jobId}: ${data.notes || 'No details'}`,
+      location: data.location || '',
+      source: 'leftover-return',
+      sourceRefId: returnId,
+    });
+    await quarantineItem.save();
+    leftoverReturn.movedToQuarantine = true;
+  }
+
+  const saved = await leftoverReturn.save();
+
+  // Log activity
+  const activity = new Activity({
+    type: 'return',
+    title: 'Leftover Material Returned',
+    description: `${data.quantityReturned} ${data.unit || 'units'} of ${data.itemName} returned from job ${data.jobId} (${data.condition})`,
+    actionLabel: 'View Returns',
+  });
+  await activity.save();
+
+  return saved;
+};
+
+/**
+ * Fetches all RMA cases sorted by most recent first.
+ */
+exports.getRmaCases = async () => {
+  return await RmaCase.find().sort({ createdAt: -1 });
+};
+
+/**
+ * Creates a new RMA case and logs the activity.
+ */
+exports.createRmaCase = async (data, user) => {
+  const rmaId = generateId('RMA');
+  const reportedBy = user?.fullName || 'Inventory Manager';
+
+  const rmaCase = new RmaCase({
+    rmaId,
+    serialNumber: data.serialNumber,
+    itemName: data.itemName || '',
+    itemSku: data.itemSku || '',
+    faultDescription: data.faultDescription,
+    reportedBy,
+    status: 'reported',
+    type: data.type || 'Single',
+    resolution: '',
+  });
+
+  const saved = await rmaCase.save();
+
+  const activity = new Activity({
+    type: 'return',
+    title: 'RMA Case Created',
+    description: `RMA ${rmaId} filed for ${data.serialNumber}: ${data.faultDescription}`,
+    actionLabel: 'View RMA',
+  });
+  await activity.save();
+
+  return saved;
+};
+
+/**
+ * Updates an RMA case status with transition validation.
+ * Valid transitions: reported → under-review → sent-to-supplier → resolved → closed
+ */
+exports.updateRmaCase = async (id, data) => {
+  const rmaCase = await RmaCase.findOne({ rmaId: id });
+  if (!rmaCase) throw new Error('RMA case not found');
+
+  const validTransitions = {
+    'reported': ['under-review'],
+    'under-review': ['sent-to-supplier', 'resolved'],
+    'sent-to-supplier': ['resolved'],
+    'resolved': ['closed'],
+    'closed': [],
+  };
+
+  if (data.status && data.status !== rmaCase.status) {
+    const allowed = validTransitions[rmaCase.status] || [];
+    if (!allowed.includes(data.status)) {
+      throw new Error(`Invalid status transition from '${rmaCase.status}' to '${data.status}'`);
+    }
+
+    rmaCase.status = data.status;
+
+    if (data.status === 'resolved' || data.status === 'closed') {
+      rmaCase.resolvedAt = rmaCase.resolvedAt || new Date();
+    }
+  }
+
+  if (data.resolution !== undefined) {
+    rmaCase.resolution = data.resolution;
+  }
+
+  const saved = await rmaCase.save();
+
+  const activity = new Activity({
+    type: 'return',
+    title: 'RMA Status Updated',
+    description: `RMA ${rmaCase.rmaId} status changed to ${rmaCase.status}`,
+    actionLabel: 'View RMA',
+  });
+  await activity.save();
+
+  return saved;
+};
+
+/**
+ * Fetches all active quarantine items (status = 'quarantined').
+ */
+exports.getQuarantineItems = async () => {
+  return await QuarantineItem.find({ status: 'quarantined' }).sort({ createdAt: -1 });
+};
+
+/**
+ * Manually adds an item to the quarantine zone.
+ */
+exports.createQuarantineItem = async (data, user) => {
+  const quarantineId = generateId('QZ');
+
+  const quarantineItem = new QuarantineItem({
+    quarantineId,
+    itemName: data.itemName,
+    quantity: data.quantity,
+    unit: data.unit || 'units',
+    reason: data.reason,
+    location: data.location || '',
+    source: 'manual',
+    sourceRefId: '',
+  });
+
+  const saved = await quarantineItem.save();
+
+  const activity = new Activity({
+    type: 'alert',
+    title: 'Item Quarantined',
+    description: `${data.quantity} ${data.unit || 'units'} of ${data.itemName} added to quarantine: ${data.reason}`,
+    actionLabel: 'View Quarantine',
+  });
+  await activity.save();
+
+  return saved;
+};
+
+/**
+ * Disposes a quarantine item — updates status and records audit trail.
+ */
+exports.disposeQuarantineItem = async (id, user) => {
+  const item = await QuarantineItem.findOne({ quarantineId: id });
+  if (!item) throw new Error('Quarantine item not found');
+  if (item.status !== 'quarantined') throw new Error('Item is already disposed');
+
+  item.status = 'disposed';
+  item.disposedAt = new Date();
+  item.disposedBy = user?.fullName || 'Inventory Manager';
+
+  const saved = await item.save();
+
+  const activity = new Activity({
+    type: 'alert',
+    title: 'Quarantine Item Disposed',
+    description: `${item.quantity} ${item.unit} of ${item.itemName} disposed from quarantine`,
+    actionLabel: 'View Quarantine',
+  });
+  await activity.save();
+
+  return saved;
+};
+
+/**
+ * Aggregates summary stats for the returns page header.
+ */
+exports.getReturnsSummary = async () => {
+  const totalReturns = await LeftoverReturn.countDocuments();
+  const restoredToStock = await LeftoverReturn.countDocuments({ restoredToStock: true });
+  const movedToQuarantine = await LeftoverReturn.countDocuments({ movedToQuarantine: true });
+
+  const activeRmaCases = await RmaCase.countDocuments({ status: { $nin: ['closed'] } });
+  const totalRmaCases = await RmaCase.countDocuments();
+
+  const quarantineCount = await QuarantineItem.countDocuments({ status: 'quarantined' });
+  const disposedCount = await QuarantineItem.countDocuments({ status: 'disposed' });
+
+  return {
+    leftoverReturns: {
+      total: totalReturns,
+      restoredToStock,
+      movedToQuarantine,
+    },
+    rmaCases: {
+      total: totalRmaCases,
+      active: activeRmaCases,
+    },
+    quarantine: {
+      active: quarantineCount,
+      disposed: disposedCount,
+    },
+  };
 };

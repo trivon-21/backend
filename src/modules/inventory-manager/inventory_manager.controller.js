@@ -317,3 +317,122 @@ exports.getActivityLog = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch activity log" });
   }
 };
+
+// ── Returns & RMA Endpoints ──
+
+/**
+ * Retrieves all leftover return records.
+ */
+exports.getLeftoverReturns = async (req, res) => {
+  try {
+    const data = await service.getLeftoverReturns();
+    res.json(data);
+  } catch (error) {
+    console.error('Leftover returns fetch error:', error);
+    res.status(500).json({ message: "Failed to fetch leftover returns" });
+  }
+};
+
+/**
+ * Creates a new leftover return and handles stock/quarantine logic.
+ */
+exports.createLeftoverReturn = async (req, res) => {
+  try {
+    const data = await service.createLeftoverReturn(req.body, req.user);
+    res.status(201).json(data);
+  } catch (error) {
+    console.error('Leftover return creation error:', error);
+    res.status(500).json({ message: error.message || "Failed to create leftover return" });
+  }
+};
+
+/**
+ * Retrieves all RMA cases.
+ */
+exports.getRmaCases = async (req, res) => {
+  try {
+    const data = await service.getRmaCases();
+    res.json(data);
+  } catch (error) {
+    console.error('RMA cases fetch error:', error);
+    res.status(500).json({ message: "Failed to fetch RMA cases" });
+  }
+};
+
+/**
+ * Creates a new RMA case.
+ */
+exports.createRmaCase = async (req, res) => {
+  try {
+    const data = await service.createRmaCase(req.body, req.user);
+    res.status(201).json(data);
+  } catch (error) {
+    console.error('RMA case creation error:', error);
+    res.status(500).json({ message: error.message || "Failed to create RMA case" });
+  }
+};
+
+/**
+ * Updates an RMA case status.
+ */
+exports.updateRmaCase = async (req, res) => {
+  try {
+    const data = await service.updateRmaCase(req.params.id, req.body);
+    res.json(data);
+  } catch (error) {
+    console.error('RMA case update error:', error);
+    res.status(400).json({ message: error.message || "Failed to update RMA case" });
+  }
+};
+
+/**
+ * Retrieves all active quarantine items.
+ */
+exports.getQuarantineItems = async (req, res) => {
+  try {
+    const data = await service.getQuarantineItems();
+    res.json(data);
+  } catch (error) {
+    console.error('Quarantine items fetch error:', error);
+    res.status(500).json({ message: "Failed to fetch quarantine items" });
+  }
+};
+
+/**
+ * Manually adds an item to the quarantine zone.
+ */
+exports.createQuarantineItem = async (req, res) => {
+  try {
+    const data = await service.createQuarantineItem(req.body, req.user);
+    res.status(201).json(data);
+  } catch (error) {
+    console.error('Quarantine item creation error:', error);
+    res.status(500).json({ message: error.message || "Failed to create quarantine item" });
+  }
+};
+
+/**
+ * Disposes a quarantine item.
+ */
+exports.disposeQuarantineItem = async (req, res) => {
+  try {
+    const data = await service.disposeQuarantineItem(req.params.id, req.user);
+    res.json(data);
+  } catch (error) {
+    console.error('Quarantine dispose error:', error);
+    res.status(400).json({ message: error.message || "Failed to dispose quarantine item" });
+  }
+};
+
+/**
+ * Retrieves aggregated returns summary stats.
+ */
+exports.getReturnsSummary = async (req, res) => {
+  try {
+    const data = await service.getReturnsSummary();
+    res.json(data);
+  } catch (error) {
+    console.error('Returns summary fetch error:', error);
+    res.status(500).json({ message: "Failed to fetch returns summary" });
+  }
+};

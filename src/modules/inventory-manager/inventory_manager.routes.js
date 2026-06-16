@@ -43,4 +43,15 @@ router.patch("/order-requests/:id/reject", protect, controller.rejectOrderReques
 router.get("/suggested-orders", protect, controller.getSuggestedOrders);
 router.get("/activity", protect, controller.getActivityLog);
 
+// Returns & RMA
+router.get("/returns-summary", protect, controller.getReturnsSummary);
+router.get("/leftover-returns", protect, controller.getLeftoverReturns);
+router.post("/leftover-returns", protect, controller.createLeftoverReturn);
+router.get("/rma-cases", protect, controller.getRmaCases);
+router.post("/rma-cases", protect, controller.createRmaCase);
+router.patch("/rma-cases/:id", protect, controller.updateRmaCase);
+router.get("/quarantine", protect, controller.getQuarantineItems);
+router.post("/quarantine", protect, controller.createQuarantineItem);
+router.patch("/quarantine/:id/dispose", protect, controller.disposeQuarantineItem);
+
 module.exports = router;
