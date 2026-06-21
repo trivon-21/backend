@@ -6,7 +6,7 @@ require('dotenv').config({ path: '.env' }); // Make sure to load env
 const seedData = async () => {
   try {
     console.log('Connecting to MongoDB...');
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://sdissanayake:Airlux1234@airluxcluster.7e76n.mongodb.net/airlux?retryWrites=true&w=majority&appName=AirluxCluster');
+    await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected.');
 
     await Order.deleteMany({});
