@@ -4,6 +4,14 @@ const Installation = require('../shared/installation/installation.model');
 const Customer = require('../customer/customer.model');
 const { EXECUTION_STATUS, REQUEST_TYPES } = require('../../constants/enums');
 
+/**
+ * Strips test prefixes from strings (e.g., "TEST:", "TESTEST_")
+ */
+const stripTestPrefix = (value) => {
+  if (!value || typeof value !== 'string') return value;
+  return value.replace(/^(TEST:|TESTEST_|TEST_)/i, '').trim();
+};
+
 const loadSourceRecord = async (serviceRequestId, onModel) => {
   if (!serviceRequestId) {
     return null;
@@ -20,10 +28,10 @@ const buildCustomerSnapshot = (record) => {
   const customer = record?.customerId && typeof record.customerId === 'object' ? record.customerId : null;
 
   return {
-    name: customer?.name || record?.customerName || 'Unknown Customer',
+    name: stripTestPrefix(customer?.name) || stripTestPrefix(record?.customerName) || 'Unknown Customer',
     phone: customer?.contactNo || record?.phone || '',
     email: customer?.email || record?.email || '',
-    address: customer?.address || record?.location || '',
+    address: stripTestPrefix(customer?.address) || stripTestPrefix(record?.location) || '',
   };
 };
 
@@ -63,19 +71,19 @@ const buildCustomerFromSource = async (sourceRecord, reportCustomer) => {
 
   if (customerDoc) {
     return {
-      name: customerDoc.name || reportCustomer?.name || 'Unknown Customer',
+      name: stripTestPrefix(customerDoc.name) || stripTestPrefix(reportCustomer?.name) || 'Unknown Customer',
       phone: customerDoc.contactNo || reportCustomer?.phone || '-',
       email: customerDoc.email || reportCustomer?.email || '-',
-      address: customerDoc.address || reportCustomer?.address || sourceRecord?.location || '-',
+      address: stripTestPrefix(customerDoc.address) || stripTestPrefix(reportCustomer?.address) || stripTestPrefix(sourceRecord?.location) || '-',
     };
   }
 
   if (reportCustomer) {
     return {
-      name: reportCustomer.name || 'Unknown Customer',
+      name: stripTestPrefix(reportCustomer.name) || 'Unknown Customer',
       phone: reportCustomer.phone || '-',
       email: reportCustomer.email || '-',
-      address: reportCustomer.address || sourceRecord?.location || '-',
+      address: stripTestPrefix(reportCustomer.address) || stripTestPrefix(sourceRecord?.location) || '-',
     };
   }
 
@@ -150,19 +158,22 @@ const mapServiceReportForReview = (report, sourceRecord) => {
   const sourceTeamName = sourceRecord?.assignedTeam?.teamName || sourceRecord?.assignedTeamName || null;
   const requiredMaterials = resolveMaterials(sourceRecord, report);
 
+  const cleanName = stripTestPrefix(customer.name) || 'Unknown Customer';
+  const cleanAddress = stripTestPrefix(customer.address) || stripTestPrefix(report.location) || stripTestPrefix(sourceRecord?.location) || '-';
+
   return {
     id: String(report._id),
-    customerName: customer.name || 'Unknown Customer',
+    customerName: cleanName,
     phoneNumber: customer.phone || '-',
     emailAddress: customer.email || '-',
-    address: customer.address || report.location || '-',
+    address: cleanAddress,
     customerInfo: {
-      name: customer.name || 'Unknown Customer',
+      name: cleanName,
       phone: customer.phone || '-',
       email: customer.email || '-',
-      address: customer.address || report.location || '-',
+      address: cleanAddress,
     },
-    location: report.location || sourceRecord?.location || customer.address || '-',
+    location: cleanAddress,
     serviceDate: toDisplayDate(report.scheduledDate || sourceRecord?.serviceDate || sourceRecord?.date || report.submittedAt || report.createdAt),
     productType: productDetails.detailedType || productDetails.generalType || report.serviceType || sourceRecord?.productType || '-',
     requiredMaterials,
@@ -184,23 +195,26 @@ const mapServiceReportForList = (report, sourceRecord, resolvedCustomer) => {
   const productDetails = report.productDetails || {};
   const requiredMaterials = resolveMaterials(sourceRecord, report);
 
+  const cleanName = stripTestPrefix(customer.name) || 'Unknown Customer';
+  const cleanAddress = stripTestPrefix(customer.address) || stripTestPrefix(report.location) || stripTestPrefix(sourceRecord?.location) || '-';
+
   return {
     _id: String(report._id),
     ticketId: String(report.ticketId || report._id),
-    customerName: customer.name || 'Unknown Customer',
+    customerName: cleanName,
     phoneNumber: customer.phone || '-',
-    address: customer.address || report.location || '-',
+    address: cleanAddress,
     customer: {
-      name: customer.name || 'Unknown Customer',
+      name: cleanName,
       phone: customer.phone || '-',
-      address: customer.address || report.location || '-',
+      address: cleanAddress,
     },
     productType: productDetails.detailedType || productDetails.generalType || report.serviceType || sourceRecord?.productType || 'N/A',
     productDetails: {
       generalType: productDetails.generalType || report.serviceType || sourceRecord?.productType || 'N/A',
       detailedType: productDetails.detailedType || productDetails.generalType || report.serviceType || sourceRecord?.productType || 'N/A',
     },
-    location: report.location || sourceRecord?.location || customer.address || '-',
+    location: cleanAddress,
     date: toDisplayDate(report.scheduledDate || sourceRecord?.serviceDate || sourceRecord?.date || report.submittedAt || report.createdAt),
     serviceDate: toReviewDate(report.scheduledDate || sourceRecord?.serviceDate || sourceRecord?.date || report.submittedAt || report.createdAt),
     submittedAt: toReviewDate(report.submittedAt || report.createdAt),

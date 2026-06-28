@@ -15,6 +15,39 @@ const EXECUTION_STATUS = {
   COMPLETED: 'Completed',
 };
 
+const MAINTENANCE_SCHEDULE_STATUS = {
+  NEW: 'New',
+  DRAFT_SAVED: 'Draft Saved',
+  SENT_TO_CSA: 'Sent to CSA',
+  SENT_TO_CUSTOMER: 'Sent to Customer',
+};
+
+const INSTALLATION_MAINTENANCE_STATUS = {
+  INSTALLATION_COMPLETED: 'Installation Completed',
+  SCHEDULE_CREATED: 'Schedule Created',
+  SENT_TO_CSA: 'Sent to CSA',
+  SENT_TO_CUSTOMER: 'Sent to Customer',
+};
+
+const MAINTENANCE_STATUS = {
+  NEW: 'New',
+  PENDING: 'Pending',
+  FINANCE_APPROVED: 'Finance Approved',
+  SENT_TO_IM: 'Sent to IM',
+  ASSIGNED: 'Assigned',
+  SCHEDULED: 'Scheduled',
+  IN_PROGRESS: 'In Progress',
+  ON_HOLD: 'On Hold',
+  COMPLETED: 'Completed',
+};
+
+const REMINDER_STATUS = {
+  PENDING: 'Pending',
+  SENT: 'Sent',
+  REJECTED: 'Rejected',
+  ACCEPTED: 'Accepted',
+};
+
 const INSPECTION_REVIEW_STATUS = {
   PENDING: 'Pending',
   REVIEWED: 'Reviewed',
@@ -91,6 +124,8 @@ const API_SEGMENTS = {
   TASKS: '/tasks',
   TASKS_BY_ID: '/tasks/:id',
   TASKS_STATUS: '/tasks/:id/status',
+  MAINTENANCE: '/maintenance',
+  MAINTENANCE_SCHEDULING: '/maintenance-scheduling',
   TEAM_DETAILS: '/team-details',
   SERVICE_HISTORY: '/service-history/:id',
 };
@@ -102,6 +137,10 @@ const ROUTES = {
 module.exports = {
   WORKFLOW_STATUS,
   EXECUTION_STATUS,
+  MAINTENANCE_SCHEDULE_STATUS,
+  INSTALLATION_MAINTENANCE_STATUS,
+  MAINTENANCE_STATUS,
+  REMINDER_STATUS,
   INSPECTION_REVIEW_STATUS,
   TEAM_STATUS,
   REQUEST_TYPES,

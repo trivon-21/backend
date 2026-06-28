@@ -5,10 +5,12 @@ const NewRequest = require('../serviceRequest/newRequest.model');
 const ServiceRequest = require('../serviceRequest/serviceRequest.model');
 const Installation = require('../installation/installation.model');
 const Customer = require('../../customer/customer.model');
+const Maintenance = require('../maintenance/maintenance.model');
 const { calculateWarrantyStatus } = require('../../../utils/warranty.utils');
 const {
     WORKFLOW_STATUS,
     EXECUTION_STATUS,
+    MAINTENANCE_STATUS,
     REQUEST_TYPES,
     STATUS_GROUPS,
     DEFAULTS,
@@ -52,6 +54,20 @@ router.get('/', async (req, res) => {
             status: { $in: STATUS_GROUPS.MATERIAL_WORKFLOW_VISIBLE }
         }).sort({ createdAt: -1 }).toArray();
 
+        // 1c. Get Maintenances in the materials workflow statuses
+        const materialMaintenanceStatusRegex = [
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.PENDING}\\s*$`, 'i'),
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.SENT_TO_IM}\\s*$`, 'i')
+        ];
+        const maintenances = await Maintenance.find({
+            status: { $in: materialMaintenanceStatusRegex }
+        })
+            .populate('customerId', 'name email contactNo address')
+            .sort({ createdAt: -1 })
+            .lean();
+
         // 2. Get NewRequests (Status: New) and calculate warranty
         const newRequests = await NewRequest.find()
             .populate('customerId', 'name email contactNo address')
@@ -61,6 +77,7 @@ router.get('/', async (req, res) => {
         const customerIds = Array.from(new Set([
             ...serviceRequests.map((item) => toCustomerId(item.customerId)),
             ...installations.map((item) => toCustomerId(item.customerId)),
+            ...maintenances.map((item) => toCustomerId(item.customerId)),
             ...newRequests.map((item) => toCustomerId(item.customerId))
         ].filter(Boolean)));
 
@@ -121,12 +138,32 @@ router.get('/', async (req, res) => {
                 location: customer?.address || req.location || '-',
                 status: WORKFLOW_STATUS.NEW,
                 requestType: REQUEST_TYPES.SERVICE,
+                serviceType: req.serviceType || req.requestType || req.request_type || 'Repair',
                 isUnderWarranty,
                 isFreeOfCharge
             };
         }));
 
-        const allRequests = [...serviceRequestsFormatted, ...installationsFormatted, ...newRequestsFormatted].sort((a, b) => 
+        const maintenancesFormatted = maintenances
+            .map((item) => {
+                const customerId = toCustomerId(item.customerId);
+                const populatedCustomer = item.customerId && typeof item.customerId === 'object' ? item.customerId : null;
+                const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+
+                return {
+                    ...item,
+                    ticketId: item._id,
+                    customerName: customer?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+                    customerEmail: customer?.email || '-',
+                    customerContactNo: customer?.contactNo || '-',
+                    location: customer?.address || item.location || '-',
+                    requestType: REQUEST_TYPES.SERVICE,
+                    serviceType: 'Maintenance',
+                    materials: item.materialList || []
+                };
+            });
+
+        const allRequests = [...serviceRequestsFormatted, ...installationsFormatted, ...newRequestsFormatted, ...maintenancesFormatted].sort((a, b) => 
             new Date(b.createdAt) - new Date(a.createdAt)
         );
 
@@ -135,5 +172,23 @@ router.get('/', async (req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 });
+        
+const { body, validationResult } = require('express-validator');
+
+// Insert this specific validation chain
+const validateMaterialSubmission = [
+  body('newRequestId').notEmpty().withMessage('Ticket ID is required'),
+  body('materials').isArray({ min: 1 }).withMessage('At least one material is required'),
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+    next();
+  }
+];
+
+// Apply it here:
+router.post('/submit-to-finance', validateMaterialSubmission, materialController.sendToFinance);
 
 module.exports = router;

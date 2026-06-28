@@ -1,4 +1,3 @@
-// src/models/ServiceRequest.js
 const mongoose = require('mongoose');
 const {
   WORKFLOW_STATUS,
@@ -12,6 +11,7 @@ const serviceRequestSchema = new mongoose.Schema({
     required: true 
   },
   productType: String,
+  serviceType: { type: String, enum: ['Maintenance', 'Repair'], default: 'Repair' },
   serviceDescription: String,
   location: String,
   serviceDate: Date,

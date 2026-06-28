@@ -5,10 +5,12 @@ const Customer = require('../customer/customer.model');
 const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
 const Installation = require('../shared/installation/installation.model');
 const Inspection = require('../shared/inspection/inspection.model');
+const Maintenance = require('../shared/maintenance/maintenance.model');
 const mongoose = require('mongoose');
 const {
   WORKFLOW_STATUS,
   EXECUTION_STATUS,
+  MAINTENANCE_STATUS,
   TEAM_STATUS,
   REQUEST_TYPES,
   STATUS_GROUPS,
@@ -125,16 +127,18 @@ exports.getAllTeamsWithMembers = async (req, res) => {
       return accumulator;
     }, new Map());
 
-    const [serviceDocs, installationDocs, inspectionDocs] = await Promise.all([
+    const [serviceDocs, installationDocs, inspectionDocs, maintenanceDocs] = await Promise.all([
       ServiceRequest.collection.find().toArray(),
       Installation.collection.find().toArray(),
       Inspection.collection.find().toArray(),
+      Maintenance.collection.find().toArray(),
     ]);
 
     const customerIds = Array.from(new Set([
       ...serviceDocs.map((item) => toCustomerId(item.customerId)),
       ...installationDocs.map((item) => toCustomerId(item.customerId)),
-      ...inspectionDocs.map((item) => toCustomerId(item.customerId))
+      ...inspectionDocs.map((item) => toCustomerId(item.customerId)),
+      ...maintenanceDocs.map((item) => toCustomerId(item.customerId))
     ].filter((value) => value && isValidObjectIdString(value))));
 
     const customerDocs = customerIds.length > 0
@@ -170,11 +174,21 @@ exports.getAllTeamsWithMembers = async (req, res) => {
         _resolvedInspectionTeamId: resolveInspectionTeamKey(item)
       }));
 
+    const maintenances = maintenanceDocs
+      .filter((item) => isInProgressJob(item))
+      .map((item) => ({
+        ...item,
+        customerId: customerById.get(String(item.customerId)) || item.customerId,
+        assignedTeam: item.assignedTeam,
+        assignedTeamId: item.assignedTeamId
+      }));
+
     const jobsByTeamId = new Map();
     [
       ...services.map((item) => ({ ...item, type: REQUEST_TYPES.SERVICE })),
       ...installations.map((item) => ({ ...item, type: REQUEST_TYPES.INSTALLATION })),
-      ...inspections.map((item) => ({ ...item, type: REQUEST_TYPES.INSPECTION }))
+      ...inspections.map((item) => ({ ...item, type: REQUEST_TYPES.INSPECTION })),
+      ...maintenances.map((item) => ({ ...item, type: 'Maintenance' }))
     ]
       .forEach((item) => {
         const teamKey = item.type === REQUEST_TYPES.INSPECTION
@@ -192,7 +206,7 @@ exports.getAllTeamsWithMembers = async (req, res) => {
       });
 
     const serviceInstallWorkloadByTeamId = new Map();
-    [...serviceDocs, ...installationDocs]
+    [...serviceDocs, ...installationDocs, ...maintenanceDocs]
       .filter((item) => isActiveJob(item))
       .forEach((item) => {
         const teamKey = getAssignedTeamKey(item);
@@ -255,11 +269,14 @@ exports.getAllTeamsWithMembers = async (req, res) => {
 
 exports.getPendingAssignments = async (req, res) => {
   try {
-    const [serviceRequests, installations] = await Promise.all([
+    const [serviceRequests, installations, maintenances] = await Promise.all([
       ServiceRequest.find({ status: WORKFLOW_STATUS.SENT_TO_IM })
         .populate('customerId', 'name address')
         .lean(),
       Installation.find({ status: WORKFLOW_STATUS.SENT_TO_IM })
+        .populate('customerId', 'name address')
+        .lean(),
+      Maintenance.find({ status: MAINTENANCE_STATUS.SENT_TO_IM })
         .populate('customerId', 'name address')
         .lean()
     ]);
@@ -280,6 +297,14 @@ exports.getPendingAssignments = async (req, res) => {
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.INSTALLATION,
         productType: item.productType || '-'
+      })),
+      ...maintenances.map((item) => ({
+        _id: item._id,
+        ticketId: normalizeTicketId(item.ticketId || item._id),
+        customerName: item.customerId?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+        location: item.customerId?.address || item.location || '-',
+        requestType: 'Maintenance',
+        productType: item.productType || 'Customer Initiated'
       }))
     ];
 
@@ -313,15 +338,28 @@ exports.assignServiceRequestToTeam = async (req, res) => {
 
     const normalizedRequestType = String(requestType || '').toLowerCase();
     const isInstallation = normalizedRequestType === REQUEST_TYPES.INSTALLATION.toLowerCase();
-    const Model = isInstallation ? Installation : ServiceRequest;
+    const isMaintenance = normalizedRequestType === 'maintenance';
+    
+    let Model = ServiceRequest;
+    let targetStatus = EXECUTION_STATUS.ASSIGNED;
+    
+    if (isInstallation) {
+      Model = Installation;
+    } else if (isMaintenance) {
+      Model = Maintenance;
+      targetStatus = MAINTENANCE_STATUS.ASSIGNED;
+    }
+
+    const updatePayload = {
+      assignedTeam: isMaintenance ? team.teamName : team._id,
+      assignedTeamId: team._id,
+      assignedTeamName: team.teamName,
+      status: targetStatus
+    };
+
     const assignment = await Model.findByIdAndUpdate(
       resolvedServiceRequestId,
-      {
-        assignedTeam: team._id,
-        assignedTeamId: team._id,
-        assignedTeamName: team.teamName,
-        status: EXECUTION_STATUS.ASSIGNED
-      },
+      updatePayload,
       { new: true }
     );
 
@@ -362,16 +400,18 @@ exports.getTeamScheduleDetails = async (req, res) => {
       .filter((member) => String(member.teamId) === String(team._id));
 
     // 2. Fetch all active jobs for this team across both types
-    const [serviceDocs, installationDocs, inspectionDocs] = await Promise.all([
+    const [serviceDocs, installationDocs, inspectionDocs, maintenanceDocs] = await Promise.all([
       ServiceRequest.collection.find().toArray(),
       Installation.collection.find().toArray(),
-      Inspection.collection.find().toArray()
+      Inspection.collection.find().toArray(),
+      Maintenance.collection.find().toArray()
     ]);
 
     const customerIds = Array.from(new Set([
       ...serviceDocs.map((item) => toCustomerId(item.customerId)),
       ...installationDocs.map((item) => toCustomerId(item.customerId)),
-      ...inspectionDocs.map((item) => toCustomerId(item.customerId))
+      ...inspectionDocs.map((item) => toCustomerId(item.customerId)),
+      ...maintenanceDocs.map((item) => toCustomerId(item.customerId))
     ].filter((value) => value && isValidObjectIdString(value))));
 
     const customerDocs = customerIds.length > 0
@@ -418,6 +458,14 @@ exports.getTeamScheduleDetails = async (req, res) => {
         customerId: customerById.get(String(item.customerId)) || item.customerId
       }));
 
+      const maintenances = maintenanceDocs.filter((item) => {
+        const assignedTeam = getAssignedTeamKey(item);
+        return assignedTeam === String(team._id) && isActiveJob(item);
+      }).map((item) => ({
+        ...item,
+        customerId: customerById.get(String(item.customerId)) || item.customerId
+      }));
+
       activeJobs = [
         ...services.map((item) => ({
           id: item._id,
@@ -434,10 +482,18 @@ exports.getTeamScheduleDetails = async (req, res) => {
           location: item.customerId?.address || item.location || '-',
           type: REQUEST_TYPES.INSTALLATION,
           date: item.date || item.serviceDate
+        })),
+        ...maintenances.map((item) => ({
+          id: item._id,
+          ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
+          customerName: item.customerId?.name || DEFAULTS.UNKNOWN_CUSTOMER,
+          location: item.customerId?.address || item.location || '-',
+          type: 'Maintenance',
+          date: item.date || item.serviceDate
         }))
       ].sort((a, b) => new Date(a.date) - new Date(b.date));
 
-      teamWorkload = [...services, ...installations];
+      teamWorkload = [...services, ...installations, ...maintenances];
     }
 
     // 4. Calculate next available future slots for this specific team.

@@ -2,10 +2,12 @@ const NewRequest = require('../serviceRequest/newRequest.model');
 const ServiceRequest = require('../serviceRequest/serviceRequest.model');
 const Installation = require('../installation/installation.model');
 const Customer = require('../../customer/customer.model');
+const Maintenance = require('../maintenance/maintenance.model');
 const { calculateWarrantyStatus } = require('../../../utils/warranty.utils');
 const {
   WORKFLOW_STATUS,
   EXECUTION_STATUS,
+  MAINTENANCE_STATUS,
   REQUEST_TYPES,
   DEFAULTS,
 } = require('../../../constants/enums');
@@ -66,13 +68,19 @@ exports.getNewServiceTickets = async (req, res) => {
       .populate('customerId', 'name email contactNo address')
       .lean();
 
+    // Fetch Maintenances with 'New' or 'Finance Rejected' status
+    const newMaintenances = await Maintenance.find({ status: { $in: [MAINTENANCE_STATUS.NEW, MAINTENANCE_STATUS.FINANCE_REJECTED] } })
+      .populate('customerId', 'name email contactNo address')
+      .lean();
+
     // Build customer lookup map to avoid N+1 queries
     const customerIds = Array.from(new Set(
       [
         ...newRequests,
         ...newInstallations,
         ...rejectedServiceRequests,
-        ...rejectedInstallations
+        ...rejectedInstallations,
+        ...newMaintenances
       ]
         .map((request) => toCustomerId(request.customerId))
         .filter(Boolean)
@@ -96,11 +104,12 @@ exports.getNewServiceTickets = async (req, res) => {
       return {
         ticketId: request._id,
         productType: request.productType || 'N/A',
-        serviceDescription: request.serviceDescription,
-        customerName: customer?.name || DEFAULTS.UNKNOWN_CUSTOMER,
-        customerEmail: customer?.email || '-',
-        customerContactNo: customer?.contactNo || '-',
-        customerAddress: customer?.address || '-',
+        serviceType: request.serviceType || request.requestType || request.request_type || 'Repair',
+        serviceDescription: request.serviceDescription || request.description || '-',
+        customerName: customer?.name || request.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+        customerEmail: customer?.email || request.customerEmail || '-',
+        customerContactNo: customer?.contactNo || request.customerPhone || request.customerContactNo || '-',
+        customerAddress: customer?.address || request.customerAddress || request.location || '-',
         isUnderWarranty,
         isFreeOfCharge,
         requestType: REQUEST_TYPES.SERVICE,
@@ -120,7 +129,8 @@ exports.getNewServiceTickets = async (req, res) => {
       return {
         ticketId: request._id,
         productType: request.productType || 'N/A',
-        serviceDescription: request.serviceDescription,
+        serviceType: request.serviceType || request.requestType || request.request_type || 'Repair',
+        serviceDescription: request.serviceDescription || request.description || '-',
         customerName: customer?.name || 'Unknown Customer',
         customerEmail: customer?.email || '-',
         customerContactNo: customer?.contactNo || '-',
@@ -190,8 +200,35 @@ exports.getNewServiceTickets = async (req, res) => {
       };
     });
 
+    // Transform new Maintenances
+    const newMaintenancesData = newMaintenances.map((maintenance) => {
+      const customerId = toCustomerId(maintenance.customerId);
+      const populatedCustomer = maintenance.customerId && typeof maintenance.customerId === 'object' ? maintenance.customerId : null;
+      const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+
+      return {
+        ticketId: maintenance._id,
+        productType: maintenance.productType || 'N/A',
+        serviceType: 'Maintenance',
+        serviceDescription: maintenance.scheduledServiceType || 'Scheduled Maintenance',
+        customerName: customer?.name || maintenance.customerName || 'Unknown Customer',
+        customerEmail: customer?.email || maintenance.customerEmail || '-',
+        customerContactNo: customer?.contactNo || maintenance.customerPhone || '-',
+        customerAddress: customer?.address || maintenance.location || '-',
+        isUnderWarranty: true, // As per spec, first 4 are under warranty. Usually we pull this from somewhere, default true.
+        isFreeOfCharge: true,
+        requestType: REQUEST_TYPES.SERVICE, // Treat as Service Request in UI
+        status: maintenance.status,
+        note: maintenance.status === MAINTENANCE_STATUS.FINANCE_REJECTED ? 'Finance Rejected - Available for Re-submission' : 'New Maintenance - ready for material submission',
+        materials: maintenance.materialList || [],
+        financeNotes: '',
+        location: maintenance.location || '-',
+        siteDetails: {}
+      };
+    });
+
     // Combine all available tickets
-    const data = [...newRequestsData, ...newInstallationsData, ...rejectedServiceRequestsData, ...rejectedInstallationsData];
+    const data = [...newRequestsData, ...newInstallationsData, ...rejectedServiceRequestsData, ...rejectedInstallationsData, ...newMaintenancesData];
 
     res.json({ success: true, data });
   } catch (err) {
@@ -220,6 +257,33 @@ exports.submitMaterialRequest = async (req, res) => {
     // First, check if this is a resubmission (Finance Rejected status)
     const existingServiceRequest = await ServiceRequest.findById(resolvedId).lean();
     const existingInstallation = await Installation.findById(resolvedId).lean();
+    const existingMaintenance = await Maintenance.findById(resolvedId).lean();
+
+    if (existingMaintenance && [MAINTENANCE_STATUS.NEW, MAINTENANCE_STATUS.FINANCE_REJECTED].includes(existingMaintenance.status)) {
+      // MAINTENANCE FLOW: Update Maintenance with new materials and move to PENDING
+      const updatedRequest = await Maintenance.findByIdAndUpdate(
+        resolvedId,
+        {
+          materialList: materials,
+          totalEstimatedCost: 0, // Should calculate, but 0 is fine for now
+          status: MAINTENANCE_STATUS.PENDING
+        },
+        { new: true }
+      );
+
+      return res.json({ 
+        success: true, 
+        message: existingMaintenance.status === MAINTENANCE_STATUS.NEW
+          ? "Maintenance material request submitted to Finance"
+          : "Maintenance material request resubmitted to Finance",
+        data: {
+          serviceRequestId: resolvedId,
+          requestType: REQUEST_TYPES.SERVICE,
+          resubmission: existingMaintenance.status === MAINTENANCE_STATUS.FINANCE_REJECTED,
+          status: MAINTENANCE_STATUS.PENDING
+        }
+      });
+    }
 
     let sourceDoc = existingServiceRequest || existingInstallation;
     let isResubmission = false;
@@ -294,30 +358,100 @@ exports.submitMaterialRequest = async (req, res) => {
       });
     }
 
-    // NEW SUBMISSION: Create new ServiceRequest from NewRequest
-    // Create ServiceRequest with warranty status and customer details
-    const serviceEntry = new ServiceRequest({
-      ...sourceDoc,
-      _id: sourceDoc._id, 
-      materials,
-      financeNotes,
-      isUnderWarranty,
-      isFreeOfCharge,
-      status: WORKFLOW_STATUS.PENDING // Initial state: awaiting finance approval
-    });
-    await serviceEntry.save();
+    // NEW SUBMISSION: Create new ServiceRequest or Maintenance from NewRequest
+    const derivedServiceType = sourceDoc.serviceType || sourceDoc.requestType || sourceDoc.request_type || 'Repair';
+
+    if (derivedServiceType === 'Maintenance') {
+      let resolvedCustomerId = sourceDoc.customerId;
+      // Prioritize sourceDoc fields — request body values may be placeholder strings from a failed lookup
+      let resolvedCustomerName = sourceDoc.customerName || (customerName !== DEFAULTS.UNKNOWN_CUSTOMER ? customerName : null);
+      let resolvedCustomerEmail = sourceDoc.customerEmail || (customerEmail !== '-' ? customerEmail : null);
+      let resolvedCustomerPhone = sourceDoc.customerPhone || sourceDoc.customerContactNo || (customerContactNo !== '-' ? customerContactNo : null);
+      let resolvedLocation = sourceDoc.location || sourceDoc.customerAddress || (customerAddress !== '-' ? customerAddress : null);
+
+      // If we have customerId but some fields are still missing, try querying Customer collection as fallback
+      if (resolvedCustomerId && (!resolvedCustomerName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
+        const Customer = require('../../customer/customer.model');
+        const cust = await Customer.findById(resolvedCustomerId).lean();
+        if (cust) {
+          if (!resolvedCustomerName) resolvedCustomerName = cust.name;
+          if (!resolvedCustomerEmail) resolvedCustomerEmail = cust.email;
+          if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.contactNo;
+          if (!resolvedLocation) resolvedLocation = cust.address;
+        }
+      }
+
+      const maintenanceEntry = new Maintenance({
+        _id: sourceDoc._id,
+        ticketId: sourceDoc.ticketId || `MN-${Date.now().toString().slice(-4)}`,
+        customerId: resolvedCustomerId || null,
+        customerName: resolvedCustomerName || 'Unknown Customer',
+        customerEmail: resolvedCustomerEmail || '-',
+        customerPhone: resolvedCustomerPhone || '-',
+        productType: sourceDoc.productType || 'Unknown',
+        location: resolvedLocation || '-',
+        date: sourceDoc.preferredServiceDate || sourceDoc.createdAt || new Date(),
+        scheduledServiceType: sourceDoc.serviceDescription || sourceDoc.description || 'Customer Initiated',
+        maintenanceType: 'Customer Initiated',
+        isCustomerInitiated: true,
+        status: MAINTENANCE_STATUS.PENDING,
+        materialList: materials,
+        totalEstimatedCost: 0,
+        assignedTeamId: sourceDoc.assignedTeamId || null
+      });
+      await maintenanceEntry.save();
+    } else {
+      let resolvedCustomerId = sourceDoc.customerId;
+      // Prioritize sourceDoc fields — request body values may be placeholder strings from a failed lookup
+      let resolvedCustomerName = sourceDoc.customerName || (customerName !== DEFAULTS.UNKNOWN_CUSTOMER ? customerName : null);
+      let resolvedCustomerEmail = sourceDoc.customerEmail || (customerEmail !== '-' ? customerEmail : null);
+      let resolvedCustomerPhone = sourceDoc.customerPhone || sourceDoc.customerContactNo || (customerContactNo !== '-' ? customerContactNo : null);
+      let resolvedLocation = sourceDoc.location || sourceDoc.customerAddress || (customerAddress !== '-' ? customerAddress : null);
+
+      // Try querying Customer collection as fallback
+      if (resolvedCustomerId && (!resolvedCustomerName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
+        const Customer = require('../../customer/customer.model');
+        const cust = await Customer.findById(resolvedCustomerId).lean();
+        if (cust) {
+          if (!resolvedCustomerName) resolvedCustomerName = cust.name;
+          if (!resolvedCustomerEmail) resolvedCustomerEmail = cust.email;
+          if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.contactNo;
+          if (!resolvedLocation) resolvedLocation = cust.address;
+        }
+      }
+
+      // Create ServiceRequest with warranty status and customer details
+      const serviceEntry = new ServiceRequest({
+        ...sourceDoc,
+        customerId: resolvedCustomerId || null,
+        customerName: resolvedCustomerName || 'Unknown Customer',
+        customerEmail: resolvedCustomerEmail || '-',
+        customerPhone: resolvedCustomerPhone || '-',
+        location: resolvedLocation || '-',
+        _id: sourceDoc._id, 
+        serviceType: derivedServiceType,
+        serviceDescription: sourceDoc.serviceDescription || sourceDoc.description,
+        materials,
+        financeNotes,
+        isUnderWarranty,
+        isFreeOfCharge,
+        status: WORKFLOW_STATUS.PENDING // Initial state: awaiting finance approval
+      });
+      await serviceEntry.save();
+    }
 
     // Remove from NewRequest collection (workflow transition complete)
     await NewRequest.findByIdAndDelete(resolvedId);
 
     res.json({ 
       success: true, 
-      message: "Material request submitted to Finance with service request ID: " + resolvedId,
+      message: "Material request submitted to Finance",
       data: {
         serviceRequestId: resolvedId,
+        requestType: derivedServiceType === 'Maintenance' ? 'Maintenance' : REQUEST_TYPES.SERVICE,
         warrantyStatus: isUnderWarranty ? 'Under Warranty' : 'Out of Warranty',
         freeOfCharge: isFreeOfCharge,
-        status: WORKFLOW_STATUS.PENDING
+        status: derivedServiceType === 'Maintenance' ? MAINTENANCE_STATUS.PENDING : WORKFLOW_STATUS.PENDING
       }
     });
   } catch (err) {
@@ -340,13 +474,18 @@ exports.sendToInventoryManager = async (req, res) => {
       materials 
     } = req.body;
     
-    // Support both ServiceRequest and Installation so both follow the same workflow behavior.
+    // Support ServiceRequest, Installation, and Maintenance so they all follow the same workflow behavior.
     let sourceRecord = await ServiceRequest.findById(resolvedId).lean();
     let requestType = REQUEST_TYPES.SERVICE;
 
     if (!sourceRecord) {
       sourceRecord = await Installation.findById(resolvedId).lean();
       requestType = REQUEST_TYPES.INSTALLATION;
+    }
+
+    if (!sourceRecord) {
+      sourceRecord = await Maintenance.findById(resolvedId).lean();
+      requestType = 'Maintenance';
     }
 
     if (!sourceRecord) {
@@ -367,6 +506,14 @@ exports.sendToInventoryManager = async (req, res) => {
       );
     }
 
+    if (!updatedRecord) {
+      updatedRecord = await Maintenance.findByIdAndUpdate(
+        resolvedId,
+        { status: MAINTENANCE_STATUS.SENT_TO_IM },
+        { new: true }
+      );
+    }
+
     res.json({ 
       success: true, 
       message: 'Material request sent to Inventory Manager',
@@ -375,7 +522,7 @@ exports.sendToInventoryManager = async (req, res) => {
         requestType,
         status: WORKFLOW_STATUS.SENT_TO_IM,
         location: location || sourceRecord.location || '-',
-        materials: materials || sourceRecord.materials || [],
+        materials: materials || sourceRecord.materials || sourceRecord.materialList || [],
         sentAt: new Date()
       }
     });
@@ -401,6 +548,14 @@ exports.approveFinance = async (req, res) => {
       updated = await Installation.findByIdAndUpdate(
         ticketId,
         { status: WORKFLOW_STATUS.FINANCE_APPROVED },
+        { new: true }
+      );
+    }
+
+    if (!updated) {
+      updated = await Maintenance.findByIdAndUpdate(
+        ticketId,
+        { status: MAINTENANCE_STATUS.FINANCE_APPROVED },
         { new: true }
       );
     }
@@ -445,6 +600,17 @@ exports.rejectFinance = async (req, res) => {
         ticketId,
         { 
           status: WORKFLOW_STATUS.FINANCE_REJECTED,
+          financeNotes: reason || 'Rejected by Finance'
+        },
+        { new: true }
+      );
+    }
+
+    if (!updated) {
+      updated = await Maintenance.findByIdAndUpdate(
+        ticketId,
+        { 
+          status: MAINTENANCE_STATUS.FINANCE_REJECTED,
           financeNotes: reason || 'Rejected by Finance'
         },
         { new: true }

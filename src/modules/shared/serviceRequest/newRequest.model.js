@@ -7,9 +7,16 @@ const newRequestSchema = new mongoose.Schema(
       ref: 'Customer',
       required: true
     },
+    ticketId: { type: String, default: '' },
+    customerName: { type: String, default: '' },
+    customerEmail: { type: String, default: '' },
+    customerPhone: { type: String, default: '' },
     productType: { type: String, default: '' },
+    serviceType: { type: String, enum: ['Maintenance', 'Repair'], default: 'Repair' },
     serviceDescription: { type: String, default: '' },
-    location: { type: String, default: '' }
+    description: { type: String, default: '' },
+    location: { type: String, default: '' },
+    preferredServiceDate: { type: Date, default: null }
   },
   {
     timestamps: true,

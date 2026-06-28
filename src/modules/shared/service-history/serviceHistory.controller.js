@@ -1,23 +1,23 @@
 const mongoose = require('mongoose');
-const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
-const Installation = require('../shared/installation/installation.model');
-const Inspection = require('../shared/inspection/inspection.model');
-const ServiceReport = require('../technician/technician.model');
-const Customer = require('../customer/customer.model');
-const { getLocalApiBaseUrl, DEFAULT_TEAM_NAME } = require('../../config/app.config');
-const { INTERNAL_FETCH_TIMEOUT_MS } = require('../../config/defaults.config');
+const ServiceRequest = require('../serviceRequest/serviceRequest.model');
+const Installation = require('../installation/installation.model');
+const Inspection = require('../inspection/inspection.model');
+const ServiceReport = require('../../technician/technician.model');
+const Customer = require('../../customer/customer.model');
+const { getLocalApiBaseUrl, DEFAULT_TEAM_NAME } = require('../../../config/app.config');
+const { INTERNAL_FETCH_TIMEOUT_MS } = require('../../../config/defaults.config');
 const {
   getRequestedTeamName,
   matchesJobTeam,
   getAssignmentLabel,
   matchesTeamName,
-} = require('../../utils/team.utils');
+} = require('../../../utils/team.utils');
 const {
   EXECUTION_STATUS,
   REQUEST_TYPES,
   STATUS_GROUPS,
   DEFAULTS,
-} = require('../../constants/enums');
+} = require('../../../constants/enums');
 
 /**
  * Returns the MongoDB collection handle for customer documents.
@@ -289,7 +289,7 @@ exports.getCustomerHistory = async (req, res) => {
           customerName,
           location: customerAddress,
           productType: anchor.productType || latestInstallation?.productType || 'N/A',
-          installationDate: latestInstallation?.serviceDate || latestInstallation?.date || null
+          installationDate: anchor.serviceDate || anchor.date || latestInstallation?.serviceDate || latestInstallation?.date || null
         },
         history
       }
@@ -298,8 +298,3 @@ exports.getCustomerHistory = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
-
-/**
- * Backward-compatible alias for customer history endpoint consumers.
- */
-exports.getServiceHistory = exports.getCustomerHistory;

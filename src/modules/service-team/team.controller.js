@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Installation = require('../shared/installation/installation.model');
 const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
+const Maintenance = require('../shared/maintenance/maintenance.model');
 const TechTeam = require('../shared/tech-teams/techTeam.model');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
 const { isTeamBJob } = require('../../utils/team.utils');
@@ -127,13 +128,14 @@ exports.getTeamDetails = async (req, res) => {
     const teamId = teamB?._id ? String(teamB._id) : null;
     const teamName = teamB?.teamName || teamB?.name || DEFAULT_TEAM_NAME;
 
-    const [installs, requests, rawMembers] = await Promise.all([
+    const [installs, requests, maintenances, rawMembers] = await Promise.all([
       Installation.find({}).lean(),
       ServiceRequest.find({}).lean(),
+      Maintenance.find({}).lean(),
       fetchMembersByTeam({ teamId, teamName })
     ]);
 
-    const teamBJobs = [...installs, ...requests].filter(isTeamBJob);
+    const teamBJobs = [...installs, ...requests, ...maintenances].filter(isTeamBJob);
     const inProgressJobsCount = teamBJobs.filter((j) => normalize(j.status) === normalize(EXECUTION_STATUS.IN_PROGRESS)).length;
     const freeSlots = calculateAvailableSlots(teamBJobs);
 

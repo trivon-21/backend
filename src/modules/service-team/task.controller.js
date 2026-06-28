@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Installation = require('../shared/installation/installation.model');
 const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
 const ServiceReport = require('../technician/technician.model');
+const Maintenance = require('../shared/maintenance/maintenance.model');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
 const {
   getRequestedTeamName,
@@ -28,31 +29,34 @@ const formatTask = (job, source) => {
   const ticketId = job.ticketId != null && job.ticketId !== '' ? String(job.ticketId) : String(job._id);
   const serviceType = source === REQUEST_TYPES.INSTALLATION.toLowerCase()
     ? `${job.productType || 'Installation'}${job.units ? ` - ${job.units} Units` : ''}`
-    : String(job.productType || job.serviceDescription || 'Service Request');
+    : source === 'maintenance'
+      ? String(job.scheduledServiceType || 'Maintenance')
+      : String(job.productType || job.serviceDescription || 'Service Request');
 
   return {
     id: ticketId,
     sourceId: String(job._id),
-    type: source === REQUEST_TYPES.INSTALLATION.toLowerCase() ? REQUEST_TYPES.INSTALLATION : 'Service Request',
+    type: source === REQUEST_TYPES.INSTALLATION.toLowerCase() ? REQUEST_TYPES.INSTALLATION : source === 'maintenance' ? 'Maintenance' : 'Service Request',
     customer,
-    location: job.location || customer.address || '-',
+    location: customer.address || job.location || '-',
     serviceType,
     status: job.status || WORKFLOW_STATUS.PENDING,
     scheduledDate: job.serviceDate || job.date || job.createdAt || null,
     detailedProductType: job.productType || '',
-    description: job.serviceDescription || '',
+    description: job.serviceDescription || job.scheduledServiceType || '',
     notesFromTechnician: job.notesFromTechnician || job.reviewNotes || '',
-    materials: Array.isArray(job.materials) ? job.materials : []
+    materials: Array.isArray(job.materials) ? job.materials : Array.isArray(job.materialList) ? job.materialList : []
   };
 };
 
 const loadTaskCandidates = async () => {
-  const [installations, requests] = await Promise.all([
+  const [installations, requests, maintenances] = await Promise.all([
     Installation.find({}).populate('customerId', 'name customerName address phone email').lean(),
-    ServiceRequest.find({}).populate('customerId', 'name customerName address phone email').lean()
+    ServiceRequest.find({}).populate('customerId', 'name customerName address phone email').lean(),
+    Maintenance.find({}).populate('customerId', 'name customerName address phone email').lean()
   ]);
 
-  return { installations, requests };
+  return { installations, requests, maintenances };
 };
 
 const findTaskRecord = async (id) => {
@@ -73,13 +77,18 @@ const findTaskRecord = async (id) => {
 
   const query = { $or: queryParts };
 
-  const [installation, request] = await Promise.all([
+  const [installation, request, maintenance] = await Promise.all([
     Installation.findOne(query).populate('customerId', 'name customerName address phone email').lean(),
     ServiceRequest.findOne(query).populate('customerId', 'name customerName address phone email').lean(),
+    Maintenance.findOne(query).populate('customerId', 'name customerName address phone email').lean(),
   ]);
 
   if (installation) {
     return { source: REQUEST_TYPES.INSTALLATION.toLowerCase(), record: installation };
+  }
+
+  if (maintenance) {
+    return { source: 'maintenance', record: maintenance };
   }
 
   if (request) {
@@ -119,15 +128,15 @@ const findTaskRecord = async (id) => {
 exports.getTasks = async (req, res) => {
   try {
     const requestedTeamName = getRequestedTeamName(req, DEFAULT_TEAM_NAME);
-    const { installations, requests } = await loadTaskCandidates();
+    const { installations, requests, maintenances } = await loadTaskCandidates();
 
-    const filtered = [...installations, ...requests].filter((job) => matchesJobTeam(job, requestedTeamName));
+    const filtered = [...installations, ...requests, ...maintenances].filter((job) => matchesJobTeam(job, requestedTeamName));
 
-    const formatted = filtered.map((job) => (
-      job.units !== undefined
-        ? formatTask(job, 'installation')
-        : formatTask(job, 'service')
-    ));
+    const formatted = filtered.map((job) => {
+      if (job.units !== undefined) return formatTask(job, 'installation');
+      if (job.ticketId && String(job.ticketId).includes('-ACT')) return formatTask(job, 'maintenance');
+      return formatTask(job, 'service');
+    });
 
     res.json(formatted.sort((a, b) => new Date(b.scheduledDate || 0) - new Date(a.scheduledDate || 0)));
   } catch (err) {
@@ -166,9 +175,14 @@ exports.updateTaskStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Task not found' });
     }
 
-    const updated = task.source === 'installation'
-      ? await Installation.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean()
-      : await ServiceRequest.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+    let updated;
+    if (task.source === 'installation') {
+      updated = await Installation.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+    } else if (task.source === 'maintenance') {
+      updated = await Maintenance.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+    } else {
+      updated = await ServiceRequest.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+    }
 
     if (task.serviceReport) {
       await ServiceReport.findByIdAndUpdate(task.serviceReport._id, {

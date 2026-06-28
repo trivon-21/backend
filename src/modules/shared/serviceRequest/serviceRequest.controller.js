@@ -16,7 +16,10 @@ const VISIBLE_STATUSES = STATUS_GROUPS.SERVICE_REQUEST_VISIBLE;
 
 exports.getAllServiceRequests = async (req, res) => {
   try {
-    const serviceRequests = await ServiceRequest.find({ status: { $in: VISIBLE_STATUSES } })
+    const serviceRequests = await ServiceRequest.find({ 
+      status: { $in: VISIBLE_STATUSES },
+      serviceType: { $ne: 'Maintenance' }
+    })
       .populate('customerId', 'name address')
       .populate('assignedTeam', 'teamName')
       .lean();
@@ -208,7 +211,7 @@ exports.getCustomerHistory = async (req, res) => {
           customerName: customer?.name || 'Unknown Customer',
           location: customer?.address || anchor.location || '-',
           productType: anchor.productType || latestInstallation?.productType || 'N/A',
-          installationDate: latestInstallation?.serviceDate || latestInstallation?.date || null
+          installationDate: anchor.serviceDate || anchor.date || latestInstallation?.serviceDate || latestInstallation?.date || null
         },
         history
       }

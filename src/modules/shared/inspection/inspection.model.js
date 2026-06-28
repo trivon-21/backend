@@ -1,4 +1,3 @@
-// src/models/Inspection.js
 const mongoose = require('mongoose');
 const { EXECUTION_STATUS } = require('../../../constants/enums');
 

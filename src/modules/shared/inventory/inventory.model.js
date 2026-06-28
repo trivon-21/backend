@@ -35,4 +35,25 @@ const materialRequestSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  if (!selectedTicketId) {
+    alert("Please select a ticket from the dropdown");
+    return;
+  }
+
+  if (materials.length === 0) {
+    alert("Please add at least one material item");
+    return;
+  }
+
+  try {
+    // Only call the API if the above checks pass
+    await api.post('/submit-to-finance', { newRequestId: selectedTicketId, materials });
+  } catch (err) {
+    console.error(err);
+  }
+};
+
 module.exports = mongoose.model('MaterialRequest', materialRequestSchema, 'MaterialRequests');
