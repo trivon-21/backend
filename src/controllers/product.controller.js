@@ -177,6 +177,5 @@ module.exports = {
     getAllProducts,
     getFilterOptions,
     getProductById,
-    createProduct,
     addProductReview
 };

@@ -4,7 +4,6 @@ const {
     getAllProducts,
     getFilterOptions,
     getProductById,
-    createProduct,
     addProductReview
 } = require('../controllers/product.controller');
 
@@ -17,8 +16,7 @@ router.get('/', getAllProducts);
 // GET /api/products/:id
 router.get('/:id', getProductById);
 
-// POST /api/products
-router.post('/', createProduct);
+// router.post('/', createProduct);
 
 // POST /api/products/:id/reviews
 router.post('/:id/reviews', addProductReview);
