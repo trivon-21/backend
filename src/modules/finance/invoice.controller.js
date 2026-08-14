@@ -103,7 +103,6 @@ async function getSellingPrice(materialName) {
   const LInventory = getLInventoryModel();
   const LSellingPrice = getLSellingPriceModel();
 
-  // Try exact match first, then partial
   let inventory = await LInventory.findOne({ name: materialName });
   if (!inventory) {
     inventory = await LInventory.findOne({ name: { $regex: materialName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: "i" } });
@@ -122,7 +121,6 @@ async function getCharge(chargeName) {
 }
 
 // ── GET invoice queue ─────────────────────────────────────────────────────────
-// Shows orders where L_Installation has materials added by main technician
 exports.getInvoiceQueue = async (req, res) => {
   try {
     const InspectionReport = getReportModel();
@@ -133,19 +131,16 @@ exports.getInvoiceQueue = async (req, res) => {
     const LInstallation = getLInstallationModel();
     const Ticket = getTicketModel();
 
-    // Get ALL L_Installations that have materials (main tech has done their job)
     const installations = await LInstallation.find({
-      "materials.0": { $exists: true }, // at least 1 material
+      "materials.0": { $exists: true },
     });
 
     const result = [];
 
     for (const installation of installations) {
-      // Check if invoice already exists for this installation's order
       const existingInvoice = await Invoice.findOne({ orderId: installation.orderId });
       if (existingInvoice) continue;
 
-      // Find the submitted inspection report for this order
       const report = await InspectionReport.findOne({
         $or: [
           { orderId: installation.orderId },
@@ -153,12 +148,10 @@ exports.getInvoiceQueue = async (req, res) => {
         ],
         status: "SUBMITTED",
       });
-      if (!report) continue; // Report not submitted yet
+      if (!report) continue;
 
-      // Get order details
       const order = await Order.findById(installation.orderId);
 
-      // Get customer — try from installation.customerId first, then ticket
       let user = await User.findById(installation.customerId);
       if (!user && installation.inspectionTicketId) {
         const ticket = await Ticket.findById(installation.inspectionTicketId);
@@ -246,13 +239,11 @@ exports.generateInvoice = async (req, res) => {
     const report = await InspectionReport.findById(reportId);
     if (!report) return res.status(404).json({ message: "Report not found" });
 
-    // Check if invoice already exists for this order
     const existing = await Invoice.findOne({ orderId: report.orderId });
     if (existing) {
       return res.json({ message: "Invoice already exists", invoice: existing });
     }
 
-    // Get installation — search by orderId OR ticketId
     const installation = await LInstallation.findOne({
       $or: [
         { orderId: report.orderId },
@@ -266,7 +257,6 @@ exports.generateInvoice = async (req, res) => {
     const ticket = await Ticket.findById(report.ticketId);
     const order = await Order.findById(report.orderId);
 
-    // Customer: try multiple sources
     let user = null;
     if (installation.customerId) user = await User.findById(installation.customerId);
     if (!user && ticket?.customerId) user = await User.findById(ticket.customerId);
@@ -275,15 +265,12 @@ exports.generateInvoice = async (req, res) => {
     const customerEmail = user?.email || "";
     const customerAddress = user?.address || installation.location || "";
 
-    // ── Build invoice items ───────────────────────────────────────────────────
-    // ── Build invoice items ───────────────────────────────────────────────────
     const items = [];
     let itemNo = 1;
 
-    // 1. AC Unit from order — use order.amount DIRECTLY (already includes profit)
     if (order?.itemName && order?.amount) {
       const acQty = order.quantity || 1;
-      const acPrice = order.amount || 0;   // ← no profit margin added
+      const acPrice = order.amount || 0;
 
       items.push({
         no: itemNo++,
@@ -295,7 +282,6 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    // 2. Materials from L_Installation (with 25% profit margin from L_Charges)
     for (const material of installation.materials) {
       const qty = Number(material.quantity) || 1;
       const unitPrice = await getSellingPrice(material.item) || 0;
@@ -310,7 +296,6 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    // 3. Installation fixed charge only (NO inspection fee — already paid)
     const installationCharge = await getCharge("installation") || 10000;
     items.push({
       no: itemNo++,
@@ -321,17 +306,16 @@ exports.generateInvoice = async (req, res) => {
       amount: installationCharge,
     });
 
-    // ── Totals ────────────────────────────────────────────────────────────────
     const subTotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-    const serviceCharge = 0; // already included in items above
+    const serviceCharge = 0;
     const grandTotal = subTotal + serviceCharge;
 
-    // ── Create invoice ────────────────────────────────────────────────────────
     const invoice = new Invoice({
       orderId: installation.orderId || report.orderId,
       customerId: installation.customerId || ticket?.customerId,
       ticketId: installation.inspectionTicketId || report.ticketId,
       reportId: report._id,
+      invoiceType: "INSTALLATION",
       customerName,
       customerEmail,
       customerAddress,
@@ -343,7 +327,6 @@ exports.generateInvoice = async (req, res) => {
     });
     await invoice.save();
 
-    // ── Audit log ─────────────────────────────────────────────────────────────
     await createLog({
       eventType: "INVOICE_GENERATED",
       paymentType: "INVOICE",
@@ -390,7 +373,10 @@ exports.confirmInvoice = async (req, res) => {
 // ── GET pending invoices ──────────────────────────────────────────────────────
 exports.getPendingInvoices = async (req, res) => {
   try {
-    const invoices = await Invoice.find({ status: "DRAFT" }).sort({ createdAt: -1 });
+    const invoices = await Invoice.find({
+      status: "DRAFT",
+      invoiceType: { $ne: "REPAIR" }
+    }).sort({ createdAt: -1 });
     res.json(invoices);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
@@ -602,7 +588,8 @@ exports.cancelRejection = async (req, res) => {
 exports.getAcceptedInvoices = async (req, res) => {
   try {
     const invoices = await Invoice.find({
-      status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] }
+      status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] },
+      invoiceType: { $ne: "REPAIR" }
     }).sort({ acceptedAt: -1 });
     res.json(invoices);
   } catch (error) {
@@ -613,7 +600,10 @@ exports.getAcceptedInvoices = async (req, res) => {
 // ── GET rejected invoices ─────────────────────────────────────────────────────
 exports.getRejectedInvoices = async (req, res) => {
   try {
-    const invoices = await Invoice.find({ status: "REJECTED" }).sort({ rejectedAt: -1 });
+    const invoices = await Invoice.find({
+      status: "REJECTED",
+      invoiceType: { $ne: "REPAIR" }
+    }).sort({ rejectedAt: -1 });
     res.json(invoices);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
@@ -623,11 +613,11 @@ exports.getRejectedInvoices = async (req, res) => {
 // ── GET paid invoices ─────────────────────────────────────────────────────────
 exports.getPaidInvoices = async (req, res) => {
   try {
-    const Invoice = mongoose.model("Invoice");
-    const invoices = await Invoice.find({ status: "PAID" })
-      .sort({ paidAt: -1, updatedAt: -1 });
+    const invoices = await Invoice.find({
+      status: "PAID",
+      invoiceType: { $ne: "REPAIR" }
+    }).sort({ paidAt: -1, updatedAt: -1 });
 
-    // For any PAID invoice missing paidAt, use updatedAt as fallback
     const result = invoices.map(inv => {
       const obj = inv.toObject();
       if (!obj.paidAt) obj.paidAt = obj.updatedAt;
@@ -639,6 +629,7 @@ exports.getPaidInvoices = async (req, res) => {
     res.status(500).json({ message: "Failed", error: error.message });
   }
 };
+
 // ── MARK AS PAID ──────────────────────────────────────────────────────────────
 exports.markAsPaid = async (req, res) => {
   try {
@@ -665,10 +656,42 @@ exports.markAsPaid = async (req, res) => {
     res.status(500).json({ message: "Failed", error: error.message });
   }
 };
+
+// ── AUTO CANCEL HELPER ────────────────────────────────────────────────────────
+async function processAutoCancelJobs() {
+  const now = new Date();
+
+  const expiredRejections = await Invoice.find({
+    status: "REJECTED",
+    rejectionDeadline: { $lt: now },
+  });
+  for (const inv of expiredRejections) {
+    inv.status = "AUTO_CANCELLED";
+    inv.cancelledAt = now;
+    await inv.save();
+    await sendRejectionExpiredEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber);
+  }
+
+  const expiredPayments = await Invoice.find({
+    status: "ACCEPTED",
+    paymentDeadline: { $lt: now },
+  });
+  for (const inv of expiredPayments) {
+    inv.status = "AUTO_CANCELLED";
+    inv.cancelledAt = now;
+    await inv.save();
+    await sendAutoCancelledEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber);
+  }
+}
+
 // ── GET auto cancelled invoices ───────────────────────────────────────────────
 exports.getAutoCancelledInvoices = async (req, res) => {
   try {
-    const invoices = await Invoice.find({ status: "AUTO_CANCELLED" }).sort({ cancelledAt: -1 });
+    await processAutoCancelJobs();
+    const invoices = await Invoice.find({
+      status: "AUTO_CANCELLED",
+      invoiceType: { $ne: "REPAIR" }
+    }).sort({ cancelledAt: -1 });
     res.json(invoices);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
@@ -679,12 +702,12 @@ exports.getAutoCancelledInvoices = async (req, res) => {
 exports.getDashboardStats = async (req, res) => {
   try {
     const [accepted, pending, paid, rejected] = await Promise.all([
-      Invoice.countDocuments({ status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] } }),
-      Invoice.countDocuments({ status: { $in: ["DRAFT", "SENT"] } }),
-      Invoice.countDocuments({ status: "PAID" }),
-      Invoice.countDocuments({ status: { $in: ["REJECTED", "AUTO_CANCELLED"] } }),
+      Invoice.countDocuments({ status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] }, invoiceType: { $ne: "REPAIR" } }),
+      Invoice.countDocuments({ status: { $in: ["DRAFT", "SENT"] }, invoiceType: { $ne: "REPAIR" } }),
+      Invoice.countDocuments({ status: "PAID", invoiceType: { $ne: "REPAIR" } }),
+      Invoice.countDocuments({ status: { $in: ["REJECTED", "AUTO_CANCELLED"] }, invoiceType: { $ne: "REPAIR" } }),
     ]);
-    const recent = await Invoice.find().sort({ updatedAt: -1 }).limit(20);
+    const recent = await Invoice.find({ invoiceType: { $ne: "REPAIR" } }).sort({ updatedAt: -1 }).limit(20);
     res.json({ accepted, pending, paid, rejected, tableData: recent });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch stats", error: error.message });
@@ -744,7 +767,6 @@ async function generateInvoicePDF(invoice) {
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", err => reject(err));
 
-      // Header bar
       doc.fillColor("#1e3a2a").rect(50, 50, 495, 60).fill();
       doc.fillColor("white").fontSize(18).font("Helvetica-Bold")
         .text(`INVOICE #${invoice.invoiceNumber}`, 60, 65);
@@ -752,7 +774,6 @@ async function generateInvoicePDF(invoice) {
       doc.fillColor("white").fontSize(10).font("Helvetica")
         .text(dateStr, 300, 72, { width: 235, align: "right" });
 
-      // From / To
       doc.fillColor("#1a1a1a").fontSize(14).font("Helvetica-Bold").text("AirLux", 60, 130);
       doc.fontSize(10).font("Helvetica").fillColor("#4b5563")
         .text("Premium Cooling Solutions", 60, 148)
@@ -763,7 +784,6 @@ async function generateInvoicePDF(invoice) {
       doc.font("Helvetica").fontSize(10).fillColor("#4b5563")
         .text(invoice.customerAddress || "", 380, 158, { width: 165 });
 
-      // Table header
       const tableTop = 230;
       doc.fillColor("#1e3a2a").rect(50, tableTop, 495, 25).fill();
       doc.fillColor("white").fontSize(9).font("Helvetica-Bold");
@@ -772,7 +792,6 @@ async function generateInvoicePDF(invoice) {
         doc.text(h, x, tableTop + 8);
       });
 
-      // Table rows
       let y = tableTop + 30;
       (invoice.items || []).forEach((item, i) => {
         if (i % 2 === 1) doc.fillColor("#f7f9f7").rect(50, y - 5, 495, 22).fill();
@@ -786,7 +805,6 @@ async function generateInvoicePDF(invoice) {
         y += 22;
       });
 
-      // Totals
       y += 10;
       doc.strokeColor("#e5e7eb").lineWidth(1).moveTo(350, y).lineTo(545, y).stroke();
       y += 8;
@@ -806,7 +824,6 @@ async function generateInvoicePDF(invoice) {
         .text(`LKR ${(invoice.grandTotal || 0).toLocaleString()}`, 455, y + 7);
       y += 40;
 
-      // Terms
       if (y < 680) {
         doc.fillColor("#f0fdf4").rect(50, y, 495, 100).fill();
         doc.fillColor("#1a1a1a").fontSize(9).font("Helvetica-Bold").text("Terms & Conditions", 60, y + 10);
@@ -823,12 +840,223 @@ async function generateInvoicePDF(invoice) {
   });
 }
 
+// ── REPAIR INVOICE HELPERS ────────────────────────────────────────────────────
+const getLRepairModel = () => {
+  try { return mongoose.model("L_Repair"); }
+  catch {
+    const s = new mongoose.Schema({
+      serviceTicketId: mongoose.Schema.Types.ObjectId,
+      customerId:      mongoose.Schema.Types.ObjectId,
+      orderId:         mongoose.Schema.Types.ObjectId,
+      repairType:      String,
+      materials:       [{ item: String, quantity: mongoose.Schema.Types.Mixed }],
+      location:        String,
+      status:          String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("L_Repair", s);
+  }
+};
+
+// ── GET repair invoice queue ──────────────────────────────────────────────────
+exports.getRepairInvoiceQueue = async (req, res) => {
+  try {
+    const LRepair  = getLRepairModel();
+    const User     = getUserModel();
+    const Ticket   = getTicketModel();
+
+    const repairs = await LRepair.find({
+      "materials.0": { $exists: true },
+      status: { $in: ["MATERIALS_READY", "PENDING"] },
+    });
+
+    const result = [];
+
+    for (const repair of repairs) {
+      const existing = await Invoice.findOne({ repairId: repair._id });
+      if (existing) continue;
+
+      let customerName  = "Unknown";
+      let customerEmail = "";
+      let customerAddress = "";
+
+      if (repair.customerId) {
+        const user = await User.findById(repair.customerId);
+        if (user) {
+          customerName    = `${user.fullName || ""} ${user.lastName || ""}`.trim();
+          customerEmail   = user.email || "";
+          customerAddress = user.address || repair.location || "";
+        }
+      }
+
+      let ticketRef = "—";
+      let serviceType = "REPAIR";
+      if (repair.serviceTicketId) {
+        try {
+          const ServiceTicket = mongoose.model("ServiceTicket");
+          const ticket = await ServiceTicket.findById(repair.serviceTicketId);
+          if (ticket) {
+            ticketRef   = `SVC-${ticket._id.toString().slice(-5).toUpperCase()}`;
+            serviceType = ticket.serviceType || "REPAIR";
+          }
+        } catch {}
+      }
+
+      result.push({
+        repairId:       repair._id,
+        serviceTicketId:repair.serviceTicketId,
+        ticketRef,
+        customerId:     repair.customerId,
+        customerName,
+        customerEmail,
+        customerAddress,
+        repairType:     repair.repairType || "minor",
+        materialsCount: repair.materials.length,
+        location:       repair.location || "",
+        date:           repair.updatedAt || repair.createdAt,
+        notes:          repair.notes || "",
+      });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error("getRepairInvoiceQueue error:", error);
+    res.status(500).json({ message: "Failed to fetch repair queue", error: error.message });
+  }
+};
+
+// ── GENERATE repair invoice ───────────────────────────────────────────────────
+exports.generateRepairInvoice = async (req, res) => {
+  try {
+    const { repairId } = req.params;
+    const LRepair = getLRepairModel();
+    const User    = getUserModel();
+
+    const repair = await LRepair.findById(repairId);
+    if (!repair) return res.status(404).json({ message: "Repair record not found" });
+
+    const existing = await Invoice.findOne({ repairId: repair._id });
+    if (existing) return res.json({ message: "Repair invoice already exists", invoice: existing });
+
+    let user = null;
+    if (repair.customerId) user = await User.findById(repair.customerId);
+
+    const customerName    = user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() : "Unknown";
+    const customerEmail   = user?.email || "";
+    const customerAddress = user?.address || repair.location || "";
+
+    const items  = [];
+    let   itemNo = 1;
+
+    for (const material of repair.materials) {
+      const qty       = Number(material.quantity) || 1;
+      const unitPrice = await getSellingPrice(material.item) || 0;
+      items.push({
+        no:          itemNo++,
+        itemName:    material.item,
+        description: "Repair material",
+        qty,
+        rate:        unitPrice,
+        amount:      qty * unitPrice,
+      });
+    }
+
+    const repairType    = repair.repairType || "minor";
+    const chargeName    = repairType === "major" ? "repair_major" : "repair_minor";
+    const chargeLabel   = repairType === "major" ? "Major Repair Charge" : "Minor Repair Charge";
+    const repairCharge  = await getCharge(chargeName) || (repairType === "major" ? 15000 : 4000);
+    items.push({
+      no:          itemNo++,
+      itemName:    chargeLabel,
+      description: `Fixed ${repairType} repair service charge`,
+      qty:         1,
+      rate:        repairCharge,
+      amount:      repairCharge,
+    });
+
+    const subTotal   = items.reduce((s, i) => s + (i.amount || 0), 0);
+    const grandTotal = subTotal;
+
+    const invoice = new Invoice({
+      repairId:        repair._id,
+      customerId:      repair.customerId,
+      ticketId:        repair.serviceTicketId,
+      invoiceType:     "REPAIR",
+      customerName,
+      customerEmail,
+      customerAddress,
+      items,
+      serviceCharge:   0,
+      subTotal,
+      grandTotal,
+      status:          "DRAFT",
+    });
+    await invoice.save();
+
+    repair.status = "INVOICED";
+    await repair.save();
+
+    await createLog({
+      eventType:    "INVOICE_GENERATED",
+      paymentType:  "INVOICE",
+      invoiceId:    invoice.invoiceNumber || invoice._id.toString(),
+      customerId:   repair.customerId,
+      customerName,
+      customerEmail,
+      amount:       grandTotal,
+      performedBy:  "Finance Officer",
+      notes:        `Repair invoice (${repairType})`,
+    });
+
+    res.json({ message: "Repair invoice generated", invoice });
+  } catch (error) {
+    console.error("generateRepairInvoice error:", error);
+    res.status(500).json({ message: "Failed to generate repair invoice", error: error.message });
+  }
+};
+
+// ── GET repair invoices by status ─────────────────────────────────────────────
+exports.getRepairPendingInvoices = async (req, res) => {
+  try { res.json(await Invoice.find({ invoiceType: "REPAIR", status: "DRAFT" }).sort({ createdAt: -1 })); }
+  catch (e) { res.status(500).json({ message: e.message }); }
+};
+exports.getRepairAcceptedInvoices = async (req, res) => {
+  try { res.json(await Invoice.find({ invoiceType: "REPAIR", status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] } }).sort({ acceptedAt: -1 })); }
+  catch (e) { res.status(500).json({ message: e.message }); }
+};
+exports.getRepairRejectedInvoices = async (req, res) => {
+  try { res.json(await Invoice.find({ invoiceType: "REPAIR", status: "REJECTED" }).sort({ rejectedAt: -1 })); }
+  catch (e) { res.status(500).json({ message: e.message }); }
+};
+exports.getRepairPaidInvoices = async (req, res) => {
+  try {
+    const invoices = await Invoice.find({ invoiceType: "REPAIR", status: "PAID" }).sort({ paidAt: -1, updatedAt: -1 });
+    res.json(invoices.map(inv => { const o = inv.toObject(); if (!o.paidAt) o.paidAt = o.updatedAt; return o; }));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+};
+exports.getRepairAutoCancelledInvoices = async (req, res) => {
+  try {
+    await processAutoCancelJobs();
+    res.json(await Invoice.find({ invoiceType: "REPAIR", status: "AUTO_CANCELLED" }).sort({ cancelledAt: -1 }));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+};
+exports.getRepairDashboardStats = async (req, res) => {
+  try {
+    const [accepted, pending, paid, rejected] = await Promise.all([
+      Invoice.countDocuments({ invoiceType: "REPAIR", status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] } }),
+      Invoice.countDocuments({ invoiceType: "REPAIR", status: { $in: ["DRAFT", "SENT"] } }),
+      Invoice.countDocuments({ invoiceType: "REPAIR", status: "PAID" }),
+      Invoice.countDocuments({ invoiceType: "REPAIR", status: { $in: ["REJECTED", "AUTO_CANCELLED"] } }),
+    ]);
+    const tableData = await Invoice.find({ invoiceType: "REPAIR" }).sort({ updatedAt: -1 }).limit(50);
+    res.json({ accepted, pending, paid, rejected, tableData });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+};
+
 // ── CRON JOBS ─────────────────────────────────────────────────────────────────
 cron.schedule("0 9 * * *", async () => {
   const now = new Date();
   console.log("Running invoice cron jobs...");
 
-  // 1. Auto-cancel expired rejections (30 days)
   const expiredRejections = await Invoice.find({
     status: "REJECTED", rejectionDeadline: { $lt: now },
   });
@@ -838,7 +1066,6 @@ cron.schedule("0 9 * * *", async () => {
     await sendRejectionExpiredEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber);
   }
 
-  // 2. Auto-cancel unpaid accepted invoices (14 days)
   const expiredPayments = await Invoice.find({
     status: "ACCEPTED", paymentDeadline: { $lt: now },
   });
@@ -848,7 +1075,6 @@ cron.schedule("0 9 * * *", async () => {
     await sendAutoCancelledEmail(inv.customerEmail, inv.customerName, inv.invoiceNumber);
   }
 
-  // 3. Rejection warnings (2 days before)
   const rWarnDate = new Date(now); rWarnDate.setDate(rWarnDate.getDate() + 2);
   const rejectionWarnings = await Invoice.find({
     status: "REJECTED",
@@ -861,7 +1087,6 @@ cron.schedule("0 9 * * *", async () => {
     inv.rejectionReminderSent = true; await inv.save();
   }
 
-  // 4. Payment reminders (2 days before)
   const pWarnDate = new Date(now); pWarnDate.setDate(pWarnDate.getDate() + 2);
   const paymentWarnings = await Invoice.find({
     status: "ACCEPTED",

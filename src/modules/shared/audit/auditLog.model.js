@@ -19,13 +19,15 @@ const auditLogSchema = new mongoose.Schema(
         "SERVICE_PAYMENT_SUBMITTED",
         "SERVICE_PAYMENT_APPROVED",
         "SERVICE_PAYMENT_REJECTED",
+        "PURCHASE_REQUEST_APPROVED",
+        "PURCHASE_REQUEST_REJECTED",
       ],
       required: true,
     },
     // Type of payment or invoice (for easier filtering and stats)
     paymentType: {
       type: String,
-      enum: ["BUY_ONLY", "INSPECTION", "INVOICE", "REPAIR", "MAINTENANCE"],
+      enum: ["BUY_ONLY", "INSPECTION", "INVOICE", "REPAIR", "MAINTENANCE", "PURCHASE_REQUEST"],
       required: true,
     },
     // References to related entities (if applicable)

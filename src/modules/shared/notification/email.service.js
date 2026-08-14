@@ -462,7 +462,65 @@ const sendServiceRejectionEmail = async (email, customerName, orderId, serviceTy
     console.error("Service rejection email error:", error);
   }
 };
+// Purchase Request — Approval email to inventory manager
+const sendPurchaseApprovalEmail = async (email, managerName, requestId, totalAmount) => {
+  try {
+    await transporter.sendMail({
+      from: `"AirLux Finance Team" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Purchase Request Approved - ${requestId}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+          <div style="background:#1e3a2a;padding:20px;border-radius:8px 8px 0 0;">
+            <h2 style="color:white;margin:0;">AirLux</h2>
+          </div>
+          <div style="background:#f0fdf4;border:1px solid #86efac;padding:20px;margin:16px 0;border-radius:8px;">
+            <h3 style="color:#166534;margin:0 0 8px;">✅ Purchase Request Approved!</h3>
+            <p style="color:#166534;margin:0;">Total Amount: LKR ${Number(totalAmount).toLocaleString()}</p>
+          </div>
+          <p>Dear <strong>${managerName}</strong>,</p>
+          <p>Your purchase request <strong>${requestId}</strong> has been approved by the Finance Officer.</p>
+          <p>You may proceed with the purchase and payment. Please retain receipts for record-keeping.</p>
+          <p>Best regards,<br><strong>AirLux Finance Team</strong></p>
+        </div>
+      `,
+    });
+    console.log("Purchase approval email sent to", email);
+  } catch (error) {
+    console.error("Purchase approval email error:", error);
+  }
+};
 
+// Purchase Request — Rejection email to inventory manager
+const sendPurchaseRejectionEmail = async (email, managerName, requestId, reason) => {
+  try {
+    await transporter.sendMail({
+      from: `"AirLux Finance Team" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Purchase Request Rejected - ${requestId}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+          <div style="background:#1e3a2a;padding:20px;border-radius:8px 8px 0 0;">
+            <h2 style="color:white;margin:0;">AirLux</h2>
+          </div>
+          <div style="background:#fef2f2;border:1px solid #fca5a5;padding:20px;margin:16px 0;border-radius:8px;">
+            <h3 style="color:#dc2626;margin:0 0 8px;">❌ Purchase Request Rejected</h3>
+          </div>
+          <p>Dear <strong>${managerName}</strong>,</p>
+          <p>Your purchase request <strong>${requestId}</strong> has been rejected.</p>
+          <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:12px 16px;margin:16px 0;border-radius:4px;">
+            <strong>Reason:</strong> ${reason}
+          </div>
+          <p>If you believe this needs reconsideration, please contact the Finance Officer directly.</p>
+          <p>Best regards,<br><strong>AirLux Finance Team</strong></p>
+        </div>
+      `,
+    });
+    console.log("Purchase rejection email sent to", email);
+  } catch (error) {
+    console.error("Purchase rejection email error:", error);
+  }
+};
 module.exports = {
   sendRejectionEmail,
   sendApprovalEmail,
@@ -474,4 +532,6 @@ module.exports = {
   sendBuyOnlyRejectionEmail,
   sendServiceApprovalEmail,
   sendServiceRejectionEmail,
+  sendPurchaseApprovalEmail,
+  sendPurchaseRejectionEmail,
 };

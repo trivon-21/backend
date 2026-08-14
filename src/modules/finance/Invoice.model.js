@@ -15,7 +15,8 @@ const invoiceSchema = new mongoose.Schema(
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     ticketId: { type: mongoose.Schema.Types.ObjectId, ref: "InspectionTicket" },
     reportId: { type: mongoose.Schema.Types.ObjectId, ref: "InspectionReport" },
-
+invoiceType: { type: String, enum: ["INSTALLATION", "REPAIR"], default: "INSTALLATION" },
+repairId:    { type: mongoose.Schema.Types.ObjectId, ref: "L_Repair" },
     // Invoice details
     invoiceNumber: { type: String, unique: true },
     invoiceDate: { type: Date, default: Date.now },

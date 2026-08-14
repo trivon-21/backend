@@ -4,6 +4,8 @@ const getInvoiceModel = () => mongoose.model("Invoice");
 const getOrderModel = () => { try { return mongoose.model("Order"); } catch { return null; } };
 const getTicketModel = () => { try { return mongoose.model("InspectionTicket"); } catch { return null; } };
 const getServiceTicket = () => { try { return mongoose.model("ServiceTicket"); } catch { return null; } };
+const getPurchaseRequestModel = () => { try { return mongoose.model("L_PurchaseRequest"); } catch { return null; } };
+
 const getLCharge = async (name) => {
   try {
     const LCharge = mongoose.model("L_Charge");
@@ -15,8 +17,12 @@ const getLCharge = async (name) => {
 // ── Helper: parse date range from query ───────────────────────────────────────
 function getDateRange(query) {
   const now = new Date();
-  let start = query.startDate ? new Date(query.startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
-  let end = query.endDate ? new Date(new Date(query.endDate).setHours(23, 59, 59, 999)) : new Date();
+  let start = query.startDate
+    ? new Date(query.startDate)
+    : new Date(now.getFullYear(), now.getMonth(), 1);
+  let end = query.endDate
+    ? new Date(new Date(query.endDate).setHours(23, 59, 59, 999))
+    : new Date();
   return { start, end };
 }
 
@@ -26,58 +32,91 @@ exports.getRevenueSummary = async (req, res) => {
     const { start, end } = getDateRange(req.query);
     const Invoice = getInvoiceModel();
 
-    // Paid invoices — handle missing paidAt with updatedAt fallback
+    // 1. Paid invoices — paidAt with updatedAt fallback
     const paidInvoices = await Invoice.find({
       status: "PAID",
       $or: [
-        { paidAt:    { $gte: start, $lte: end } },
-        { updatedAt: { $gte: start, $lte: end }, paidAt: { $exists: false } },
+        { paidAt: { $gte: start, $lte: end } },
+        { paidAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+        { paidAt: null, updatedAt: { $gte: start, $lte: end } },
       ]
     });
     const salesRevenue = paidInvoices.reduce((s, i) => s + (i.grandTotal || 0), 0);
 
-    // Accepted invoices (pending payment)
+    // 2. Accepted invoices (pending payment) — acceptedAt with updatedAt fallback
     const acceptedInvoices = await Invoice.find({
       status: "ACCEPTED",
-      acceptedAt: { $gte: start, $lte: end },
+      $or: [
+        { acceptedAt: { $gte: start, $lte: end } },
+        { acceptedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+        { acceptedAt: null, updatedAt: { $gte: start, $lte: end } },
+      ]
     });
     const pendingRevenue = acceptedInvoices.reduce((s, i) => s + (i.grandTotal || 0), 0);
 
-    // Inspection fees
+    // 3. Inspection fees — approvedAt with updatedAt fallback
     let inspectionRevenue = 0;
     const Ticket = getTicketModel();
     if (Ticket) {
       const approvedTickets = await Ticket.find({
-        status: { $in: ["PAYMENT_CONFIRMED", "APPROVED", "SCHEDULED", "ONGOING", "INSPECTED", "SUBMITTED"] },
-        approvedAt: { $gte: start, $lte: end },
+        status: { $in: ["PAYMENT_CONFIRMED", "INSPECTION_SCHEDULED", "INSPECTED", "SUBMITTED"] },
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ]
       });
       const inspFee = await getLCharge("inspection") || 2500;
-      inspectionRevenue = approvedTickets.reduce((s, t) => s + (t.inspectionFee || t.amount || inspFee), 0);
+      inspectionRevenue = approvedTickets.reduce((s, t) => s + (t.inspectionFee || inspFee), 0);
     }
 
-    // Service payments
+    // 4. Service payments — real field: paymentStatus "APPROVED", serviceFee
     let serviceRevenue = 0;
     const SvcTicket = getServiceTicket();
     if (SvcTicket) {
       const approvedSvc = await SvcTicket.find({
-        paymentStatus: { $in: ["APPROVED", "VERIFIED"] },
-        updatedAt: { $gte: start, $lte: end },
+        paymentStatus: "APPROVED",
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ]
       });
-      serviceRevenue = approvedSvc.reduce((s, t) => s + (t.serviceFee || t.amount || 0), 0);
+      serviceRevenue = approvedSvc.reduce((s, t) => s + (t.serviceFee || 0), 0);
     }
 
-    // Buy-only payments
+    // 5. Buy-only payments — real value is "Confirmed" not "Approved"
     let buyOnlyRevenue = 0;
     const Order = getOrderModel();
     if (Order) {
       const approvedOrders = await Order.find({
-        paymentStatus: "Approved",
-        updatedAt: { $gte: start, $lte: end },
+        paymentStatus: { $in: ["Confirmed", "Approved"] },
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ]
       });
       buyOnlyRevenue = approvedOrders.reduce((s, o) => s + (o.amount || 0), 0);
     }
 
+    // 6. Purchase expenses (money going OUT)
+    let purchaseExpenses = 0;
+    const PurchaseRequest = getPurchaseRequestModel();
+    if (PurchaseRequest) {
+      const approvedPurchases = await PurchaseRequest.find({
+        status: "APPROVED",
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ]
+      });
+      purchaseExpenses = approvedPurchases.reduce((s, p) => s + (p.totalAmount || 0), 0);
+    }
+
     const monthlyData = await getMonthlyBreakdown(Invoice, 6);
+    const totalCollected = (salesRevenue || 0) + (inspectionRevenue || 0) + (serviceRevenue || 0) + (buyOnlyRevenue || 0);
 
     res.json({
       salesRevenue,
@@ -85,8 +124,10 @@ exports.getRevenueSummary = async (req, res) => {
       serviceRevenue,
       buyOnlyRevenue,
       pendingRevenue,
-      totalCollected: salesRevenue + inspectionRevenue + serviceRevenue + buyOnlyRevenue,
-      totalCombined:  salesRevenue + inspectionRevenue + serviceRevenue + buyOnlyRevenue + pendingRevenue,
+      purchaseExpenses,
+      totalCollected,
+      netRevenue: totalCollected - (purchaseExpenses || 0),
+      totalCombined: totalCollected + (pendingRevenue || 0),
       monthlyData,
     });
   } catch (error) {
@@ -95,56 +136,92 @@ exports.getRevenueSummary = async (req, res) => {
   }
 };
 
-
 // ── Helper: monthly breakdown ─────────────────────────────────────────────────
 async function getMonthlyBreakdown(Invoice, months) {
   const result = [];
-  const now    = new Date();
+  const now = new Date();
 
   for (let i = months - 1; i >= 0; i--) {
     const d     = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const start = new Date(d.getFullYear(), d.getMonth(), 1);
     const end   = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
 
-    // 1. Invoice revenue (paid + accepted created this month)
+    // 1. Invoice revenue
     const invoices = await Invoice.find({
       status: { $in: ["PAID", "ACCEPTED", "SENT", "DRAFT"] },
       createdAt: { $gte: start, $lte: end },
     });
     const invoiceTotal = invoices.reduce((s, inv) => s + (inv.grandTotal || 0), 0);
 
-    // 2. Buy Only
+    // 2. Buy Only — real status "Confirmed"
     let buyOnly = 0;
     try {
       const Order = mongoose.model("Order");
-      const orders = await Order.find({ paymentStatus: "Approved", updatedAt: { $gte: start, $lte: end } });
+      const orders = await Order.find({
+        paymentStatus: { $in: ["Confirmed", "Approved"] },
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ]
+      });
       buyOnly = orders.reduce((s, o) => s + (o.amount || 0), 0);
     } catch {}
 
-    // 3. Inspection fees
+    // 3. Inspection fees — with updatedAt fallback
     let inspection = 0;
     try {
       const Ticket = mongoose.model("InspectionTicket");
-      const tickets = await Ticket.find({ approvedAt: { $gte: start, $lte: end } });
+      const tickets = await Ticket.find({
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ]
+      });
       const inspFee = await getLCharge("inspection") || 2500;
       inspection = tickets.reduce((s, t) => s + (t.inspectionFee || inspFee), 0);
     } catch {}
 
-    // 4. Services
+    // 4. Services — real status "APPROVED", field serviceFee
     let service = 0;
     try {
       const SvcTicket = mongoose.model("ServiceTicket");
-      const svcs = await SvcTicket.find({ paymentStatus: { $in: ["APPROVED","VERIFIED"] }, updatedAt: { $gte: start, $lte: end } });
-      service = svcs.reduce((s, t) => s + (t.serviceFee || t.amount || 0), 0);
+      const svcs = await SvcTicket.find({
+        paymentStatus: "APPROVED",
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ]
+      });
+      service = svcs.reduce((s, t) => s + (t.serviceFee || 0), 0);
+    } catch {}
+
+    // 5. Purchase expenses
+    let purchase = 0;
+    try {
+      const PurchaseRequest = mongoose.model("L_PurchaseRequest");
+      const purchases = await PurchaseRequest.find({
+        status: "APPROVED",
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ]
+      });
+      purchase = purchases.reduce((s, p) => s + (p.totalAmount || 0), 0);
     } catch {}
 
     result.push({
-      month:     d.toLocaleDateString("en-GB", { month: "short", year: "numeric" }),
-      total:     invoiceTotal + buyOnly + inspection + service,
-      invoice:   invoiceTotal,
+      month:      d.toLocaleDateString("en-GB", { month: "short", year: "numeric" }),
+      total:      invoiceTotal + buyOnly + inspection + service,
+      invoice:    invoiceTotal,
       buyOnly,
       inspection,
       service,
+      purchase,
+      net:        invoiceTotal + buyOnly + inspection + service - purchase,
     });
   }
   return result;
@@ -159,9 +236,10 @@ exports.getTransactions = async (req, res) => {
 
     const query = {
       $or: [
-        { createdAt: { $gte: start, $lte: end } },
-        { paidAt: { $gte: start, $lte: end } },
+        { createdAt:  { $gte: start, $lte: end } },
+        { paidAt:     { $gte: start, $lte: end } },
         { acceptedAt: { $gte: start, $lte: end } },
+        { updatedAt:  { $gte: start, $lte: end } },
       ]
     };
     if (status && status !== "ALL") query.status = status;
@@ -173,17 +251,17 @@ exports.getTransactions = async (req, res) => {
       .limit(parseInt(limit));
 
     const formatted = invoices.map(inv => ({
-      _id: inv._id,
+      _id:           inv._id,
       invoiceNumber: inv.invoiceNumber,
-      customerName: inv.customerName || "—",
+      customerName:  inv.customerName || "—",
       customerEmail: inv.customerEmail,
-      orderId: inv.orderId,
-      type: "Installation Sale",
-      grandTotal: inv.grandTotal || 0,
-      status: inv.status,
-      createdAt: inv.createdAt,
-      acceptedAt: inv.acceptedAt,
-      paidAt: inv.paidAt,
+      orderId:       inv.orderId,
+      type:          inv.invoiceType === "REPAIR" ? "Repair Invoice" : "Installation Sale",
+      grandTotal:    inv.grandTotal || 0,
+      status:        inv.status,
+      createdAt:     inv.createdAt,
+      acceptedAt:    inv.acceptedAt,
+      paidAt:        inv.paidAt,
     }));
 
     res.json({ transactions: formatted, total, page: parseInt(page), limit: parseInt(limit) });
@@ -199,25 +277,22 @@ exports.getOutstanding = async (req, res) => {
     const Invoice = getInvoiceModel();
     const now = new Date();
 
-    // ACCEPTED invoices where payment deadline hasn't passed — still waiting
-    const outstanding = await Invoice.find({
-      status: "ACCEPTED",
-    }).sort({ paymentDeadline: 1 });
+    const outstanding = await Invoice.find({ status: "ACCEPTED" }).sort({ paymentDeadline: 1 });
 
     const formatted = outstanding.map(inv => {
       const due = inv.paymentDeadline ? new Date(inv.paymentDeadline) : null;
       const daysLeft = due ? Math.ceil((due - now) / (1000 * 60 * 60 * 24)) : null;
       return {
-        _id: inv._id,
-        invoiceNumber: inv.invoiceNumber,
-        customerName: inv.customerName,
-        customerEmail: inv.customerEmail,
-        grandTotal: inv.grandTotal,
-        acceptedAt: inv.acceptedAt,
+        _id:             inv._id,
+        invoiceNumber:   inv.invoiceNumber,
+        customerName:    inv.customerName,
+        customerEmail:   inv.customerEmail,
+        grandTotal:      inv.grandTotal,
+        acceptedAt:      inv.acceptedAt,
         paymentDeadline: due,
         daysLeft,
-        overdue: daysLeft !== null && daysLeft < 0,
-        daysOverdue: daysLeft !== null && daysLeft < 0 ? Math.abs(daysLeft) : 0,
+        overdue:         daysLeft !== null && daysLeft < 0,
+        daysOverdue:     daysLeft !== null && daysLeft < 0 ? Math.abs(daysLeft) : 0,
       };
     });
 
@@ -228,25 +303,25 @@ exports.getOutstanding = async (req, res) => {
   }
 };
 
-// ── GET payment collections (approved payments across all types) ──────────────
+// ── GET payment collections ───────────────────────────────────────────────────
 exports.getPaymentCollections = async (req, res) => {
   try {
     const { start, end } = getDateRange(req.query);
     const collections = [];
     const Invoice = getInvoiceModel();
 
-    // 1. Invoice payments (PAID) — use updatedAt fallback if paidAt missing
+    // 1. Invoice payments (PAID)
     const paidInv = await Invoice.find({
       status: "PAID",
       $or: [
-        { paidAt:    { $gte: start, $lte: end } },
-        { updatedAt: { $gte: start, $lte: end }, paidAt: { $exists: false } },
-        { updatedAt: { $gte: start, $lte: end }, paidAt: null },
+        { paidAt: { $gte: start, $lte: end } },
+        { paidAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+        { paidAt: null, updatedAt: { $gte: start, $lte: end } },
       ],
     });
     paidInv.forEach(inv => collections.push({
       date:      inv.paidAt || inv.updatedAt,
-      type:      "Invoice Payment",
+      type:      inv.invoiceType === "REPAIR" ? "Repair Invoice Payment" : "Invoice Payment",
       reference: inv.invoiceNumber,
       customer:  inv.customerName || "—",
       amount:    inv.grandTotal || 0,
@@ -254,15 +329,16 @@ exports.getPaymentCollections = async (req, res) => {
       status:    "Paid",
     }));
 
-    // 2. Buy Only approved orders
+    // 2. Buy Only approved orders — real status "Confirmed"
     const Order = getOrderModel();
     if (Order) {
       const orders = await Order.find({
+        paymentStatus: { $in: ["Confirmed", "Approved"] },
         $or: [
-          { orderType: "Buy Only",  paymentStatus: "Approved" },
-          { orderType: "BUY_ONLY", paymentStatus: "Approved" },
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
         ],
-        updatedAt: { $gte: start, $lte: end },
       });
       for (const o of orders) {
         let customerName = "—";
@@ -273,7 +349,7 @@ exports.getPaymentCollections = async (req, res) => {
           else if (o.customerName) customerName = o.customerName;
         } catch {}
         collections.push({
-          date:      o.updatedAt,
+          date:      o.approvedAt || o.updatedAt,
           type:      "Buy Only Payment",
           reference: o.orderRef || o._id.toString().slice(-6).toUpperCase(),
           customer:  customerName,
@@ -284,11 +360,15 @@ exports.getPaymentCollections = async (req, res) => {
       }
     }
 
-    // 3. Inspection payments approved
+    // 3. Inspection payments — with updatedAt fallback
     const Ticket = getTicketModel();
     if (Ticket) {
       const tickets = await Ticket.find({
-        approvedAt: { $gte: start, $lte: end },
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ],
       });
       for (const t of tickets) {
         let customerName = "—";
@@ -303,32 +383,66 @@ exports.getPaymentCollections = async (req, res) => {
           type:      "Inspection Fee",
           reference: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
           customer:  customerName,
-          amount:    t.inspectionFee || t.amount || inspFee,
+          amount:    t.inspectionFee || inspFee,
           method:    "Bank Transfer",
           status:    "Approved",
         });
       }
     }
 
-    // 4. Service payments
+    // 4. Service payments — real status "APPROVED", field serviceFee
     const SvcTicket = getServiceTicket();
     if (SvcTicket) {
       const svcs = await SvcTicket.find({
-        paymentStatus: { $in: ["APPROVED", "VERIFIED"] },
-        updatedAt: { $gte: start, $lte: end },
+        paymentStatus: "APPROVED",
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ],
       });
-      svcs.forEach(t => collections.push({
-        date:      t.updatedAt,
-        type:      t.serviceType === "REPAIR" ? "Repair Service" : "Maintenance Service",
-        reference: `SVC-${t._id.toString().slice(-6).toUpperCase()}`,
-        customer:  "—",
-        amount:    t.serviceFee || t.amount || 0,
+      for (const t of svcs) {
+        let customerName = "—";
+        try {
+          const User = mongoose.model("User");
+          const user = await User.findById(t.customerId);
+          if (user) customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
+        } catch {}
+        collections.push({
+          date:      t.approvedAt || t.updatedAt,
+          type:      t.serviceType === "REPAIR" ? "Repair Service" : "Maintenance Service",
+          reference: `SVC-${t._id.toString().slice(-6).toUpperCase()}`,
+          customer:  customerName,
+          amount:    t.serviceFee || 0,
+          method:    "Bank Transfer",
+          status:    "Approved",
+        });
+      }
+    }
+
+    // 5. Purchase Request expenses (money going OUT — negative)
+    const PurchaseRequest = getPurchaseRequestModel();
+    if (PurchaseRequest) {
+      const approvedPurchases = await PurchaseRequest.find({
+        status: "APPROVED",
+        $or: [
+          { approvedAt: { $gte: start, $lte: end } },
+          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        ],
+      });
+      approvedPurchases.forEach(p => collections.push({
+        date:      p.approvedAt || p.updatedAt,
+        type:      "Purchase Expense",
+        reference: `PR-${p._id.toString().slice(-6).toUpperCase()}`,
+        customer:  p.requestedBy || "—",
+        amount:    -(p.totalAmount || 0),
         method:    "Bank Transfer",
         status:    "Approved",
       }));
     }
 
-    collections.sort((a, b) => new Date(a.date) - new Date(b.date)); // oldest first
+    collections.sort((a, b) => new Date(a.date) - new Date(b.date));
     res.json(collections);
   } catch (error) {
     console.error("getPaymentCollections error:", error);

@@ -5,6 +5,8 @@ require("./src/modules/shared/L_charges.model");
 require("./src/modules/shared/L_sellingPrice.model");
 require("./src/modules/shared/L_serviceReport.model");
 require("./src/modules/shared/L_bankDetails.model");
+require("./src/modules/shared/L_repair.model");
+require("./src/modules/shared/L_purchaseRequest.model");
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -28,6 +30,7 @@ const invoiceRoutes = require("./src/modules/finance/invoice.routes");
 const servicePaymentRoutes = require("./src/modules/finance/servicePayment.routes");
 const auditLogRoutes = require("./src/modules/finance/auditLog.routes");
 const financialReportRoutes = require("./src/modules/finance/financialReport.routes");
+const purchaseRequestRoutes = require("./src/modules/finance/purchaseRequest.routes");
 
 app.use("/api/payments", paymentRoutes);
 app.use("/api/inspection-tickets", inspectionTicketRoutes);
@@ -36,6 +39,7 @@ app.use("/api/invoices", invoiceRoutes);
 app.use("/api/service-payments", servicePaymentRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/financial-report", financialReportRoutes);
+app.use("/api/purchase-requests", purchaseRequestRoutes);
 
 // ── Start ────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
