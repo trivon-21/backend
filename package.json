@@ -1,32 +1,43 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "seed": "node seeds/seedDatabase.js",
+    "seed:config": "node seeds/system-config-seed.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "description": "AirLux Catalog API Backend",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "express-validator": "^7.3.2",
+    "firebase-admin": "^13.8.0",
+    "json2csv": "^6.0.0-alpha.2",
+    "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.2.1",
+    "multer": "^2.1.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.1",
-    "pdfkit": "^0.18.0"
+    "pdfkit": "^0.18.0",
+    "uuid": "^13.0.0"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/trivon-21/backend.git"
   },
+  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/trivon-21/backend/issues"
   },
   "homepage": "https://github.com/trivon-21/backend#readme",
-  "description": "",
   "devDependencies": {
     "nodemon": "^3.1.11"
   }
