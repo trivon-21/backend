@@ -89,4 +89,3 @@ exports.rejectQuotation = async (orderId, managerId, reason) => {
     throw new Error(`Failed to reject quotation: ${err.message}`);
   }
 };
-

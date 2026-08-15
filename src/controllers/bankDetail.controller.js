@@ -6,15 +6,15 @@ exports.getBankDetails = async (req, res) => {
   try {
     const details = await BankDetail.findOne();
     if (!details) {
-      return res.status(200).json({ 
-        success: true, 
+      return res.status(200).json({
+        success: true,
         data: {
           accountNumber: '1000XXXXXXXX',
           bankName: 'Sampath Bank',
           accountName: 'AirLux PVT LTD',
           branch: 'Colombo 03',
           currency: 'LKR'
-        } 
+        }
       });
     }
     res.json({ success: true, data: details });
@@ -30,9 +30,9 @@ exports.updatePaymentSettings = async (req, res) => {
 
     // Validation
     if (!accountNumber || !bankName || !accountName || !branch) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'All bank fields (Account No, Bank, Name, Branch) are required.' 
+      return res.status(400).json({
+        success: false,
+        message: 'All bank fields (Account No, Bank, Name, Branch) are required.'
       });
     }
 
@@ -61,10 +61,10 @@ exports.updatePaymentSettings = async (req, res) => {
       updatedBy: req.user.id
     });
 
-    res.json({ 
-      success: true, 
-      message: 'Bank details updated successfully.', 
-      data: updatedDetails 
+    res.json({
+      success: true,
+      message: 'Bank details updated successfully.',
+      data: updatedDetails
     });
 
   } catch (err) {

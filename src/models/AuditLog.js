@@ -221,4 +221,4 @@ auditLogSchema.index({ createdAt: -1, logType: 1, module: 1 });
 auditLogSchema.index({ performedBy: 1, createdAt: -1 });
 auditLogSchema.index({ performedByRole: 1, createdAt: -1 });
 
-module.exports = mongoose.model('AuditLog', auditLogSchema);
+module.exports = mongoose.models.AuditLog || mongoose.model('AuditLog', auditLogSchema);

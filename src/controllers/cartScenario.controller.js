@@ -71,9 +71,9 @@ exports.checkoutScenario = async (req, res) => {
         quantity: item.quantity,
         purchaseType: item.purchaseType
       })),
-      delivery: delivery || { 
-        firstName: 'Mock', lastName: 'User', address: '123 Mock St', 
-        district: 'Colombo', zipCode: '00100', phone: '0112233445', email: 'mock@example.com' 
+      delivery: delivery || {
+        firstName: 'Mock', lastName: 'User', address: '123 Mock St',
+        district: 'Colombo', zipCode: '00100', phone: '0112233445', email: 'mock@example.com'
       },
       subtotal: scenario.totalAmount,
       additionalCharges: 0,

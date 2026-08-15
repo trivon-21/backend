@@ -1,6 +1,6 @@
 /**
  * LOGGING INTEGRATION GUIDE
- * 
+ *
  * This file provides examples of how to integrate logging throughout the AirLux system.
  * Copy these patterns to integrate logging in your controllers.
  */
@@ -9,7 +9,7 @@
  * ============================================================================
  * EXAMPLE 1: Log Activity in a Controller
  * ============================================================================
- * 
+ *
  * Use this pattern for successful actions like creating, updating, or deleting records.
  */
 
@@ -545,12 +545,12 @@ async function advancedLoggingExample() {
  * ============================================================================
  * INTEGRATION CHECKLIST
  * ============================================================================
- * 
+ *
  * To fully integrate logging throughout the system:
- * 
+ *
  * ✅ 1. Import the logging helpers in your controllers:
  *       const { logAction, logError, logSecurityEvent } = require('../../middleware/action-logging');
- * 
+ *
  * ✅ 2. Add logging to all significant user actions:
  *       - User creation, profile updates, photo uploads
  *       - Login, logout, failed login attempts
@@ -563,19 +563,19 @@ async function advancedLoggingExample() {
  *       - Report generation, exports
  *       - Configuration changes
  *       - Any admin actions
- * 
+ *
  * ✅ 3. Use appropriate log types:
  *       - ACTIVITY: Normal user/system operations
  *       - ERROR: Exceptions and failed operations
  *       - SECURITY: Login attempts, unauthorized access, suspicious activity
- * 
+ *
  * ✅ 4. Include relevant metadata for filtering:
  *       - Entity IDs
  *       - User roles
  *       - Before/after changes
  *       - Reason for action
  *       - Additional context
- * 
+ *
  * ✅ 5. Test the logging endpoints:
  *       - GET /api/super-admin/logs (with filters)
  *       - GET /api/super-admin/logs/activity
@@ -584,11 +584,11 @@ async function advancedLoggingExample() {
  *       - GET /api/super-admin/logs/analytics/dashboard
  *       - GET /api/super-admin/logs/export/csv
  *       - POST /api/super-admin/logs/cleanup
- * 
+ *
  * ============================================================================
  * FILTERING CAPABILITIES
  * ============================================================================
- * 
+ *
  * Logs can be filtered by:
  * 1. Log Type: ACTIVITY, ERROR, SECURITY
  * 2. Module: AUTH, USER_MANAGEMENT, ORDER_MANAGEMENT, etc.
@@ -597,11 +597,11 @@ async function advancedLoggingExample() {
  * 5. User (Performed By): Specific user ID
  * 6. Date Range: Start and end dates
  * 7. Status: SUCCESS, FAILED, PARTIAL
- * 
+ *
  * ============================================================================
  * CSV EXPORT FORMAT
  * ============================================================================
- * 
+ *
  * Exported CSV includes:
  * - Timestamp
  * - Log Type
@@ -619,7 +619,7 @@ async function advancedLoggingExample() {
  * - Error Message
  * - Security Risk Level
  * - Changes (JSON)
- * 
+ *
  * ============================================================================
  */
 

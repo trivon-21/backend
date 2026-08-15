@@ -29,9 +29,9 @@ const BankDetailSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     required: true
   }
-}, { 
+}, {
   timestamps: true,
-  collection: 'bankdetails' 
+  collection: 'bankdetails'
 });
 
 module.exports = mongoose.model('BankDetail', BankDetailSchema);

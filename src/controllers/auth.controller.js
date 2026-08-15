@@ -648,7 +648,7 @@ exports.resendOtpPhone = async (req, res) => {
 // Simple mock login for development/testing purposes
 exports.mockLogin = (req, res) => {
   const { username, role } = req.body;
-  
+
   if (!username || !role) {
     return res.status(400).json({ success: false, message: 'Username and role are required' });
   }

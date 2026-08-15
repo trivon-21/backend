@@ -11,9 +11,9 @@ router.get("/track", orderController.trackOrder);
 router.post('/buy-only', orderController.createBuyOnlyOrder);
 router.post('/buy-and-install', orderController.createBuyAndInstallOrder);
 router.post('/initialize', orderController.createBuyOnlyOrder); // Keep for safety
-router.post('/submit-payment', 
-  orderController.upload.single('slip'), 
-  validatePaymentSubmission, 
+router.post('/submit-payment',
+  orderController.upload.single('slip'),
+  validatePaymentSubmission,
   orderController.submitPayment
 );
 

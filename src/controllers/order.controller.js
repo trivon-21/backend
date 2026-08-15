@@ -161,7 +161,7 @@ async function performInitialization(req, res, Model, prefix, purchaseType, coun
       cart = new Cart({ userId, items: [] });
       await cart.save();
     }
-    
+
     if (cart.items.length === 0) {
       console.warn(`[Order] Cart empty for user: ${userId}`);
       return res.status(400).json({ success: false, message: 'Cart is empty' });
@@ -231,7 +231,7 @@ async function performInitialization(req, res, Model, prefix, purchaseType, coun
       status: purchaseType === 'buy_and_install' ? 'Pending Review' : 'Pending Payment',
       consultationCompleted: !!consultationCompleted
     });
-    
+
     await order.save();
     return res.status(201).json({ success: true, data: order });
   } catch (err) {
@@ -257,17 +257,17 @@ exports.submitPayment = async (req, res) => {
     const { orderReference, firstName, lastName, email, phone, address, city, postalCode } = req.body;
 
     if (!orderReference) throw new Error('Order Reference is required');
-    
+
     // Determine which collection to look in
     const isBO = orderReference.startsWith('ALX-BO');
     const Model = isBO ? Order : InstallationOrder;
-    
+
     const order = await Model.findOne({ orderReference });
     if (!order) throw new Error('Order not found');
 
     // For Buy Only, slip is always required. For Buy & Install, it is optional.
     const isBuyOnly = isBO;
-    
+
     if (isBuyOnly && !req.file) {
       throw new Error('Payment slip is required for Buy Only orders');
     }
@@ -281,7 +281,7 @@ exports.submitPayment = async (req, res) => {
       if (fs.existsSync(finalFilePath)) {
         fs.unlinkSync(finalFilePath);
       }
-      
+
       fs.renameSync(uploadedFilePath, finalFilePath);
       uploadedFilePath = finalFilePath;
       order.paymentSlip = `/uploads/slips/${newFileName}`;
@@ -321,16 +321,16 @@ exports.submitPayment = async (req, res) => {
       await cart.save();
     }
 
-    res.json({ 
-      success: true, 
-      message: 'Order submitted successfully for Finance review', 
+    res.json({
+      success: true,
+      message: 'Order submitted successfully for Finance review',
       orderId: order.orderReference,
-      data: order 
+      data: order
     });
 
   } catch (err) {
     console.error('[Order] submitPayment error:', err);
-    
+
     // ATOMIC CLEANUP: If anything fails, delete the uploaded file
     if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
       try { fs.unlinkSync(uploadedFilePath); } catch (e) { console.error('Cleanup failed:', e); }
@@ -345,10 +345,10 @@ exports.getOrdersByUser = async (req, res) => {
   try {
     const orders = await Order.find({ userId: req.params.userId });
     const installationOrders = await InstallationOrder.find({ userId: req.params.userId });
-    
+
     // Combine and sort by date
     const allOrders = [...orders, ...installationOrders].sort((a, b) => b.createdAt - a.createdAt);
-    
+
     res.json({ success: true, data: allOrders });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -359,7 +359,7 @@ exports.getOrderById = async (req, res) => {
   try {
     const isBO = req.params.id.startsWith('ALX-BO');
     const Model = isBO ? Order : InstallationOrder;
-    
+
     const order = await Model.findOne({ orderId: req.params.id });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     res.json({ success: true, data: order });

@@ -16,11 +16,11 @@ exports.validate = (req, res, next) => {
 exports.authorize = (allowedRoles = []) => {
   return (req, res, next) => {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'No token provided. Authorization denied.' 
+      return res.status(401).json({
+        success: false,
+        message: 'No token provided. Authorization denied.'
       });
     }
 
@@ -31,17 +31,17 @@ exports.authorize = (allowedRoles = []) => {
       req.user = decoded;
 
       if (allowedRoles.length && !allowedRoles.includes(req.user.userRole)) {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Access denied. You do not have the required permissions.' 
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. You do not have the required permissions.'
         });
       }
 
       next();
     } catch (err) {
-      res.status(401).json({ 
-        success: false, 
-        message: 'Invalid or expired token.' 
+      res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token.'
       });
     }
   };

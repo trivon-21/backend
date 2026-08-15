@@ -1,11 +1,11 @@
 const router = require("express").Router();
 const { protect } = require("../../../middleware/protect");
-const { 
-  getOrders, 
-  getOrder, 
-  trackOrder, 
-  cancelOrder, 
-  reuploadPayment 
+const {
+  getOrders,
+  getOrder,
+  trackOrder,
+  cancelOrder,
+  reuploadPayment
 } = require("./order.controller");
 
 // GET track order (public)

@@ -18,4 +18,3 @@ router.post("/orders/:orderId/approve", controller.approveQuotation);
 router.post("/orders/:orderId/reject", controller.rejectQuotation);
 
 module.exports = router;
-

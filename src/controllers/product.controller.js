@@ -154,12 +154,12 @@ const addProductReview = async (req, res) => {
         };
 
         product.reviews.push(newReview);
-        
+
         // The pre('save') hook will update averageRating and reviewCount
         await product.save();
 
-        res.status(201).json({ 
-            success: true, 
+        res.status(201).json({
+            success: true,
             message: 'Review added successfully',
             data: {
                 averageRating: product.averageRating,

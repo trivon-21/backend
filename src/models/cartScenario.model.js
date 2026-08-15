@@ -7,10 +7,10 @@ const CartScenarioSchema = new mongoose.Schema({
       name: { type: String, required: true },
       price: { type: Number, required: true },
       quantity: { type: Number, default: 1 },
-      purchaseType: { 
-        type: String, 
+      purchaseType: {
+        type: String,
         enum: ['buy_only', 'buy_and_install'],
-        required: true 
+        required: true
       }
     }
   ],

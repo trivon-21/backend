@@ -8,8 +8,8 @@ router.get('/bank-details', bankController.getBankDetails);
 
 // PUT /api/admin/payment-settings — protected for Super Admin or Finance Officer
 router.put(
-  '/payment-settings', 
-  authorize(['Super Admin', 'Finance Officer']), 
+  '/payment-settings',
+  authorize(['Super Admin', 'Finance Officer']),
   bankController.updatePaymentSettings
 );
 
