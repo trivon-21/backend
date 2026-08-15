@@ -29,11 +29,11 @@ const OrderRequestItemSchema = new mongoose.Schema({
   unit: { type: String, default: 'units' },
   manufacturerPartNumber: { type: String, default: '' },
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
-  quantity: { type: Number, required: true },
-  orderedQuantity: { type: Number, min: 0 },
+  quantity: { type: Number, required: true, min: 1, validate: Number.isInteger },
+  orderedQuantity: { type: Number, min: 0, validate: Number.isInteger },
   receivedQuantity: { type: Number, default: 0, min: 0 },
-  unitCost: { type: Number, default: 0 },
-  estimatedTotal: { type: Number, default: 0 }
+  unitCost: { type: Number, default: 0, min: 0 },
+  estimatedTotal: { type: Number, default: 0, min: 0 }
 }, { _id: false });
 
 const OrderRequestSchema = new mongoose.Schema({
@@ -41,7 +41,7 @@ const OrderRequestSchema = new mongoose.Schema({
   items: [OrderRequestItemSchema],
   supplierName: { type: String, required: true },
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
-  totalEstimate: { type: Number, default: 0 },
+  totalEstimate: { type: Number, default: 0, min: 0 },
   status: { 
     type: String, 
     enum: [...PURCHASE_STATUSES, ...LEGACY_PURCHASE_STATUSES],
@@ -75,6 +75,12 @@ OrderRequestSchema.pre('validate', function normalizeLines() {
     if (!item.lineId) item.lineId = randomUUID();
     if (item.orderedQuantity === undefined || item.orderedQuantity === null) {
       item.orderedQuantity = item.quantity;
+    }
+    if (!Number.isInteger(item.receivedQuantity)) {
+      item.invalidate('receivedQuantity', 'Received quantity must be a whole number');
+    }
+    if (Number(item.receivedQuantity || 0) > Number(item.orderedQuantity ?? item.quantity ?? 0)) {
+      item.invalidate('receivedQuantity', 'Received quantity cannot exceed ordered quantity');
     }
   }
 });

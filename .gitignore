@@ -8,6 +8,8 @@ node_modules/
 .env.development
 .env.production
 .env.test
+.env.*
+!.env.example
 
 # Logs
 logs/
@@ -44,3 +46,35 @@ Thumbs.db
 # Testing
 coverage/
 .nyc_output/
+
+# Local databases, dumps, and uploaded evidence
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.bson
+*.dump
+dump/
+uploads/
+storage/
+
+# Private keys and local certificates
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+
+# Local API client environments (may contain tokens or credentials)
+postman/*environment*.json
+postman/*.postman_environment.json
+
+# Temporary and tool output
+.cache/
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Local project documentation (temporarily excluded)
+docs/

@@ -131,9 +131,9 @@ exports.createSupplier = async (req, res) => {
     res.status(201).json(data);
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(400).json({ message: "Supplier already exists" });
+      return res.status(409).json({ message: "Supplier already exists", code: "DUPLICATE_SUPPLIER" });
     }
-    res.status(500).json({ message: "Failed to create supplier" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to create supplier", code: error.code });
   }
 };
 
@@ -155,9 +155,10 @@ exports.getOrders = async (req, res) => {
 exports.updateOrder = async (req, res) => {
   try {
     const data = await service.updateOrder(req.params.id, req.body);
+    if (!data) return res.status(404).json({ message: 'Order not found', code: 'ORDER_NOT_FOUND' });
     res.json(data);
   } catch (error) {
-    res.status(500).json({ message: "Failed to update order" });
+    res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({ message: error.message || "Failed to update order", code: error.code });
   }
 };
 
@@ -179,9 +180,10 @@ exports.getMaterialRequests = async (req, res) => {
 exports.updateMaterialRequest = async (req, res) => {
   try {
     const data = await service.updateMaterialRequest(req.params.id, req.body);
+    if (!data) return res.status(404).json({ message: 'Material request not found', code: 'MATERIAL_REQUEST_NOT_FOUND' });
     res.json(data);
   } catch (error) {
-    res.status(500).json({ message: "Failed to update material request" });
+    res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({ message: error.message || "Failed to update material request", code: error.code });
   }
 };
 
@@ -223,7 +225,7 @@ exports.getAvailableTools = async (req, res) => {
  */
 exports.checkOutTool = async (req, res) => {
   try {
-    const data = await service.checkOutTool(req.body);
+    const data = await service.checkOutTool(req.body, req.user);
     res.status(201).json(data);
   } catch (error) {
     res.status(error.statusCode || 500).json({ message: error.message || 'Failed to check out tool' });
@@ -235,10 +237,10 @@ exports.checkOutTool = async (req, res) => {
  */
 exports.returnTool = async (req, res) => {
   try {
-    const data = await service.returnTool(req.params.id);
+    const data = await service.returnTool(req.params.id, req.user);
     res.json(data);
   } catch (error) {
-    res.status(500).json({ message: "Failed to return tool" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to return tool", code: error.code });
   }
 };
 
@@ -398,7 +400,7 @@ exports.createLeftoverReturn = async (req, res) => {
     res.status(201).json(data);
   } catch (error) {
     console.error('Leftover return creation error:', error);
-    res.status(500).json({ message: error.message || "Failed to create leftover return" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to create leftover return", code: error.code });
   }
 };
 
@@ -433,11 +435,11 @@ exports.createRmaCase = async (req, res) => {
  */
 exports.updateRmaCase = async (req, res) => {
   try {
-    const data = await service.updateRmaCase(req.params.id, req.body);
+    const data = await service.updateRmaCase(req.params.id, req.body, req.user);
     res.json(data);
   } catch (error) {
     console.error('RMA case update error:', error);
-    res.status(400).json({ message: error.message || "Failed to update RMA case" });
+    res.status(error.statusCode || 400).json({ message: error.message || "Failed to update RMA case", code: error.code });
   }
 };
 
@@ -463,7 +465,7 @@ exports.createQuarantineItem = async (req, res) => {
     res.status(201).json(data);
   } catch (error) {
     console.error('Quarantine item creation error:', error);
-    res.status(500).json({ message: error.message || "Failed to create quarantine item" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to create quarantine item", code: error.code });
   }
 };
 
@@ -476,7 +478,7 @@ exports.disposeQuarantineItem = async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Quarantine dispose error:', error);
-    res.status(400).json({ message: error.message || "Failed to dispose quarantine item" });
+    res.status(error.statusCode || 400).json({ message: error.message || "Failed to dispose quarantine item", code: error.code });
   }
 };
 

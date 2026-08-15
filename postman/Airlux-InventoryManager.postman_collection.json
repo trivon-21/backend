@@ -10,6 +10,8 @@
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:5000/api" },
+    { "key": "loginIdentifier", "value": "" },
+    { "key": "loginPassword", "value": "" },
     { "key": "token", "value": "" },
     { "key": "testSku", "value": "" },
     { "key": "itemId", "value": "" },
@@ -54,7 +56,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"identifier\": \"testuser@airlux.com\",\n  \"password\": \"Password@123\"\n}"
+              "raw": "{\n  \"identifier\": \"{{loginIdentifier}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
           }

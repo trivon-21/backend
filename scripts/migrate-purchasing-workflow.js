@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 require('dotenv').config();
+const connectDB = require('../src/config/db');
 const OrderRequest = require('../src/models/OrderRequest');
 const Procurement = require('../src/models/Procurement');
 
@@ -18,8 +19,7 @@ async function collectionExists(name) {
 
 async function migrate() {
   const apply = process.argv.includes('--apply');
-  if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required');
-  await mongoose.connect(process.env.MONGO_URI);
+  await connectDB();
 
   const orders = await OrderRequest.collection.find({}).toArray();
   const procurements = await Procurement.collection.find({}).toArray();

@@ -5,9 +5,13 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed": "node seeds/seedDatabase.js",
     "migrate:inventory": "node scripts/migrate-inventory-classification.js",
+    "migrate:inventory:apply": "node scripts/migrate-inventory-classification.js --apply",
     "migrate:purchasing": "node scripts/migrate-purchasing-workflow.js",
+    "migrate:purchasing:apply": "node scripts/migrate-purchasing-workflow.js --apply",
+    "audit:manager-inventory-schema": "node scripts/audit-manager-inventory-schema.js",
+    "migrate:schema-references": "node scripts/migrate-manager-inventory-references.js",
+    "migrate:schema-references:apply": "node scripts/migrate-manager-inventory-references.js --apply",
     "test": "node --test"
   },
   "keywords": [],

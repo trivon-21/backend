@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const OrderItemSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  qty: { type: Number, required: true },
+  qty: { type: Number, required: true, min: 1, validate: Number.isInteger },
   confirmed: { type: Boolean, default: false },
   sku: { type: String, required: true }
 }, { _id: false });

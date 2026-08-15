@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 require('dotenv').config();
+const connectDB = require('../src/config/db');
 const Inventory = require('../src/models/Inventory');
 const Supplier = require('../src/models/Supplier');
 const {
@@ -10,8 +11,7 @@ const {
 
 async function migrate() {
   const apply = process.argv.includes('--apply');
-  if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required');
-  await mongoose.connect(process.env.MONGO_URI);
+  await connectDB();
 
   const rawItems = await Inventory.collection.find({}).toArray();
   const suppliers = await Supplier.find().select('_id name').lean();
@@ -26,6 +26,10 @@ async function migrate() {
       itemClass,
       category: itemClass,
       subcategory: item.subcategory || 'Unclassified',
+      type: item.type || 'Single',
+      unit: item.unit || 'units',
+      location: item.location || 'Warehouse',
+      maxStockLevel: item.maxStockLevel ?? Math.max(100, Number(item.reorderLevel || 0)),
       status: legacyStockStatus(item.available, item.reorderLevel)
     };
 

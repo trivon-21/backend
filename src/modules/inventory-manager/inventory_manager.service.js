@@ -13,6 +13,7 @@ const LeftoverReturn = require('../../models/LeftoverReturn');
 const RmaCase = require('../../models/RmaCase');
 const QuarantineItem = require('../../models/QuarantineItem');
 const Ticket = require('../../models/Ticket');
+const User = require('../../models/User');
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 const {
@@ -38,6 +39,9 @@ const MASTER_DATA_FIELDS = [
   'voltage', 'phase', 'specsUrl'
 ];
 const PROTECTED_STOCK_FIELDS = ['available', 'reserved', 'serialNumbers', 'status', 'category'];
+const TECHNICIAN_ROLES = ['MAIN_TECH', 'SERVICE_TEAM', 'INSPECTION'];
+const ORDER_UPDATE_FIELDS = ['status', 'courier', 'trackId', 'items', 'completedAt', 'lastMovedAt'];
+const MATERIAL_REQUEST_UPDATE_FIELDS = ['status', 'items', 'serviceTeam', 'completedAt', 'lastMovedAt'];
 
 function normalizeInventoryData(data, applyDefaults = true) {
   const normalized = { ...data };
@@ -67,6 +71,14 @@ function assertRole(user, roles) {
 
 function actorName(user, fallback) {
   return user?.fullName || fallback;
+}
+
+function assertObjectId(value, message, code = 'INVALID_ID') {
+  if (!mongoose.isValidObjectId(value)) throw serviceError(message, 400, code);
+}
+
+function pickFields(data, fields) {
+  return Object.fromEntries(fields.filter((field) => data[field] !== undefined).map((field) => [field, data[field]]));
 }
 
 function validHttpUrl(value) {
@@ -117,8 +129,11 @@ async function validateCatalogData(data, { partial = false } = {}) {
   if (data.specsUrl && !/^https?:\/\/\S+$/i.test(data.specsUrl)) {
     throw serviceError('Specifications URL must use http or https', 400, 'INVALID_URL');
   }
-  if (data.supplierId && !(await Supplier.exists({ _id: data.supplierId }))) {
-    throw serviceError('Supplier not found', 404, 'SUPPLIER_NOT_FOUND');
+  if (data.supplierId) {
+    assertObjectId(data.supplierId, 'Supplier reference is invalid', 'INVALID_SUPPLIER_ID');
+    if (!(await Supplier.exists({ _id: data.supplierId }))) {
+      throw serviceError('Supplier not found', 404, 'SUPPLIER_NOT_FOUND');
+    }
   }
 }
 
@@ -236,6 +251,7 @@ exports.getInventoryList = async () => {
  * Retrieves a single inventory item by its ID.
  */
 exports.getInventoryItem = async (id) => {
+  if (!mongoose.isValidObjectId(id)) return null;
   const item = await Inventory.findById(id).populate('supplierId', 'name');
   return synchronizeStatusForResponse(item);
 };
@@ -244,6 +260,7 @@ exports.getInventoryItem = async (id) => {
  * Updates an existing inventory item.
  */
 exports.updateInventoryItem = async (id, data) => {
+  if (!mongoose.isValidObjectId(id)) return null;
   const existing = await Inventory.findById(id);
   if (!existing) return null;
 
@@ -322,6 +339,7 @@ exports.createReceiptAuthorization = async (data, user) => {
   let inventoryId;
   let newItemSnapshot;
   if (data.inventoryId) {
+    assertObjectId(data.inventoryId, 'Inventory item reference is invalid', 'INVALID_ITEM_ID');
     const item = await Inventory.findById(data.inventoryId);
     if (!item) throw serviceError('Inventory item not found', 404, 'ITEM_NOT_FOUND');
     inventoryId = item._id;
@@ -602,7 +620,9 @@ exports.getSuppliersList = async () => {
  * Registers a new supplier in the system.
  */
 exports.createSupplier = async (name) => {
-  const newSupplier = new Supplier({ name });
+  const normalizedName = String(name || '').trim();
+  if (!normalizedName) throw serviceError('Supplier name is required', 400, 'SUPPLIER_NAME_REQUIRED');
+  const newSupplier = new Supplier({ name: normalizedName });
   return await newSupplier.save();
 };
 
@@ -617,11 +637,11 @@ exports.getOrders = async () => {
  * Updates an order's details and manages status-related timestamps.
  */
 exports.updateOrder = async (id, data) => {
-  if (data.lastMovedAt === null) {
-    const { lastMovedAt, completedAt, ...restData } = data;
-    return await Order.findOneAndUpdate({ orderId: id }, { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: restData }, { new: true });
-  }
-  return await Order.findOneAndUpdate({ orderId: id }, data, { new: true });
+  const safe = pickFields(data, ORDER_UPDATE_FIELDS);
+  const update = safe.lastMovedAt === null
+    ? { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: pickFields(safe, ORDER_UPDATE_FIELDS.filter((field) => !['lastMovedAt', 'completedAt'].includes(field))) }
+    : { $set: safe };
+  return Order.findOneAndUpdate({ orderId: id }, update, { new: true, runValidators: true });
 };
 
 /**
@@ -635,19 +655,27 @@ exports.getMaterialRequests = async () => {
  * Updates a material request and handles state transition resets.
  */
 exports.updateMaterialRequest = async (id, data) => {
-  if (data.lastMovedAt === null) {
-    const { lastMovedAt, completedAt, ...restData } = data;
-    return await MaterialRequest.findOneAndUpdate({ requestId: id }, { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: restData }, { new: true });
-  }
-  return await MaterialRequest.findOneAndUpdate({ requestId: id }, data, { new: true });
+  const safe = pickFields(data, MATERIAL_REQUEST_UPDATE_FIELDS);
+  const update = safe.lastMovedAt === null
+    ? { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: pickFields(safe, MATERIAL_REQUEST_UPDATE_FIELDS.filter((field) => !['lastMovedAt', 'completedAt'].includes(field))) }
+    : { $set: safe };
+  return MaterialRequest.findOneAndUpdate({ requestId: id }, update, { new: true, runValidators: true });
 };
 
 /**
  * Retrieves technician members from the primary Dassana database.
  */
 exports.getTechnicians = async () => {
-  const dassanaDb = mongoose.connection.useDb('Dassana');
-  return await dassanaDb.collection('TechTeamMembers').find({}).toArray();
+  const technicians = await User.find({ role: { $in: TECHNICIAN_ROLES } })
+    .select('fullName role')
+    .sort({ fullName: 1 })
+    .lean();
+  return technicians.map((technician) => ({
+    _id: technician._id,
+    name: technician.fullName,
+    fullName: technician.fullName,
+    role: technician.role,
+  }));
 };
 
 /**
@@ -678,7 +706,19 @@ exports.getAvailableTools = async () => {
 /**
  * Records a new tool checkout and logs the activity.
  */
-exports.checkOutTool = async (data) => {
+exports.checkOutTool = async (data, user) => {
+  assertRole(user, ['INVENTORY']);
+  assertObjectId(data.toolId, 'Tool reference is invalid', 'INVALID_TOOL_ID');
+  assertObjectId(data.technicianId, 'Technician reference is invalid', 'INVALID_TECHNICIAN_ID');
+  if (!String(data.assetTag || '').trim()) {
+    throw serviceError('Select an asset tag', 400, 'ASSET_TAG_REQUIRED');
+  }
+  const dueDate = new Date(data.dueDate);
+  if (Number.isNaN(dueDate.getTime()) || dueDate <= new Date()) {
+    throw serviceError('Tool due date must be a valid future date', 400, 'INVALID_DUE_DATE');
+  }
+  const technician = await User.findOne({ _id: data.technicianId, role: { $in: TECHNICIAN_ROLES } });
+  if (!technician) throw serviceError('Technician not found or role is not eligible for tool lending', 404, 'TECHNICIAN_NOT_FOUND');
   const tool = await Inventory.findOne({
     _id: data.toolId,
     itemClass: 'Tools and Test Equipment',
@@ -689,7 +729,15 @@ exports.checkOutTool = async (data) => {
   const existingLoan = await AssetLoan.findOne({ assetTag: data.assetTag });
   if (existingLoan) throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
 
-  const newLoan = new AssetLoan(data);
+  const newLoan = new AssetLoan({
+    toolId: tool._id,
+    toolName: tool.name,
+    assetTag: String(data.assetTag).trim(),
+    technicianId: String(technician._id),
+    technicianUserId: technician._id,
+    technicianName: technician.fullName,
+    dueDate,
+  });
   let savedLoan;
   try {
     savedLoan = await newLoan.save();
@@ -701,7 +749,7 @@ exports.checkOutTool = async (data) => {
   const activity = new Activity({
     type: 'request',
     title: 'Tool Checked Out',
-    description: `${data.technicianName} checked out ${data.toolName} (${data.assetTag})`,
+    description: `${technician.fullName} checked out ${tool.name} (${data.assetTag})`,
     actionLabel: 'View Asset'
   });
   await activity.save();
@@ -712,9 +760,11 @@ exports.checkOutTool = async (data) => {
 /**
  * Processes a tool return, archiving the loan and logging the return event.
  */
-exports.returnTool = async (loanId) => {
+exports.returnTool = async (loanId, user) => {
+  assertRole(user, ['INVENTORY']);
+  assertObjectId(loanId, 'Loan reference is invalid', 'INVALID_LOAN_ID');
   const loan = await AssetLoan.findById(loanId);
-  if (!loan) throw new Error('Loan not found');
+  if (!loan) throw serviceError('Loan not found', 404, 'LOAN_NOT_FOUND');
 
   const returnLog = new AssetReturnLog({
     toolName: loan.toolName,
@@ -780,6 +830,9 @@ exports.createOrderRequest = async (data, user) => {
       estimatedTotal: quantity * unitCost,
     };
   });
+  if (items.some((item) => !item.inventoryId)) {
+    throw serviceError('Every purchase line must reference a catalog item; create the product first', 400, 'ORDER_ITEM_NOT_LINKED');
+  }
   const totalEstimate = items.reduce((sum, item) => sum + item.estimatedTotal, 0);
 
   const supplierIds = [...new Set(items.map(item => String(item.supplierId || safe.supplierId || '')).filter(Boolean))];
@@ -790,8 +843,18 @@ exports.createOrderRequest = async (data, user) => {
   if (safe.supplierId && supplierIds.some(id => id !== String(safe.supplierId))) {
     throw serviceError('Order lines must use the request supplier', 400, 'MIXED_SUPPLIERS');
   }
-  if (supplierId && !(await Supplier.exists({ _id: supplierId }))) {
-    throw serviceError('Supplier not found', 404, 'SUPPLIER_NOT_FOUND');
+  let supplier;
+  if (supplierId) {
+    assertObjectId(supplierId, 'Supplier reference is invalid', 'INVALID_SUPPLIER_ID');
+    supplier = await Supplier.findById(supplierId);
+    if (!supplier) throw serviceError('Supplier not found', 404, 'SUPPLIER_NOT_FOUND');
+  }
+  const inventoryIds = [...new Set(items.map((item) => String(item.inventoryId || '')).filter(Boolean))];
+  if (inventoryIds.some((id) => !mongoose.isValidObjectId(id))) {
+    throw serviceError('One or more inventory references are invalid', 400, 'INVALID_ITEM_ID');
+  }
+  if (inventoryIds.length && await Inventory.countDocuments({ _id: { $in: inventoryIds } }) !== inventoryIds.length) {
+    throw serviceError('One or more inventory items were not found', 404, 'ITEM_NOT_FOUND');
   }
   if (!String(safe.supplierName || '').trim()) {
     throw serviceError('Supplier is required', 400, 'SUPPLIER_REQUIRED');
@@ -801,7 +864,7 @@ exports.createOrderRequest = async (data, user) => {
     requestId,
     items,
     supplierId,
-    supplierName: safe.supplierName,
+    supplierName: supplier?.name || safe.supplierName,
     totalEstimate,
     status: 'draft',
     requestedById: user._id,
@@ -855,22 +918,46 @@ exports.updateOrderRequest = async (id, data, user) => {
         estimatedTotal: quantity * unitCost,
       };
     });
+    if (safe.items.some((item) => !item.inventoryId)) {
+      throw serviceError('Every purchase line must reference a catalog item; create the product first', 400, 'ORDER_ITEM_NOT_LINKED');
+    }
+    const proposedInventoryIds = [...new Set(safe.items.map((item) => String(item.inventoryId || '')).filter(Boolean))];
+    if (proposedInventoryIds.some((itemId) => !mongoose.isValidObjectId(itemId))) {
+      throw serviceError('One or more inventory references are invalid', 400, 'INVALID_ITEM_ID');
+    }
     request.items = safe.items;
     request.totalEstimate = safe.items.reduce((sum, item) => sum + item.estimatedTotal, 0);
+  }
+  if (safe.supplierId !== undefined && safe.supplierId !== null && safe.supplierId !== '') {
+    assertObjectId(safe.supplierId, 'Supplier reference is invalid', 'INVALID_SUPPLIER_ID');
   }
   for (const field of ['supplierId', 'supplierName', 'priority', 'notes', 'source']) {
     if (safe[field] !== undefined) request[field] = safe[field];
   }
-  if (request.supplierId && !(await Supplier.exists({ _id: request.supplierId }))) {
-    throw serviceError('Supplier not found', 404, 'SUPPLIER_NOT_FOUND');
+  if (request.supplierId) {
+    assertObjectId(request.supplierId, 'Supplier reference is invalid', 'INVALID_SUPPLIER_ID');
+    const supplier = await Supplier.findById(request.supplierId);
+    if (!supplier) throw serviceError('Supplier not found', 404, 'SUPPLIER_NOT_FOUND');
+    request.supplierName = supplier.name;
   }
   const requestSupplier = String(request.supplierId || '');
   if (requestSupplier && request.items.some(item => item.supplierId && String(item.supplierId) !== requestSupplier)) {
     throw serviceError('Order lines must use the request supplier', 400, 'MIXED_SUPPLIERS');
   }
+  const inventoryIds = [...new Set(request.items.map((item) => String(item.inventoryId || '')).filter(Boolean))];
+  if (inventoryIds.some((itemId) => !mongoose.isValidObjectId(itemId))) {
+    throw serviceError('One or more inventory references are invalid', 400, 'INVALID_ITEM_ID');
+  }
+  if (inventoryIds.length && await Inventory.countDocuments({ _id: { $in: inventoryIds } }) !== inventoryIds.length) {
+    throw serviceError('One or more inventory items were not found', 404, 'ITEM_NOT_FOUND');
+  }
   request.status = 'draft';
   request.operationalApproval = { status: 'pending' };
   request.financialApproval = { status: 'pending' };
+  request.rejectionReason = '';
+  request.rejectedAt = undefined;
+  request.approvedBy = '';
+  request.approvedAt = undefined;
   request.statusVersion += 1;
   return request.save();
 };
@@ -892,6 +979,9 @@ exports.submitOrderRequest = async (id, user) => {
   request.operationalApproval = { status: 'pending' };
   request.financialApproval = { status: 'pending' };
   request.rejectionReason = '';
+  request.rejectedAt = undefined;
+  request.approvedBy = '';
+  request.approvedAt = undefined;
   request.statusVersion += 1;
   request.decisionHistory.push({
     stage: 'manager', decision: 'submitted', actorId: user._id,
@@ -993,7 +1083,7 @@ function generateId(prefix) {
   const hours = String(now.getHours()).padStart(2, '0');
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const seconds = String(now.getSeconds()).padStart(2, '0');
-  return `${prefix}-${year}${month}${day}-${hours}${minutes}${seconds}`;
+  return `${prefix}-${year}${month}${day}-${hours}${minutes}${seconds}-${randomUUID().slice(0, 6).toUpperCase()}`;
 }
 
 /**
@@ -1010,8 +1100,28 @@ exports.getLeftoverReturns = async () => {
  * Logs an activity for the return.
  */
 exports.createLeftoverReturn = async (data, user) => {
+  assertRole(user, ['INVENTORY']);
   const returnId = generateId('LR');
   const returnedBy = user?.fullName || 'Inventory Manager';
+  const quantityReturned = Number(data.quantityReturned);
+  if (!Number.isInteger(quantityReturned) || quantityReturned <= 0) {
+    throw serviceError('Returned quantity must be a positive whole number', 400, 'INVALID_RETURN_QUANTITY');
+  }
+  if (!String(data.jobId || '').trim() || !String(data.itemName || '').trim()) {
+    throw serviceError('Job reference and item name are required', 400, 'RETURN_DETAILS_REQUIRED');
+  }
+  if (!['good', 'damaged', 'scrap'].includes(data.condition)) {
+    throw serviceError('Return condition must be good, damaged or scrap', 400, 'INVALID_RETURN_CONDITION');
+  }
+  let inventoryItem;
+  if (data.itemId) {
+    assertObjectId(data.itemId, 'Inventory item reference is invalid', 'INVALID_ITEM_ID');
+    inventoryItem = await Inventory.findById(data.itemId);
+    if (!inventoryItem) throw serviceError('Inventory item not found', 404, 'ITEM_NOT_FOUND');
+  }
+  if (data.condition === 'good' && !inventoryItem) {
+    throw serviceError('Good returns require a catalog inventory item', 400, 'ITEM_REQUIRED_FOR_RESTOCK');
+  }
 
   const leftoverReturn = new LeftoverReturn({
     returnId,
@@ -1019,7 +1129,7 @@ exports.createLeftoverReturn = async (data, user) => {
     itemId: data.itemId || null,
     itemName: data.itemName,
     itemSku: data.itemSku || '',
-    quantityReturned: data.quantityReturned,
+    quantityReturned,
     condition: data.condition,
     returnedBy,
     notes: data.notes || '',
@@ -1030,14 +1140,9 @@ exports.createLeftoverReturn = async (data, user) => {
   // Business logic: update stock or quarantine based on condition
   if (data.condition === 'good') {
     // Restore to inventory
-    if (data.itemId) {
-      const item = await Inventory.findById(data.itemId);
-      if (item) {
-        item.available = (item.available || 0) + data.quantityReturned;
-        item.status = legacyStockStatus(item.available, item.reorderLevel);
-        await item.save();
-      }
-    }
+    inventoryItem.available = Number(inventoryItem.available || 0) + quantityReturned;
+    inventoryItem.status = legacyStockStatus(inventoryItem.available, inventoryItem.reorderLevel);
+    await inventoryItem.save();
     leftoverReturn.restoredToStock = true;
   } else {
     // Damaged or scrap → move to quarantine
@@ -1045,7 +1150,7 @@ exports.createLeftoverReturn = async (data, user) => {
     const quarantineItem = new QuarantineItem({
       quarantineId,
       itemName: data.itemName,
-      quantity: data.quantityReturned,
+      quantity: quantityReturned,
       unit: data.unit || 'units',
       reason: data.condition === 'scrap'
         ? `Scrap from job ${data.jobId}: ${data.notes || 'No details'}`
@@ -1064,7 +1169,7 @@ exports.createLeftoverReturn = async (data, user) => {
   const activity = new Activity({
     type: 'return',
     title: 'Leftover Material Returned',
-    description: `${data.quantityReturned} ${data.unit || 'units'} of ${data.itemName} returned from job ${data.jobId} (${data.condition})`,
+    description: `${quantityReturned} ${data.unit || 'units'} of ${data.itemName} returned from job ${data.jobId} (${data.condition})`,
     actionLabel: 'View Returns',
   });
   await activity.save();
@@ -1083,15 +1188,23 @@ exports.getRmaCases = async () => {
  * Creates a new RMA case and logs the activity.
  */
 exports.createRmaCase = async (data, user) => {
+  assertRole(user, ['INVENTORY']);
   const rmaId = generateId('RMA');
   const reportedBy = user?.fullName || 'Inventory Manager';
-  const inventoryItem = await Inventory.findOne({ serialNumbers: data.serialNumber });
+  const serialNumber = String(data.serialNumber || '').trim();
+  if (!serialNumber || !String(data.faultDescription || '').trim()) {
+    throw serviceError('Serial number and fault description are required', 400, 'RMA_DETAILS_REQUIRED');
+  }
+  const inventoryItem = await Inventory.findOne({ serialNumbers: serialNumber });
   if (!inventoryItem) throw serviceError('Serial number was not found in inventory', 404, 'SERIAL_NOT_FOUND');
+  if (await RmaCase.exists({ serialNumber, status: { $nin: ['resolved', 'closed'] } })) {
+    throw serviceError('An active RMA case already exists for this serial number', 409, 'ACTIVE_RMA_EXISTS');
+  }
 
   const rmaCase = new RmaCase({
     rmaId,
     inventoryId: inventoryItem._id,
-    serialNumber: data.serialNumber,
+    serialNumber,
     itemName: inventoryItem.name,
     itemSku: inventoryItem.sku,
     faultDescription: data.faultDescription,
@@ -1118,9 +1231,10 @@ exports.createRmaCase = async (data, user) => {
  * Updates an RMA case status with transition validation.
  * Valid transitions: reported → under-review → sent-to-supplier → resolved → closed
  */
-exports.updateRmaCase = async (id, data) => {
+exports.updateRmaCase = async (id, data, user) => {
+  assertRole(user, ['INVENTORY']);
   const rmaCase = await RmaCase.findOne({ rmaId: id });
-  if (!rmaCase) throw new Error('RMA case not found');
+  if (!rmaCase) throw serviceError('RMA case not found', 404, 'RMA_NOT_FOUND');
 
   const validTransitions = {
     'reported': ['under-review'],
@@ -1171,12 +1285,17 @@ exports.getQuarantineItems = async () => {
  * Manually adds an item to the quarantine zone.
  */
 exports.createQuarantineItem = async (data, user) => {
+  assertRole(user, ['INVENTORY']);
   const quarantineId = generateId('QZ');
+  const quantity = Number(data.quantity);
+  if (!Number.isInteger(quantity) || quantity <= 0 || !String(data.itemName || '').trim() || !String(data.reason || '').trim()) {
+    throw serviceError('Item name, reason and a positive whole quantity are required', 400, 'INVALID_QUARANTINE_ITEM');
+  }
 
   const quarantineItem = new QuarantineItem({
     quarantineId,
     itemName: data.itemName,
-    quantity: data.quantity,
+    quantity,
     unit: data.unit || 'units',
     reason: data.reason,
     location: data.location || '',
@@ -1189,7 +1308,7 @@ exports.createQuarantineItem = async (data, user) => {
   const activity = new Activity({
     type: 'alert',
     title: 'Item Quarantined',
-    description: `${data.quantity} ${data.unit || 'units'} of ${data.itemName} added to quarantine: ${data.reason}`,
+    description: `${quantity} ${data.unit || 'units'} of ${data.itemName} added to quarantine: ${data.reason}`,
     actionLabel: 'View Quarantine',
   });
   await activity.save();
@@ -1201,6 +1320,7 @@ exports.createQuarantineItem = async (data, user) => {
  * Disposes a quarantine item — updates status and records audit trail.
  */
 exports.disposeQuarantineItem = async (id, user) => {
+  assertRole(user, ['INVENTORY']);
   const item = await QuarantineItem.findOne({ quarantineId: id });
   if (!item) throw new Error('Quarantine item not found');
   if (item.status !== 'quarantined') throw new Error('Item is already disposed');

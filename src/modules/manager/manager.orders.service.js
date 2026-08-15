@@ -90,7 +90,11 @@ exports.decideOrder = async (id, input, user) => {
     request.status = 'rejected';
     request.rejectionReason = comment;
     request.rejectedAt = now;
+    request.approvedBy = '';
+    request.approvedAt = undefined;
   } else {
+    request.rejectionReason = '';
+    request.rejectedAt = undefined;
     request.approvedBy = user.fullName;
     request.approvedAt = now;
     if (approvalMode() === 'two-stage') {

@@ -9,10 +9,10 @@ const mongoose = require('mongoose');
  */
 const TicketSchema = new mongoose.Schema(
   {
-    ticketId: { type: String, required: true, unique: true },
-    subject: { type: String, required: true },
+    ticketId: { type: String, required: true, unique: true, trim: true },
+    subject: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
-    customer: { type: String, required: true },
+    customer: { type: String, required: true, trim: true },
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     category: {
       type: String,
@@ -29,7 +29,7 @@ const TicketSchema = new mongoose.Schema(
       enum: ['open', 'in-progress', 'resolved', 'escalated'],
       default: 'open',
     },
-    assignedTo: { type: String, default: '' },
+    assignedTo: { type: String, default: '', trim: true },
     assignedTechnicianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     slaDueAt: { type: Date },
     resolvedAt: { type: Date },
@@ -39,5 +39,13 @@ const TicketSchema = new mongoose.Schema(
     collection: 'tickets',
   },
 );
+
+TicketSchema.pre('validate', function synchronizeResolutionTimestamp() {
+  if (this.status === 'resolved' && !this.resolvedAt) {
+    this.resolvedAt = new Date();
+  } else if (this.status !== 'resolved' && this.resolvedAt) {
+    this.resolvedAt = undefined;
+  }
+});
 
 module.exports = mongoose.model('Ticket', TicketSchema);

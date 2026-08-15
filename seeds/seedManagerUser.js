@@ -10,15 +10,19 @@ const MONGO_URI = process.env.MONGO_URI;
 
 async function seedManagerUser() {
   try {
+    const email = process.env.SEED_MANAGER_EMAIL;
+    const password = process.env.SEED_MANAGER_PASSWORD;
+    const role = "MANAGER";
+
+    if (!MONGO_URI || !email || !password) {
+      throw new Error("MONGO_URI, SEED_MANAGER_EMAIL and SEED_MANAGER_PASSWORD are required");
+    }
+
     const dnsServers = (process.env.MONGO_DNS_SERVERS || "8.8.8.8,1.1.1.1").split(",");
     dns.setServers(dnsServers);
 
     await mongoose.connect(MONGO_URI);
     console.log("✓ Connected to MongoDB");
-
-    const email = "manager@airlux.com";
-    const password = "Password@123";
-    const role = "MANAGER";
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });

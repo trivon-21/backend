@@ -21,11 +21,7 @@ Covers **all 31 endpoints** of the `/api/inventory` module with **50 test cases*
    ```
    Wait for `MongoDB connected...` and `Routes initialized` in the console.
 
-2. **Have a login user.** The repo's seed script `seeds/seedInventoryUser.js` creates/updates:
-   - identifier: `testuser@airlux.com`
-   - password: `Password@123`
-
-   This script is **safe** (it only upserts one user, wipes nothing), but it does write to the shared DB — if the user already exists in Atlas, skip this step. Run with: `node seeds/seedInventoryUser.js`.
+2. **Have a login user.** Set `SEED_INVENTORY_EMAIL` and `SEED_INVENTORY_PASSWORD` in your untracked `.env`, then run `node seeds/seedInventoryUser.js`. The script upserts only that user but still writes to the configured database. Set the same values in the Postman collection's `loginIdentifier` and `loginPassword` variables; do not save credentials into the collection file.
 
 3. **Import the collection** — Postman → *Import* → select `Airlux-InventoryManager.postman_collection.json`. The `baseUrl` variable is preset to `http://localhost:5000/api` (edit it in the collection's *Variables* tab if your port differs).
 
@@ -55,7 +51,7 @@ Legend: 🔒 = requires Bearer token (all except TC-01/02/03 override it). Body 
 
 | # | Test | Method & URL | Body / Notes | Expected |
 |---|---|---|---|---|
-| TC-01 | Login, capture token | `POST {{baseUrl}}/auth/login` | `{"identifier":"testuser@airlux.com","password":"Password@123"}` | **200**, body has `token` (saved to `{{token}}`) and `user` |
+| TC-01 | Login, capture token | `POST {{baseUrl}}/auth/login` | Uses local `{{loginIdentifier}}` and `{{loginPassword}}` collection values | **200**, body has `token` (saved to `{{token}}`) and `user` |
 | TC-02 | Reject missing token | `GET {{baseUrl}}/inventory/list` (auth: none) | — | **401** `Not authenticated` |
 | TC-03 | Reject bad token | `GET {{baseUrl}}/inventory/list` (Bearer `not-a-real-token`) | — | **401** `Invalid or expired token` |
 

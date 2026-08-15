@@ -7,7 +7,7 @@ const ReceiptAuthorizationSchema = new mongoose.Schema({
   nonPoReason: { type: String, enum: NON_PO_REASONS, required: true },
   explanation: { type: String, required: true, trim: true },
   inventoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory' },
-  newItemSnapshot: { type: mongoose.Schema.Types.Mixed },
+  newItemSnapshot: { type: mongoose.Schema.Types.Mixed, immutable: true },
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', required: true },
   supplierName: { type: String, required: true },
   authorizedQuantity: { type: Number, required: true, min: 1 },
@@ -53,5 +53,17 @@ const ReceiptAuthorizationSchema = new mongoose.Schema({
 });
 
 ReceiptAuthorizationSchema.index({ supplierId: 1, sourceDocumentNumber: 1 }, { unique: true });
+
+ReceiptAuthorizationSchema.pre('validate', function validateAuthorizationReferences() {
+  if (!this.inventoryId && !this.newItemSnapshot) {
+    this.invalidate('inventoryId', 'An inventory item or new-item snapshot is required');
+  }
+  if (!Number.isInteger(this.authorizedQuantity) || !Number.isInteger(this.receivedQuantity)) {
+    this.invalidate('receivedQuantity', 'Authorization quantities must be whole numbers');
+  }
+  if (Number(this.receivedQuantity || 0) > Number(this.authorizedQuantity || 0)) {
+    this.invalidate('receivedQuantity', 'Received quantity cannot exceed authorized quantity');
+  }
+});
 
 module.exports = mongoose.model('ReceiptAuthorization', ReceiptAuthorizationSchema);
