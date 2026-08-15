@@ -61,7 +61,7 @@ exports.updateItem = async (req, res) => {
     const data = await service.updateInventoryItem(req.params.id, req.body);
     res.json(data);
   } catch (error) {
-    res.status(500).json({ message: "Failed to update item" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to update item", code: error.code });
   }
 };
 
@@ -77,7 +77,23 @@ exports.createItem = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({ message: "SKU already exists" });
     }
-    res.status(500).json({ message: "Failed to create item" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to create item", code: error.code });
+  }
+};
+
+/**
+ * Receives stock into an existing SKU or creates and receives a new item.
+ */
+exports.receiveInventory = async (req, res) => {
+  try {
+    const data = await service.receiveInventory(req.body, req.user);
+    res.status(201).json(data);
+  } catch (error) {
+    console.error('Inventory receipt error:', error);
+    res.status(error.statusCode || 500).json({
+      message: error.message || 'Failed to receive inventory',
+      code: error.code || 'RECEIPT_FAILED'
+    });
   }
 };
 
@@ -192,6 +208,15 @@ exports.getAssetLoans = async (req, res) => {
   }
 };
 
+exports.getAvailableTools = async (req, res) => {
+  try {
+    const data = await service.getAvailableTools();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch available tools' });
+  }
+};
+
 /**
  * Processes a tool checkout request.
  */
@@ -200,7 +225,7 @@ exports.checkOutTool = async (req, res) => {
     const data = await service.checkOutTool(req.body);
     res.status(201).json(data);
   } catch (error) {
-    res.status(500).json({ message: "Failed to check out tool" });
+    res.status(error.statusCode || 500).json({ message: error.message || 'Failed to check out tool' });
   }
 };
 
@@ -368,7 +393,7 @@ exports.createRmaCase = async (req, res) => {
     res.status(201).json(data);
   } catch (error) {
     console.error('RMA case creation error:', error);
-    res.status(500).json({ message: error.message || "Failed to create RMA case" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to create RMA case", code: error.code });
   }
 };
 

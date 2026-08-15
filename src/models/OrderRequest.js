@@ -4,6 +4,11 @@ const OrderRequestItemSchema = new mongoose.Schema({
   inventoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory' },
   name: { type: String, required: true },
   sku: { type: String, required: true },
+  itemClass: { type: String, default: 'Unclassified' },
+  subcategory: { type: String, default: 'Unclassified' },
+  unit: { type: String, default: 'units' },
+  manufacturerPartNumber: { type: String, default: '' },
+  supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
   quantity: { type: Number, required: true },
   unitCost: { type: Number, default: 0 },
   estimatedTotal: { type: Number, default: 0 }

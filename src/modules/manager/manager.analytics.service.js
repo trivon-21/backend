@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Inventory = require('../../models/Inventory');
 const MaterialRequest = require('../../models/MaterialRequest');
+const { isLowStock } = require('../../utils/inventory-domain');
 
 /**
  * Manager Analytics Service
@@ -82,7 +83,7 @@ exports.getAnalyticsData = async (user, periodKey) => {
   let pendingRequests = 0;
   try {
     const inventory = await Inventory.find();
-    lowStockAlerts = inventory.filter((i) => i.status && i.status !== 'normal').length;
+    lowStockAlerts = inventory.filter(isLowStock).length;
     reservedItems = inventory.reduce((sum, i) => sum + (i.reserved || 0), 0);
     const requests = await MaterialRequest.find({ status: 'pending' });
     pendingRequests = requests.length;

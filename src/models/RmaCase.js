@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const RmaCaseSchema = new mongoose.Schema({
   rmaId: { type: String, required: true, unique: true },
+  inventoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory' },
   serialNumber: { type: String, required: true },
   itemName: { type: String },
   itemSku: { type: String },
@@ -12,7 +13,7 @@ const RmaCaseSchema = new mongoose.Schema({
     enum: ['reported', 'under-review', 'sent-to-supplier', 'resolved', 'closed'], 
     default: 'reported' 
   },
-  type: { type: String, enum: ['Single', 'Bundle'], default: 'Single' },
+  type: { type: String, enum: ['Single', 'Kit', 'Bundle'], default: 'Single' },
   resolution: { type: String, default: '' },
   resolvedAt: { type: Date },
 }, { 

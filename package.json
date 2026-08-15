@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed": "node seeds/seedDatabase.js"
+    "seed": "node seeds/seedDatabase.js",
+    "migrate:inventory": "node scripts/migrate-inventory-classification.js",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",

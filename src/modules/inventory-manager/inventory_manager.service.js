@@ -12,6 +12,38 @@ const LeftoverReturn = require('../../models/LeftoverReturn');
 const RmaCase = require('../../models/RmaCase');
 const QuarantineItem = require('../../models/QuarantineItem');
 const mongoose = require('mongoose');
+const {
+  deriveStockStatus,
+  legacyStockStatus,
+  isLowStock,
+  normalizeStringList,
+  suggestedOrderQuantity
+} = require('../../utils/inventory-domain');
+
+function normalizeInventoryData(data, applyDefaults = true) {
+  const normalized = { ...data };
+  if (!normalized.itemClass && applyDefaults) normalized.itemClass = 'Unclassified';
+  if (!normalized.subcategory && applyDefaults) normalized.subcategory = 'Unclassified';
+  if (normalized.itemClass) normalized.category = normalized.itemClass;
+  else delete normalized.category;
+  if (normalized.supplierId === '') delete normalized.supplierId;
+  for (const field of ['compatibleModels', 'refrigerants', 'serialNumbers']) {
+    if (normalized[field] !== undefined) normalized[field] = normalizeStringList(normalized[field]);
+  }
+  return normalized;
+}
+
+function serviceError(message, statusCode, code) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
+}
+
+function synchronizeStatusForResponse(item) {
+  if (item) item.status = legacyStockStatus(item.available, item.reorderLevel);
+  return item;
+}
 
 /**
  * Retrieves aggregated dashboard data including inventory stats, recent activity, and logistics status.
@@ -54,22 +86,23 @@ exports.getDashboardData = async (user) => {
       ]
     },
     stockAlerts: {
-      total: inventory.filter(i => i.status !== 'normal').length,
+      total: inventory.filter(isLowStock).length,
       subStats: [
-        { label: 'Below Reorder', value: inventory.filter(i => i.status === 'warning').length },
-        { label: 'Out of Stock', value: inventory.filter(i => i.available === 0).length }
+        { label: 'Below Reorder', value: inventory.filter(i => deriveStockStatus(i.available, i.reorderLevel) === 'low-stock').length },
+        { label: 'Out of Stock', value: inventory.filter(i => deriveStockStatus(i.available, i.reorderLevel) === 'out-of-stock').length }
       ]
     }
   };
 
   const reorderList = inventory
-    .filter(i => i.status !== 'normal')
+    .filter(isLowStock)
     .map(i => ({
       id: i._id,
       name: i.name,
       available: i.available,
       reserved: i.reserved,
-      status: i.status
+      status: legacyStockStatus(i.available, i.reorderLevel),
+      stockStatus: deriveStockStatus(i.available, i.reorderLevel)
     }));
 
   return {
@@ -99,21 +132,40 @@ exports.getDashboardData = async (user) => {
  * Fetches all inventory items sorted by name.
  */
 exports.getInventoryList = async () => {
-  return await Inventory.find().sort({ name: 1 });
+  const items = await Inventory.find().populate('supplierId', 'name').sort({ name: 1 });
+  return items.map(synchronizeStatusForResponse);
 };
 
 /**
  * Retrieves a single inventory item by its ID.
  */
 exports.getInventoryItem = async (id) => {
-  return await Inventory.findById(id);
+  const item = await Inventory.findById(id).populate('supplierId', 'name');
+  return synchronizeStatusForResponse(item);
 };
 
 /**
  * Updates an existing inventory item.
  */
 exports.updateInventoryItem = async (id, data) => {
-  return await Inventory.findByIdAndUpdate(id, data, { new: true });
+  const existing = await Inventory.findById(id);
+  if (!existing) return null;
+
+  const update = normalizeInventoryData(data, false);
+  if (update.serialNumbers) {
+    if (update.serialNumbers.length !== (Array.isArray(data.serialNumbers) ? data.serialNumbers.length : update.serialNumbers.length)) {
+      throw serviceError('Serial numbers must be unique', 409, 'DUPLICATE_SERIAL');
+    }
+    if (await Inventory.exists({ _id: { $ne: id }, serialNumbers: { $in: update.serialNumbers } })) {
+      throw serviceError('One or more serial numbers already exist in inventory', 409, 'DUPLICATE_SERIAL');
+    }
+  }
+  const available = update.available ?? existing.available;
+  const reorderLevel = update.reorderLevel ?? existing.reorderLevel;
+  update.status = legacyStockStatus(available, reorderLevel);
+
+  return await Inventory.findByIdAndUpdate(id, update, { new: true, runValidators: true })
+    .populate('supplierId', 'name');
 };
 
 /**
@@ -121,33 +173,45 @@ exports.updateInventoryItem = async (id, data) => {
  * Automatically generates a GRN (Goods Received Note) and activity log if supplier info is provided.
  */
 exports.createInventoryItem = async (data, user) => {
-  const available = Number(data.available) || 0;
-  const reorderLevel = Number(data.reorderLevel) || 10;
-  
-  // Calculate stock status based on thresholds
-  let status = 'normal';
-  if (available === 0) {
-    status = 'critical';
-  } else if (available <= reorderLevel) {
-    status = 'warning';
+  const normalizedData = normalizeInventoryData(data);
+  const available = Number(normalizedData.available) || 0;
+  const reorderLevel = normalizedData.reorderLevel == null ? 10 : Number(normalizedData.reorderLevel) || 0;
+  const status = legacyStockStatus(available, reorderLevel);
+  const submittedSerials = Array.isArray(data.serialNumbers) ? data.serialNumbers : [];
+  if (normalizedData.serialNumbers?.length !== submittedSerials.length) {
+    throw serviceError('Serial numbers must be unique', 409, 'DUPLICATE_SERIAL');
+  }
+  if (normalizedData.serialNumbers?.length && await Inventory.exists({ serialNumbers: { $in: normalizedData.serialNumbers } })) {
+    throw serviceError('One or more serial numbers already exist in inventory', 409, 'DUPLICATE_SERIAL');
+  }
+  if (normalizedData.isSerialized && available > 0 && normalizedData.serialNumbers?.length !== available) {
+    throw serviceError('Serialized items require one serial number per available unit', 400, 'SERIAL_COUNT_MISMATCH');
   }
 
   const newItem = new Inventory({
-    ...data,
+    ...normalizedData,
     status
   });
 
   const savedItem = await newItem.save();
 
   // Create procurement record for incoming stock
-  if (data.supplierName && data.invoiceNumber) {
+  if (normalizedData.supplierName && normalizedData.invoiceNumber) {
     const procurement = new Procurement({
-      invoiceNumber: data.invoiceNumber,
-      supplierName: data.supplierName,
-      itemName: data.name,
-      sku: data.sku,
+      inventoryId: savedItem._id,
+      invoiceNumber: normalizedData.invoiceNumber,
+      supplierId: normalizedData.supplierId,
+      supplierName: normalizedData.supplierName,
+      itemName: normalizedData.name,
+      sku: normalizedData.sku,
+      itemClass: normalizedData.itemClass,
+      subcategory: normalizedData.subcategory,
+      brand: normalizedData.brand,
       quantity: available,
-      unit: data.unit || 'units',
+      unit: normalizedData.unit || 'units',
+      unitCost: normalizedData.unitCost || 0,
+      totalCost: available * (normalizedData.unitCost || 0),
+      binLocation: normalizedData.binLocation || '',
       receivedBy: user ? user.fullName : 'Inventory Manager'
     });
     await procurement.save();
@@ -156,7 +220,7 @@ exports.createInventoryItem = async (data, user) => {
     const activity = new Activity({
       type: 'grn',
       title: 'Goods Received',
-      description: `Received ${available} ${data.unit || 'units'} of ${data.name} from ${data.supplierName}`,
+      description: `Received ${available} ${normalizedData.unit || 'units'} of ${normalizedData.name} from ${normalizedData.supplierName}`,
       actionLabel: 'View GRN'
     });
     await activity.save();
@@ -166,10 +230,119 @@ exports.createInventoryItem = async (data, user) => {
 };
 
 /**
+ * Receives stock against an existing item or creates a newly classified item.
+ */
+exports.receiveInventory = async (data, user) => {
+  const quantity = Number(data.quantity);
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw serviceError('Receipt quantity must be a positive whole number', 400, 'INVALID_QUANTITY');
+  }
+  if (!data.invoiceNumber || !data.supplierId) {
+    throw serviceError('Supplier and invoice number are required', 400, 'INVALID_RECEIPT');
+  }
+  if (!mongoose.isValidObjectId(data.supplierId)) {
+    throw serviceError('Supplier not found', 404, 'SUPPLIER_NOT_FOUND');
+  }
+
+  const supplier = await Supplier.findById(data.supplierId);
+  if (!supplier) throw serviceError('Supplier not found', 404, 'SUPPLIER_NOT_FOUND');
+
+  const submittedSerials = Array.isArray(data.serialNumbers) ? data.serialNumbers : [];
+  const serialNumbers = normalizeStringList(submittedSerials);
+  if (serialNumbers.length !== submittedSerials.length) {
+    throw serviceError('Serial numbers must be unique within the receipt', 409, 'DUPLICATE_SERIAL');
+  }
+  if (serialNumbers.length && await Inventory.exists({ serialNumbers: { $in: serialNumbers } })) {
+    throw serviceError('One or more serial numbers already exist in inventory', 409, 'DUPLICATE_SERIAL');
+  }
+
+  let item;
+  if (data.inventoryId) {
+    if (!mongoose.isValidObjectId(data.inventoryId)) {
+      throw serviceError('Inventory item not found', 404, 'ITEM_NOT_FOUND');
+    }
+    item = await Inventory.findById(data.inventoryId);
+    if (!item) throw serviceError('Inventory item not found', 404, 'ITEM_NOT_FOUND');
+    if (item.isSerialized && serialNumbers.length !== quantity) {
+      throw serviceError('Serialized items require one serial number per received unit', 400, 'SERIAL_COUNT_MISMATCH');
+    }
+    if (!item.isSerialized && serialNumbers.length) {
+      throw serviceError('Serial numbers are only allowed for serialized items', 400, 'UNEXPECTED_SERIALS');
+    }
+    item.available += quantity;
+    item.serialNumbers.push(...serialNumbers);
+    item.supplierId = supplier._id;
+    if (data.location) item.location = data.location;
+    if (data.binLocation !== undefined) item.binLocation = data.binLocation;
+    if (data.unitCost !== undefined) item.unitCost = Number(data.unitCost) || 0;
+    item.status = legacyStockStatus(item.available, item.reorderLevel);
+    await item.save();
+  } else {
+    const itemData = normalizeInventoryData({
+      ...(data.item || {}),
+      available: quantity,
+      supplierId: supplier._id,
+      serialNumbers
+    });
+    if (!itemData.name || !itemData.sku || !itemData.brand) {
+      throw serviceError('Name, SKU and brand are required for a new item', 400, 'INVALID_ITEM');
+    }
+    if (itemData.isSerialized && serialNumbers.length !== quantity) {
+      throw serviceError('Serialized items require one serial number per received unit', 400, 'SERIAL_COUNT_MISMATCH');
+    }
+    if (!itemData.isSerialized && serialNumbers.length) {
+      throw serviceError('Serial numbers are only allowed for serialized items', 400, 'UNEXPECTED_SERIALS');
+    }
+    itemData.status = legacyStockStatus(itemData.available, itemData.reorderLevel);
+    try {
+      item = await new Inventory(itemData).save();
+    } catch (error) {
+      if (error.code === 11000) throw serviceError('SKU already exists', 409, 'DUPLICATE_SKU');
+      throw error;
+    }
+  }
+
+  const receiptUnitCost = Number(data.unitCost ?? item.unitCost) || 0;
+  const procurement = await new Procurement({
+    inventoryId: item._id,
+    invoiceNumber: data.invoiceNumber,
+    poNumber: data.poNumber || '',
+    supplierId: supplier._id,
+    supplierName: supplier.name,
+    itemName: item.name,
+    sku: item.sku,
+    itemClass: item.itemClass,
+    subcategory: item.subcategory,
+    brand: item.brand,
+    quantity,
+    unit: item.unit,
+    unitCost: receiptUnitCost,
+    totalCost: quantity * receiptUnitCost,
+    binLocation: item.binLocation || '',
+    receivedBy: user?.fullName || 'Inventory Manager',
+    receivedDate: data.receivedDate || new Date(),
+    condition: data.condition || 'Good'
+  }).save();
+
+  await new Activity({
+    type: 'grn',
+    title: 'Goods Received',
+    description: `Received ${quantity} ${item.unit} of ${item.name} from ${supplier.name}`,
+    actionLabel: 'View GRN'
+  }).save();
+
+  return { item: await item.populate('supplierId', 'name'), procurement };
+};
+
+/**
  * Fetches the most recent procurement records.
  */
 exports.getRecentProcurements = async () => {
-  return await Procurement.find().sort({ timestamp: -1 }).limit(10);
+  return await Procurement.find()
+    .populate('inventoryId', 'name sku')
+    .populate('supplierId', 'name')
+    .sort({ timestamp: -1 })
+    .limit(10);
 };
 
 /**
@@ -239,11 +412,45 @@ exports.getAssetLoans = async () => {
 };
 
 /**
+ * Returns serialized HVAC tools with asset tags that are not currently on loan.
+ */
+exports.getAvailableTools = async () => {
+  const [tools, activeLoans] = await Promise.all([
+    Inventory.find({ itemClass: 'Tools and Test Equipment', isSerialized: true })
+      .select('name sku itemClass subcategory brand serialNumbers location binLocation'),
+    AssetLoan.find().select('assetTag')
+  ]);
+  const loanedTags = new Set(activeLoans.map((loan) => loan.assetTag));
+  return tools
+    .map((tool) => ({
+      ...tool.toObject({ virtuals: true }),
+      availableSerialNumbers: tool.serialNumbers.filter((serial) => !loanedTags.has(serial))
+    }))
+    .filter((tool) => tool.availableSerialNumbers.length > 0);
+};
+
+/**
  * Records a new tool checkout and logs the activity.
  */
 exports.checkOutTool = async (data) => {
+  const tool = await Inventory.findOne({
+    _id: data.toolId,
+    itemClass: 'Tools and Test Equipment',
+    isSerialized: true,
+    serialNumbers: data.assetTag
+  });
+  if (!tool) throw serviceError('Serialized tool or asset tag not found', 404, 'TOOL_NOT_FOUND');
+  const existingLoan = await AssetLoan.findOne({ assetTag: data.assetTag });
+  if (existingLoan) throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
+
   const newLoan = new AssetLoan(data);
-  const savedLoan = await newLoan.save();
+  let savedLoan;
+  try {
+    savedLoan = await newLoan.save();
+  } catch (error) {
+    if (error.code === 11000) throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
+    throw error;
+  }
 
   const activity = new Activity({
     type: 'request',
@@ -297,7 +504,7 @@ exports.getAssetReturnLogs = async () => {
  * Fetches all purchase order requests.
  */
 exports.getOrderRequests = async () => {
-  return await OrderRequest.find().sort({ createdAt: -1 });
+  return await OrderRequest.find().populate('items.supplierId', 'name').sort({ createdAt: -1 });
 };
 
 /**
@@ -378,25 +585,11 @@ exports.approveOrderRequest = async (id, user) => {
   request.approvedAt = new Date();
   await request.save();
 
-  for (const item of request.items) {
-    const procurement = new Procurement({
-      invoiceNumber: `AWAITING-${request.requestId}`,
-      poNumber: request.requestId,
-      supplierName: request.supplierName,
-      itemName: item.name,
-      sku: item.sku,
-      quantity: item.quantity,
-      unit: 'units',
-      receivedBy: request.approvedBy
-    });
-    await procurement.save();
-  }
-
   const activity = new Activity({
-    type: 'grn',
+    type: 'request',
     title: 'Order Approved',
-    description: `Purchase order ${request.requestId} approved by ${request.approvedBy}.`,
-    actionLabel: 'View Procurement'
+    description: `Purchase order ${request.requestId} approved by ${request.approvedBy}; goods receipt is still pending.`,
+    actionLabel: 'View Order'
   });
   await activity.save();
 
@@ -430,9 +623,23 @@ exports.rejectOrderRequest = async (id, reason, user) => {
  * Retrieves items that require restocking based on their low-stock status.
  */
 exports.getSuggestedOrders = async () => {
-  return await Inventory.find({ status: { $in: ['warning', 'critical'] } })
+  const items = await Inventory.find({
+    $expr: {
+      $lte: [
+        { $ifNull: ['$available', 0] },
+        { $ifNull: ['$reorderLevel', 10] }
+      ]
+    }
+  })
+    .populate('supplierId', 'name')
     .sort({ available: 1 })
-    .select('name sku available reserved reorderLevel unitCost unit status category brand');
+    .select('name sku available reserved reorderLevel maxStockLevel unitCost unit status category itemClass subcategory brand manufacturerPartNumber compatibleModels supplierId');
+  return items.map((item) => ({
+    ...item.toObject({ virtuals: true }),
+    status: legacyStockStatus(item.available, item.reorderLevel),
+    stockStatus: deriveStockStatus(item.available, item.reorderLevel),
+    suggestedQuantity: suggestedOrderQuantity(item.available, item.maxStockLevel, item.reorderLevel)
+  }));
 };
 
 /**
@@ -498,14 +705,7 @@ exports.createLeftoverReturn = async (data, user) => {
       const item = await Inventory.findById(data.itemId);
       if (item) {
         item.available = (item.available || 0) + data.quantityReturned;
-        // Recalculate stock status
-        if (item.available === 0) {
-          item.status = 'critical';
-        } else if (item.available <= (item.reorderLevel || 10)) {
-          item.status = 'warning';
-        } else {
-          item.status = 'normal';
-        }
+        item.status = legacyStockStatus(item.available, item.reorderLevel);
         await item.save();
       }
     }
@@ -556,16 +756,19 @@ exports.getRmaCases = async () => {
 exports.createRmaCase = async (data, user) => {
   const rmaId = generateId('RMA');
   const reportedBy = user?.fullName || 'Inventory Manager';
+  const inventoryItem = await Inventory.findOne({ serialNumbers: data.serialNumber });
+  if (!inventoryItem) throw serviceError('Serial number was not found in inventory', 404, 'SERIAL_NOT_FOUND');
 
   const rmaCase = new RmaCase({
     rmaId,
+    inventoryId: inventoryItem._id,
     serialNumber: data.serialNumber,
-    itemName: data.itemName || '',
-    itemSku: data.itemSku || '',
+    itemName: inventoryItem.name,
+    itemSku: inventoryItem.sku,
     faultDescription: data.faultDescription,
     reportedBy,
     status: 'reported',
-    type: data.type || 'Single',
+    type: inventoryItem.type,
     resolution: '',
   });
 

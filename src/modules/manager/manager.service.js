@@ -1,6 +1,7 @@
 const Inventory = require('../../models/Inventory');
 const MaterialRequest = require('../../models/MaterialRequest');
 const mongoose = require('mongoose');
+const { isLowStock } = require('../../utils/inventory-domain');
 
 /**
  * Aggregates live read-only inventory metrics and marries it with mock metrics for the operational dashboard.
@@ -14,8 +15,7 @@ exports.getDashboardData = async (user) => {
     const inventory = await Inventory.find();
     // Sum up the reserved quantity for all inventory items
     reservedItemsCount = inventory.reduce((sum, item) => sum + (item.reserved || 0), 0);
-    // Count items with non-normal status (warning or critical)
-    lowStockAlertsCount = inventory.filter(item => item.status && item.status !== 'normal').length;
+    lowStockAlertsCount = inventory.filter(isLowStock).length;
 
     // Count pending material requests
     const materialRequests = await MaterialRequest.find({ status: 'pending' });

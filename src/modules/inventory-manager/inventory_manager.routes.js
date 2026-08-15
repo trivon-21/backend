@@ -13,6 +13,7 @@ router.get("/item/:id", protect, controller.getItem);
 router.put("/item/:id", protect, controller.updateItem);
 // Create item
 router.post("/item", protect, controller.createItem);
+router.post("/receipts", protect, controller.receiveInventory);
 // Suppliers
 router.get("/suppliers", protect, controller.getSuppliers);
 router.post("/suppliers", protect, controller.createSupplier);
@@ -30,6 +31,7 @@ router.patch("/material-requests/:id", protect, controller.updateMaterialRequest
 // Asset Management
 router.get("/technicians", protect, controller.getTechnicians);
 router.get("/asset-loans", protect, controller.getAssetLoans);
+router.get("/available-tools", protect, controller.getAvailableTools);
 router.post("/asset-loans", protect, controller.checkOutTool);
 router.post("/asset-loans/return/:id", protect, controller.returnTool);
 router.get("/asset-return-logs", protect, controller.getAssetReturnLogs);

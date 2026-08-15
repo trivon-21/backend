@@ -14,6 +14,9 @@
     { "key": "testSku", "value": "" },
     { "key": "itemId", "value": "" },
     { "key": "supplierName", "value": "" },
+    { "key": "supplierId", "value": "" },
+    { "key": "toolItemId", "value": "" },
+    { "key": "toolAssetTag", "value": "" },
     { "key": "loanId", "value": "" },
     { "key": "orderRequestId", "value": "" },
     { "key": "rejectRequestId", "value": "" },
@@ -170,6 +173,7 @@
                   "  var j = pm.response.json();",
                   "  pm.expect(j.sku).to.eql(pm.collectionVariables.get('testSku'));",
                   "  pm.expect(j.status).to.eql('normal');",
+                  "  pm.expect(j.stockStatus).to.eql('in-stock');",
                   "  pm.collectionVariables.set('itemId', j._id);",
                   "});"
                 ]
@@ -181,7 +185,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"PMTEST Copper Pipe 15mm\",\n  \"sku\": \"{{testSku}}\",\n  \"category\": \"Plumbing\",\n  \"brand\": \"TestBrand\",\n  \"available\": 25,\n  \"reorderLevel\": 10,\n  \"unit\": \"units\",\n  \"unitCost\": 1200,\n  \"location\": \"Warehouse A\",\n  \"supplierName\": \"PMTEST Supplier Co\",\n  \"invoiceNumber\": \"PMTEST-INV-001\"\n}"
+              "raw": "{\n  \"name\": \"PMTEST Copper Pipe 15mm\",\n  \"sku\": \"{{testSku}}\",\n  \"itemClass\": \"Installation Materials\",\n  \"subcategory\": \"Copper Tube / Line Set\",\n  \"category\": \"Installation Materials\",\n  \"brand\": \"TestBrand\",\n  \"type\": \"Single\",\n  \"available\": 25,\n  \"reorderLevel\": 10,\n  \"maxStockLevel\": 40,\n  \"unit\": \"meters\",\n  \"unitCost\": 1200,\n  \"location\": \"Warehouse A\",\n  \"binLocation\": \"MAT-A01\",\n  \"systemType\": \"Universal\",\n  \"phase\": \"Not Applicable\",\n  \"supplierName\": \"PMTEST Supplier Co\",\n  \"invoiceNumber\": \"PMTEST-INV-001\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/inventory/item", "host": ["{{baseUrl}}"], "path": ["inventory", "item"] }
           }
@@ -206,7 +210,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"PMTEST Duplicate\",\n  \"sku\": \"{{testSku}}\",\n  \"category\": \"Plumbing\",\n  \"brand\": \"TestBrand\"\n}"
+              "raw": "{\n  \"name\": \"PMTEST Duplicate\",\n  \"sku\": \"{{testSku}}\",\n  \"itemClass\": \"Installation Materials\",\n  \"subcategory\": \"Unclassified\",\n  \"category\": \"Installation Materials\",\n  \"brand\": \"TestBrand\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/inventory/item", "host": ["{{baseUrl}}"], "path": ["inventory", "item"] }
           }
@@ -315,6 +319,7 @@
                   "  var j = pm.response.json();",
                   "  pm.expect(j.name).to.eql(pm.collectionVariables.get('supplierName'));",
                   "  pm.expect(j.status).to.eql('active');",
+                  "  pm.collectionVariables.set('supplierId', j._id);",
                   "});"
                 ]
               }
@@ -368,6 +373,34 @@
           "request": {
             "method": "GET",
             "url": { "raw": "{{baseUrl}}/inventory/suppliers", "host": ["{{baseUrl}}"], "path": ["inventory", "suppliers"] }
+          }
+        },
+        {
+          "name": "TC-14A POST receive existing HVAC item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-14A: existing SKU stock increased and GRN returned', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.item._id).to.eql(pm.collectionVariables.get('itemId'));",
+                  "  pm.expect(j.item.available).to.eql(28);",
+                  "  pm.expect(j.procurement.invoiceNumber).to.eql('PMTEST-RECEIPT-001');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inventoryId\": \"{{itemId}}\",\n  \"quantity\": 3,\n  \"supplierId\": \"{{supplierId}}\",\n  \"invoiceNumber\": \"PMTEST-RECEIPT-001\",\n  \"condition\": \"Good\",\n  \"location\": \"Warehouse A\",\n  \"binLocation\": \"MAT-A02\",\n  \"unitCost\": 1250,\n  \"serialNumbers\": []\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/receipts", "host": ["{{baseUrl}}"], "path": ["inventory", "receipts"] }
           }
         },
         {
@@ -514,6 +547,35 @@
           }
         },
         {
+          "name": "TC-20A POST serialized HVAC tool",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "exec": ["pm.collectionVariables.set('toolAssetTag', 'PMTEST-TAG-' + Date.now());"] }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-20A: serialized tool created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.collectionVariables.set('toolItemId', pm.response.json()._id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PMTEST Vacuum Pump\",\n  \"sku\": \"PMTEST-TOOL-{{$timestamp}}\",\n  \"itemClass\": \"Tools and Test Equipment\",\n  \"subcategory\": \"Vacuum Pump\",\n  \"brand\": \"Fieldpiece\",\n  \"type\": \"Single\",\n  \"available\": 1,\n  \"reorderLevel\": 0,\n  \"maxStockLevel\": 2,\n  \"unit\": \"units\",\n  \"location\": \"Tool Store\",\n  \"isSerialized\": true,\n  \"serialNumbers\": [\"{{toolAssetTag}}\"]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/item", "host": ["{{baseUrl}}"], "path": ["inventory", "item"] }
+          }
+        },
+        {
           "name": "TC-21 POST check out tool",
           "event": [
             {
@@ -532,7 +594,7 @@
                   "pm.test('TC-21: 201 + loan created, id saved', function () {",
                   "  pm.response.to.have.status(201);",
                   "  var j = pm.response.json();",
-                  "  pm.expect(j.assetTag).to.eql('PMTEST-TAG-01');",
+                  "  pm.expect(j.assetTag).to.eql(pm.collectionVariables.get('toolAssetTag'));",
                   "  pm.collectionVariables.set('loanId', j._id);",
                   "});"
                 ]
@@ -544,7 +606,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"toolId\": \"{{itemId}}\",\n  \"toolName\": \"PMTEST Copper Pipe 15mm\",\n  \"assetTag\": \"PMTEST-TAG-01\",\n  \"technicianId\": \"PMTEST-TECH-1\",\n  \"technicianName\": \"PMTEST Technician\",\n  \"dueDate\": \"{{dueDate}}\"\n}"
+              "raw": "{\n  \"toolId\": \"{{toolItemId}}\",\n  \"toolName\": \"PMTEST Vacuum Pump\",\n  \"assetTag\": \"{{toolAssetTag}}\",\n  \"technicianId\": \"PMTEST-TECH-1\",\n  \"technicianName\": \"PMTEST Technician\",\n  \"dueDate\": \"{{dueDate}}\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/inventory/asset-loans", "host": ["{{baseUrl}}"], "path": ["inventory", "asset-loans"] }
           }
@@ -597,10 +659,10 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('TC-24: 200 + PMTEST-TAG-01 in logs (NOTE: logs auto-delete after 14 days — TTL index)', function () {",
+                  "pm.test('TC-24: 200 + returned asset tag in logs', function () {",
                   "  pm.response.to.have.status(200);",
                   "  var tags = pm.response.json().map(function (r) { return r.assetTag; });",
-                  "  pm.expect(tags).to.include('PMTEST-TAG-01');",
+                  "  pm.expect(tags).to.include(pm.collectionVariables.get('toolAssetTag'));",
                   "});"
                 ]
               }
@@ -712,7 +774,7 @@
           }
         },
         {
-          "name": "TC-29 PATCH approve (creates procurements)",
+          "name": "TC-29 PATCH approve (receipt remains separate)",
           "event": [
             {
               "listen": "test",
@@ -735,16 +797,16 @@
           }
         },
         {
-          "name": "TC-30 GET procurements has AWAITING-<PO> rows",
+          "name": "TC-30 GET procurements has no synthetic receipt for approval",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('TC-30: 200 + approval generated procurement rows', function () {",
+                  "pm.test('TC-30: approval did not generate a goods receipt', function () {",
                   "  pm.response.to.have.status(200);",
                   "  var pos = pm.response.json().map(function (p) { return p.poNumber; });",
-                  "  pm.expect(pos).to.include(pm.collectionVariables.get('orderRequestId'));",
+                  "  pm.expect(pos).to.not.include(pm.collectionVariables.get('orderRequestId'));",
                   "});"
                 ]
               }
@@ -992,7 +1054,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"serialNumber\": \"PMTEST-SN-9001\",\n  \"itemName\": \"PMTEST AC Unit\",\n  \"faultDescription\": \"Compressor failure — PMTEST\"\n}"
+              "raw": "{\n  \"serialNumber\": \"{{toolAssetTag}}\",\n  \"faultDescription\": \"Vacuum pump fault — PMTEST\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/inventory/rma-cases", "host": ["{{baseUrl}}"], "path": ["inventory", "rma-cases"] }
           }
