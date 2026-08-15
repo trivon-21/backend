@@ -137,8 +137,8 @@ exports.getDashboardData = async (user) => {
       description: authorization.authorizationNumber,
       priority: authorization.nonPoReason === 'EMERGENCY_REPAIR' ? 'high' : 'medium',
       createdAt: authorization.approvedAt,
-      route: '/inventory-manager/procurement',
-      queryParams: { receiptMode: 'NON_PO', authorizationId: String(authorization._id) },
+      route: '/manager/orders',
+      queryParams: { type: 'non-po', status: authorization.status },
     })),
     ...awaitingFinance.map((authorization) => ({
       id: `finance-${authorization._id}`,
@@ -193,8 +193,8 @@ exports.getDashboardData = async (user) => {
       description: `${item.available || 0} available · reorder at ${item.reorderLevel || 0}`,
       priority: Number(item.available || 0) === 0 ? 'high' : 'medium',
       createdAt: item.updatedAt,
-      route: '/inventory-manager/inventory',
-      queryParams: { stockStatus: Number(item.available || 0) === 0 ? 'out-of-stock' : 'low-stock' },
+      route: '/manager/analytics',
+      queryParams: {},
     })),
   ].sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority)
       || new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
