@@ -1,4 +1,13 @@
+const { validationResult } = require("express-validator");
 const jwt = require('jsonwebtoken');
+
+exports.validate = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ message: "Validation failed", errors: errors.array() });
+  }
+  next();
+};
 
 /**
  * Middleware to verify JWT and check user roles
@@ -18,7 +27,6 @@ exports.authorize = (allowedRoles = []) => {
     const token = authHeader.split(' ')[1];
 
     try {
-      // Use JWT_SECRET from .env or a default for development
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'airlux_secret_key');
       req.user = decoded;
 
