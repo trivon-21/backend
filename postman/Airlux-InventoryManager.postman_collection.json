@@ -158,7 +158,7 @@
       "name": "02 Inventory Items",
       "item": [
         {
-          "name": "TC-06 POST create item (+auto GRN)",
+          "name": "TC-06 POST create zero-stock catalog item",
           "event": [
             {
               "listen": "prerequest",
@@ -168,12 +168,14 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('TC-06: 201 + status auto-computed normal + id saved', function () {",
+                  "pm.test('TC-06: 201 + zero stock + id saved', function () {",
                   "  pm.response.to.have.status(201);",
                   "  var j = pm.response.json();",
                   "  pm.expect(j.sku).to.eql(pm.collectionVariables.get('testSku'));",
-                  "  pm.expect(j.status).to.eql('normal');",
-                  "  pm.expect(j.stockStatus).to.eql('in-stock');",
+                  "  pm.expect(j.available).to.eql(0);",
+                  "  pm.expect(j.reserved).to.eql(0);",
+                  "  pm.expect(j.status).to.eql('critical');",
+                  "  pm.expect(j.stockStatus).to.eql('out-of-stock');",
                   "  pm.collectionVariables.set('itemId', j._id);",
                   "});"
                 ]
@@ -185,20 +187,20 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"PMTEST Copper Pipe 15mm\",\n  \"sku\": \"{{testSku}}\",\n  \"itemClass\": \"Installation Materials\",\n  \"subcategory\": \"Copper Tube / Line Set\",\n  \"category\": \"Installation Materials\",\n  \"brand\": \"TestBrand\",\n  \"type\": \"Single\",\n  \"available\": 25,\n  \"reorderLevel\": 10,\n  \"maxStockLevel\": 40,\n  \"unit\": \"meters\",\n  \"unitCost\": 1200,\n  \"location\": \"Warehouse A\",\n  \"binLocation\": \"MAT-A01\",\n  \"systemType\": \"Universal\",\n  \"phase\": \"Not Applicable\",\n  \"supplierName\": \"PMTEST Supplier Co\",\n  \"invoiceNumber\": \"PMTEST-INV-001\"\n}"
+              "raw": "{\n  \"name\": \"PMTEST Copper Pipe 15mm\",\n  \"sku\": \"{{testSku}}\",\n  \"itemClass\": \"Installation Materials\",\n  \"subcategory\": \"Copper Tube / Line Set\",\n  \"brand\": \"TestBrand\",\n  \"type\": \"Single\",\n  \"reorderLevel\": 10,\n  \"maxStockLevel\": 40,\n  \"unit\": \"meters\",\n  \"unitCost\": 1200,\n  \"location\": \"Warehouse A\",\n  \"binLocation\": \"MAT-A01\",\n  \"systemType\": \"Universal\",\n  \"phase\": \"Not Applicable\",\n  \"compatibleModels\": [],\n  \"refrigerants\": [],\n  \"isSerialized\": false\n}"
             },
             "url": { "raw": "{{baseUrl}}/inventory/item", "host": ["{{baseUrl}}"], "path": ["inventory", "item"] }
           }
         },
         {
-          "name": "TC-07 POST duplicate SKU -> 400",
+          "name": "TC-07 POST duplicate SKU -> 409",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('TC-07: 400 SKU already exists', function () {",
-                  "  pm.response.to.have.status(400);",
+                  "pm.test('TC-07: 409 SKU already exists', function () {",
+                  "  pm.response.to.have.status(409);",
                   "  pm.expect(pm.response.json().message).to.include('SKU already exists');",
                   "});"
                 ]
@@ -210,7 +212,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"PMTEST Duplicate\",\n  \"sku\": \"{{testSku}}\",\n  \"itemClass\": \"Installation Materials\",\n  \"subcategory\": \"Unclassified\",\n  \"category\": \"Installation Materials\",\n  \"brand\": \"TestBrand\"\n}"
+              "raw": "{\n  \"name\": \"PMTEST Duplicate\",\n  \"sku\": \"{{testSku}}\",\n  \"itemClass\": \"Installation Materials\",\n  \"subcategory\": \"Copper Tube / Line Set\",\n  \"brand\": \"TestBrand\",\n  \"type\": \"Single\",\n  \"unit\": \"meters\",\n  \"location\": \"Warehouse A\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/inventory/item", "host": ["{{baseUrl}}"], "path": ["inventory", "item"] }
           }
@@ -277,7 +279,7 @@
           }
         },
         {
-          "name": "TC-11 PUT update item",
+          "name": "TC-11 PATCH catalog master data",
           "event": [
             {
               "listen": "test",
@@ -292,9 +294,19 @@
             }
           ],
           "request": {
-            "method": "PUT",
+            "method": "PATCH",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"unitCost\": 1500,\n  \"location\": \"Warehouse B\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/item/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "item", "{{itemId}}"] }
+          }
+        },
+        {
+          "name": "TC-11A PATCH direct stock mutation -> 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('TC-11A: stock changes require stock workflow', function () {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('USE_STOCK_WORKFLOW');", "});"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"available\": 99\n}" },
             "url": { "raw": "{{baseUrl}}/inventory/item/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "item", "{{itemId}}"] }
           }
         }
@@ -404,16 +416,16 @@
           }
         },
         {
-          "name": "TC-15 GET procurements (auto-GRN from TC-06)",
+          "name": "TC-15 GET procurements (GRN from TC-14A receipt)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('TC-15: 200 + GRN created by item creation', function () {",
+                  "pm.test('TC-15: 200 + GRN created by receipt', function () {",
                   "  pm.response.to.have.status(200);",
                   "  var invoices = pm.response.json().map(function (p) { return p.invoiceNumber; });",
-                  "  pm.expect(invoices).to.include('PMTEST-INV-001');",
+                  "  pm.expect(invoices).to.include('PMTEST-RECEIPT-001');",
                   "});"
                 ]
               }
@@ -547,7 +559,7 @@
           }
         },
         {
-          "name": "TC-20A POST serialized HVAC tool",
+          "name": "TC-20A POST receive serialized HVAC tool",
           "event": [
             {
               "listen": "prerequest",
@@ -557,9 +569,9 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('TC-20A: serialized tool created', function () {",
+                  "pm.test('TC-20A: serialized tool received', function () {",
                   "  pm.response.to.have.status(201);",
-                  "  pm.collectionVariables.set('toolItemId', pm.response.json()._id);",
+                  "  pm.collectionVariables.set('toolItemId', pm.response.json().item._id);",
                   "});"
                 ]
               }
@@ -570,9 +582,9 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"PMTEST Vacuum Pump\",\n  \"sku\": \"PMTEST-TOOL-{{$timestamp}}\",\n  \"itemClass\": \"Tools and Test Equipment\",\n  \"subcategory\": \"Vacuum Pump\",\n  \"brand\": \"Fieldpiece\",\n  \"type\": \"Single\",\n  \"available\": 1,\n  \"reorderLevel\": 0,\n  \"maxStockLevel\": 2,\n  \"unit\": \"units\",\n  \"location\": \"Tool Store\",\n  \"isSerialized\": true,\n  \"serialNumbers\": [\"{{toolAssetTag}}\"]\n}"
+              "raw": "{\n  \"item\": {\n    \"name\": \"PMTEST Vacuum Pump\",\n    \"sku\": \"PMTEST-TOOL-{{$timestamp}}\",\n    \"itemClass\": \"Tools and Test Equipment\",\n    \"subcategory\": \"Vacuum Pump\",\n    \"brand\": \"Fieldpiece\",\n    \"type\": \"Single\",\n    \"reorderLevel\": 0,\n    \"maxStockLevel\": 2,\n    \"unit\": \"units\",\n    \"location\": \"Tool Store\",\n    \"isSerialized\": true\n  },\n  \"quantity\": 1,\n  \"serialNumbers\": [\"{{toolAssetTag}}\"],\n  \"supplierId\": \"{{supplierId}}\",\n  \"invoiceNumber\": \"PMTEST-TOOL-RECEIPT-{{$timestamp}}\",\n  \"condition\": \"Good\",\n  \"location\": \"Tool Store\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/inventory/item", "host": ["{{baseUrl}}"], "path": ["inventory", "item"] }
+            "url": { "raw": "{{baseUrl}}/inventory/receipts", "host": ["{{baseUrl}}"], "path": ["inventory", "receipts"] }
           }
         },
         {

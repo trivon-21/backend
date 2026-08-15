@@ -8,6 +8,16 @@ const ITEM_CLASSES = [
   'Unclassified'
 ];
 
+const ITEM_SUBCATEGORIES = {
+  'AC Equipment': ['Split Indoor Unit', 'Split Outdoor Unit', 'Cassette Unit', 'Ducted Unit', 'Multi-Split / VRF Unit', 'Fan-Coil / Air-Handling Unit', 'Packaged / Rooftop Unit'],
+  'Spare Parts': ['Compressor', 'Fan Motor', 'Blower / Fan Blade', 'Coil', 'PCB / Inverter Board', 'Electrical Control', 'Sensor / Thermostat / Remote', 'Valve', 'Filter-Drier / Sight Glass', 'Drain Pump / Louver Motor'],
+  'Installation Materials': ['Copper Tube / Line Set', 'Copper Fitting / Flare Nut', 'Pipe Insulation', 'Drain Pipe / Hose', 'Bracket / Stand / Vibration Pad', 'Electrical / Communication Cable', 'Isolator / Breaker / Trunking', 'Ducting', 'Fastener / Tape / Sealant'],
+  Consumables: ['Refrigerant', 'Nitrogen', 'Oil / Lubricant', 'Brazing Material', 'Cleaning Chemical', 'Disposable Filter', 'Sealant / Service Tape'],
+  'Tools and Test Equipment': ['Vacuum Pump', 'Recovery Machine', 'Manifold Gauge', 'Vacuum / Micron Gauge', 'Leak Detector', 'Refrigerant Scale', 'Electrical Meter', 'Thermometer / Psychrometer / Anemometer', 'Flaring / Swaging Tool', 'Tube Tool', 'Torque Wrench'],
+  'Kits and Bundles': ['Installation Kit', 'Line-Set Kit', 'Drain Kit', 'Maintenance Kit', 'Compressor Replacement Kit', 'Technician Tool Kit'],
+  Unclassified: ['Unclassified']
+};
+
 const LEGACY_CLASS_MAP = {
   'Air Conditioners': 'AC Equipment',
   'Repair Parts': 'Spare Parts',
@@ -53,8 +63,13 @@ function classifyLegacyItem(category, currentClass) {
   return LEGACY_CLASS_MAP[category] || 'Unclassified';
 }
 
+function isValidClassification(itemClass, subcategory) {
+  return ITEM_CLASSES.includes(itemClass) && (ITEM_SUBCATEGORIES[itemClass] || []).includes(subcategory);
+}
+
 module.exports = {
   ITEM_CLASSES,
+  ITEM_SUBCATEGORIES,
   LEGACY_CLASS_MAP,
   deriveStockStatus,
   toLegacyStatus,
@@ -62,5 +77,6 @@ module.exports = {
   isLowStock,
   normalizeStringList,
   suggestedOrderQuantity,
-  classifyLegacyItem
+  classifyLegacyItem,
+  isValidClassification
 };

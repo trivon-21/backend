@@ -10,23 +10,24 @@ exports.getDashboard = async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Manager dashboard fetch error:', error);
-    res.json({
+    res.status(error.statusCode || 503).json({
       managerName: req.user?.fullName?.split(' ')[0] || 'Manager',
       currentDate: new Date(),
       status: 'Offline',
       stats: {
-        pendingTickets: { total: 0, subStats: [] },
-        vehicleAvailability: { total: '0/0', subStats: [] },
-        todaysSchedule: { total: 0, subStats: [] },
-        escalations: { total: 0, subStats: [] }
+        openTickets: { total: 0, subStats: [] },
+        unassignedTickets: { total: 0, subStats: [] },
+        slaRisk: { total: 0, subStats: [] },
+        pendingApprovals: { total: 0, subStats: [] }
       },
       inventoryKpis: {
         reservedItems: { label: 'Reserved Items', value: 0, icon: 'clipboard-check' },
         lowStockAlerts: { label: 'Low Stock Alerts', value: 0, icon: 'triangle-alert' },
-        pendingDeliveries: { label: 'Pending Deliveries', value: 0, icon: 'truck' }
+        pendingMaterialRequests: { label: 'Pending Material Requests', value: 0, icon: 'package-clock' }
       },
       recentActivity: [],
-      pendingActions: []
+      pendingActions: [],
+      message: error.message
     });
   }
 };

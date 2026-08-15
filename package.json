@@ -7,6 +7,7 @@
     "start": "node server.js",
     "seed": "node seeds/seedDatabase.js",
     "migrate:inventory": "node scripts/migrate-inventory-classification.js",
+    "migrate:purchasing": "node scripts/migrate-purchasing-workflow.js",
     "test": "node --test"
   },
   "keywords": [],

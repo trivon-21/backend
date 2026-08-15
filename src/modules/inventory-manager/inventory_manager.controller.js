@@ -59,6 +59,7 @@ exports.getItem = async (req, res) => {
 exports.updateItem = async (req, res) => {
   try {
     const data = await service.updateInventoryItem(req.params.id, req.body);
+    if (!data) return res.status(404).json({ message: "Item not found", code: "ITEM_NOT_FOUND" });
     res.json(data);
   } catch (error) {
     res.status(error.statusCode || 500).json({ message: error.message || "Failed to update item", code: error.code });
@@ -75,7 +76,7 @@ exports.createItem = async (req, res) => {
   } catch (error) {
     console.error('Item creation error:', error);
     if (error.code === 11000) {
-      return res.status(400).json({ message: "SKU already exists" });
+      return res.status(409).json({ message: "SKU already exists", code: "DUPLICATE_SKU" });
     }
     res.status(error.statusCode || 500).json({ message: error.message || "Failed to create item", code: error.code });
   }
@@ -260,10 +261,10 @@ exports.getAssetReturnLogs = async (req, res) => {
  */
 exports.getOrderRequests = async (req, res) => {
   try {
-    const data = await service.getOrderRequests();
+    const data = await service.getOrderRequests(req.user);
     res.json(data);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch order requests" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to fetch order requests", code: error.code });
   }
 };
 
@@ -276,7 +277,7 @@ exports.createOrderRequest = async (req, res) => {
     res.status(201).json(data);
   } catch (error) {
     console.error('Order request creation error:', error);
-    res.status(500).json({ message: "Failed to create order request" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to create order request", code: error.code });
   }
 };
 
@@ -285,11 +286,43 @@ exports.createOrderRequest = async (req, res) => {
  */
 exports.updateOrderRequest = async (req, res) => {
   try {
-    const data = await service.updateOrderRequest(req.params.id, req.body);
+    const data = await service.updateOrderRequest(req.params.id, req.body, req.user);
     res.json(data);
   } catch (error) {
     console.error('Order request update error:', error);
-    res.status(500).json({ message: "Failed to update order request" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to update order request", code: error.code });
+  }
+};
+
+exports.submitOrderRequest = async (req, res) => {
+  try {
+    res.json(await service.submitOrderRequest(req.params.id, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 400).json({ message: error.message, code: error.code });
+  }
+};
+
+exports.issuePurchaseOrder = async (req, res) => {
+  try {
+    res.json(await service.issuePurchaseOrder(req.params.id, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 400).json({ message: error.message, code: error.code });
+  }
+};
+
+exports.createReceiptAuthorization = async (req, res) => {
+  try {
+    res.status(201).json(await service.createReceiptAuthorization(req.body, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 400).json({ message: error.message, code: error.code });
+  }
+};
+
+exports.getReceiptAuthorizations = async (req, res) => {
+  try {
+    res.json(await service.getReceiptAuthorizations(req.query, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 };
 
@@ -298,11 +331,10 @@ exports.updateOrderRequest = async (req, res) => {
  */
 exports.approveOrderRequest = async (req, res) => {
   try {
-    const data = await service.approveOrderRequest(req.params.id, req.user);
-    res.json(data);
+    service.retiredInventoryApproval();
   } catch (error) {
     console.error('Order approval error:', error);
-    res.status(500).json({ message: error.message || "Failed to approve order request" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to approve order request", code: error.code });
   }
 };
 
@@ -311,11 +343,10 @@ exports.approveOrderRequest = async (req, res) => {
  */
 exports.rejectOrderRequest = async (req, res) => {
   try {
-    const data = await service.rejectOrderRequest(req.params.id, req.body.reason, req.user);
-    res.json(data);
+    service.retiredInventoryApproval();
   } catch (error) {
     console.error('Order rejection error:', error);
-    res.status(500).json({ message: error.message || "Failed to reject order request" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to reject order request", code: error.code });
   }
 };
 

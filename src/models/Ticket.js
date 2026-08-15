@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
  *
  * Represents a field-service support ticket handled by the Manager area
  * (installations, repairs, maintenance, inspections). Introduced to back the
- * Manager → Tickets screen, which previously ran on mock data only.
+ * Manager → Tickets screen and its operational reporting.
  */
 const TicketSchema = new mongoose.Schema(
   {
@@ -13,6 +13,7 @@ const TicketSchema = new mongoose.Schema(
     subject: { type: String, required: true },
     description: { type: String, default: '' },
     customer: { type: String, required: true },
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     category: {
       type: String,
       enum: ['installation', 'repair', 'maintenance', 'inspection'],
@@ -29,7 +30,9 @@ const TicketSchema = new mongoose.Schema(
       default: 'open',
     },
     assignedTo: { type: String, default: '' },
+    assignedTechnicianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     slaDueAt: { type: Date },
+    resolvedAt: { type: Date },
   },
   {
     timestamps: true,

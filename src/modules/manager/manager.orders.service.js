@@ -1,129 +1,169 @@
 const mongoose = require('mongoose');
 const OrderRequest = require('../../models/OrderRequest');
+const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
+const Activity = require('../../models/Activity');
+const { approvalMode, canonicalPurchaseStatus } = require('../../utils/purchase-workflow');
 
-/**
- * Manager Orders / Approvals Service
- *
- * Surfaces procurement purchase requests (the OrderRequest collection) for
- * managerial review, and lets the manager approve or reject them. Falls back to
- * representative mock requests when the DB is empty or offline so the Manager →
- * Orders screen is always usable.
- */
-
-function mockRequests() {
-  const now = Date.now();
-  return [
-    {
-      _id: 'mock_or1',
-      requestId: 'PR-1022',
-      supplierName: 'CoolAir Distributors',
-      totalEstimate: 184500,
-      status: 'pending-approval',
-      priority: 'urgent',
-      requestedBy: 'Inventory Manager',
-      items: [
-        { name: 'Outdoor Unit 2.0T', sku: 'AC-OU-20', quantity: 5, estimatedTotal: 125000 },
-        { name: 'Copper Pipe 1/4"', sku: 'CP-14', quantity: 40, estimatedTotal: 59500 },
-      ],
-      createdAt: new Date(now - 3 * 60 * 60 * 1000),
-    },
-    {
-      _id: 'mock_or2',
-      requestId: 'PR-1021',
-      supplierName: 'ThermoParts Lanka',
-      totalEstimate: 42300,
-      status: 'pending-approval',
-      priority: 'normal',
-      requestedBy: 'Inventory Manager',
-      items: [{ name: 'Thermostat Digital', sku: 'TH-DIG', quantity: 15, estimatedTotal: 42300 }],
-      createdAt: new Date(now - 26 * 60 * 60 * 1000),
-    },
-    {
-      _id: 'mock_or3',
-      requestId: 'PR-1019',
-      supplierName: 'CoolAir Distributors',
-      totalEstimate: 98000,
-      status: 'approved',
-      priority: 'normal',
-      requestedBy: 'Inventory Manager',
-      approvedBy: 'Manager',
-      items: [{ name: 'Indoor Unit 1.5T', sku: 'AC-IU-15', quantity: 4, estimatedTotal: 98000 }],
-      createdAt: new Date(now - 3 * 24 * 60 * 60 * 1000),
-    },
-    {
-      _id: 'mock_or4',
-      requestId: 'PR-1016',
-      supplierName: 'Generic Spares Co.',
-      totalEstimate: 15600,
-      status: 'rejected',
-      priority: 'normal',
-      requestedBy: 'Inventory Manager',
-      rejectionReason: 'Non-preferred supplier',
-      items: [{ name: 'Remote Controllers', sku: 'RC-STD', quantity: 20, estimatedTotal: 15600 }],
-      createdAt: new Date(now - 5 * 24 * 60 * 60 * 1000),
-    },
-  ];
+function serviceError(statusCode, message, code) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
 }
 
-function isOffline() {
-  return mongoose.connection.readyState !== 1;
+function ensureOnline() {
+  if (mongoose.connection.readyState !== 1) {
+    throw serviceError(503, 'Purchase approvals are unavailable while the database is offline', 'DATABASE_OFFLINE');
+  }
 }
 
-function summarize(list) {
-  const pending = list.filter((o) => o.status === 'pending-approval');
+function assertManager(user) {
+  if (!user || user.role !== 'MANAGER') {
+    throw serviceError(403, 'Only a Manager can make operational approval decisions', 'MANAGER_REQUIRED');
+  }
+}
+
+function requireComment(comment) {
+  const normalized = String(comment || '').trim();
+  if (!normalized) throw serviceError(400, 'An approval or rejection comment is required', 'COMMENT_REQUIRED');
+  return normalized;
+}
+
+function assertVersion(record, statusVersion) {
+  if (!Number.isInteger(Number(statusVersion)) || Number(statusVersion) !== Number(record.statusVersion || 0)) {
+    throw serviceError(409, 'This record changed after it was opened; refresh before deciding', 'STALE_DECISION');
+  }
+}
+
+function summarize(orders) {
+  const pending = orders.filter((order) => canonicalPurchaseStatus(order.status) === 'pending-manager');
   return {
     pending: pending.length,
-    approved: list.filter((o) => o.status === 'approved').length,
-    rejected: list.filter((o) => o.status === 'rejected').length,
-    pendingValue: pending.reduce((sum, o) => sum + (o.totalEstimate || 0), 0),
+    approved: orders.filter((order) => ['approved', 'ordered', 'partially-received', 'received'].includes(canonicalPurchaseStatus(order.status))).length,
+    rejected: orders.filter((order) => canonicalPurchaseStatus(order.status) === 'rejected').length,
+    pendingValue: pending.reduce((sum, order) => sum + Number(order.totalEstimate || 0), 0),
   };
 }
 
-exports.listOrders = async (filters = {}) => {
-  let orders = [];
-  let offline = false;
-
-  try {
-    if (isOffline()) throw new Error('DB offline');
-    orders = await OrderRequest.find({ status: { $ne: 'draft' } })
-      .sort({ createdAt: -1 })
-      .lean();
-    if (!orders.length) {
-      orders = mockRequests();
-      offline = true;
-    }
-  } catch (err) {
-    orders = mockRequests();
-    offline = true;
-  }
-
-  const summary = summarize(orders);
-
-  if (filters.status && filters.status !== 'all') {
-    orders = orders.filter((o) => o.status === filters.status);
-  }
-
-  return { status: offline ? 'Offline' : 'Operational', summary, orders };
+exports.listOrders = async (filters = {}, user) => {
+  ensureOnline();
+  assertManager(user);
+  const allOrders = await OrderRequest.find({ status: { $ne: 'draft' } }).sort({ createdAt: -1 }).lean();
+  const normalized = allOrders.map(order => ({ ...order, status: canonicalPurchaseStatus(order.status) }));
+  const orders = filters.status && filters.status !== 'all'
+    ? normalized.filter((order) => order.status === filters.status)
+    : normalized;
+  return { status: 'Operational', summary: summarize(normalized), orders };
 };
 
-exports.decideOrder = async (id, decision, reason, approver) => {
-  if (!['approved', 'rejected'].includes(decision)) {
-    throw new Error('Invalid decision');
+exports.decideOrder = async (id, input, user) => {
+  ensureOnline();
+  assertManager(user);
+  if (!mongoose.isValidObjectId(id)) throw serviceError(400, 'Invalid purchase request ID', 'INVALID_ID');
+  if (!['approved', 'rejected'].includes(input.decision)) {
+    throw serviceError(400, 'Decision must be approved or rejected', 'INVALID_DECISION');
   }
+  const comment = requireComment(input.comment ?? input.reason);
+  const request = await OrderRequest.findById(id);
+  if (!request) throw serviceError(404, 'Purchase request not found', 'ORDER_NOT_FOUND');
+  if (canonicalPurchaseStatus(request.status) !== 'pending-manager') {
+    throw serviceError(409, 'This request is not awaiting Manager approval', 'INVALID_ORDER_TRANSITION');
+  }
+  if (String(request.requestedById || '') === String(user._id)) {
+    throw serviceError(403, 'You cannot approve your own purchase request', 'SELF_APPROVAL');
+  }
+  assertVersion(request, input.statusVersion);
 
-  const update = { status: decision };
-  if (decision === 'approved') {
-    update.approvedBy = approver || 'Manager';
-    update.approvedAt = new Date();
+  const now = new Date();
+  request.operationalApproval = {
+    status: input.decision,
+    actorId: user._id,
+    actorName: user.fullName,
+    comment,
+    decidedAt: now,
+  };
+  request.decisionHistory.push({
+    stage: 'manager', decision: input.decision, actorId: user._id,
+    actorName: user.fullName, comment, at: now,
+  });
+  if (input.decision === 'rejected') {
+    request.status = 'rejected';
+    request.rejectionReason = comment;
+    request.rejectedAt = now;
   } else {
-    update.rejectionReason = reason || '';
-    update.rejectedAt = new Date();
+    request.approvedBy = user.fullName;
+    request.approvedAt = now;
+    if (approvalMode() === 'two-stage') {
+      request.status = 'pending-finance';
+      request.financialApproval = { status: 'pending' };
+    } else {
+      request.status = 'approved';
+      request.financialApproval = {
+        status: 'not-required', actorName: 'Manager-first rollout',
+        comment: 'Finance approval is not required in the current rollout mode', decidedAt: now,
+      };
+    }
   }
+  request.statusVersion += 1;
+  await request.save();
+  await Activity.create({
+    type: input.decision === 'approved' ? 'request' : 'alert',
+    title: `Purchase Request ${input.decision === 'approved' ? 'Approved' : 'Rejected'}`,
+    description: `${request.requestId}: ${comment}`,
+    actionLabel: 'View Request',
+  });
+  return request.toObject();
+};
 
-  if (isOffline()) {
-    return { _id: id, ...update, offline: true };
+exports.listReceiptAuthorizations = async (filters = {}, user) => {
+  ensureOnline();
+  assertManager(user);
+  const query = {};
+  if (filters.status && filters.status !== 'all') query.status = filters.status;
+  return ReceiptAuthorization.find(query)
+    .populate('inventoryId', 'name sku available reorderLevel maxStockLevel itemClass subcategory brand')
+    .populate('supplierId', 'name')
+    .sort({ createdAt: -1 })
+    .lean();
+};
+
+exports.decideReceiptAuthorization = async (id, input, user) => {
+  ensureOnline();
+  assertManager(user);
+  if (!mongoose.isValidObjectId(id)) throw serviceError(400, 'Invalid authorization ID', 'INVALID_ID');
+  if (!['approved', 'rejected'].includes(input.decision)) {
+    throw serviceError(400, 'Decision must be approved or rejected', 'INVALID_DECISION');
   }
+  const comment = requireComment(input.comment ?? input.reason);
+  const authorization = await ReceiptAuthorization.findById(id);
+  if (!authorization) throw serviceError(404, 'Receipt authorization not found', 'AUTHORIZATION_NOT_FOUND');
+  if (authorization.status !== 'pending') {
+    throw serviceError(409, 'This authorization is no longer pending', 'INVALID_AUTHORIZATION_TRANSITION');
+  }
+  if (String(authorization.requestedById) === String(user._id)) {
+    throw serviceError(403, 'You cannot approve your own receipt authorization', 'SELF_APPROVAL');
+  }
+  assertVersion(authorization, input.statusVersion);
 
-  const order = await OrderRequest.findByIdAndUpdate(id, update, { new: true }).lean();
-  return order;
+  const now = new Date();
+  if (input.decision === 'approved') {
+    authorization.status = 'approved';
+    authorization.approvedById = user._id;
+    authorization.approvedByName = user.fullName;
+    authorization.approvedAt = now;
+    authorization.approvalComment = comment;
+  } else {
+    authorization.status = 'rejected';
+    authorization.rejectedAt = now;
+    authorization.rejectionReason = comment;
+  }
+  authorization.statusVersion += 1;
+  await authorization.save();
+  await Activity.create({
+    type: input.decision === 'approved' ? 'request' : 'alert',
+    title: `Non-PO Authorization ${input.decision === 'approved' ? 'Approved' : 'Rejected'}`,
+    description: `${authorization.authorizationNumber}: ${comment}`,
+    actionLabel: 'View Authorization',
+  });
+  return authorization.toObject();
 };

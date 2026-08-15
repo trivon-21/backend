@@ -6,6 +6,7 @@
 const authRoutes = require("../modules/auth/auth.routes");
 const inventoryManagerRoutes = require("../modules/inventory-manager/inventory_manager.routes");
 const managerRoutes = require("../modules/manager/manager.routes");
+const financeWorkflowRoutes = require("../modules/finance-workflow/finance-workflow.routes");
 
 /**
  * Initialize all routes on the app
@@ -20,6 +21,7 @@ function initializeRoutes(app) {
 
   // Manager routes
   app.use("/api/manager", managerRoutes);
+  app.use("/api/finance", financeWorkflowRoutes);
 
   console.log("✅ Routes initialized (Auth, Inventory Manager & Manager)");
 }

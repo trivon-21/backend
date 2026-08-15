@@ -6,14 +6,15 @@ const service = require('./manager.orders.service');
  */
 exports.list = async (req, res) => {
   try {
-    const data = await service.listOrders({ status: req.query.status });
+    const data = await service.listOrders({ status: req.query.status }, req.user);
     res.json(data);
   } catch (error) {
     console.error('Manager orders fetch error:', error);
-    res.json({
+    res.status(error.statusCode || 503).json({
       status: 'Offline',
       summary: { pending: 0, approved: 0, rejected: 0, pendingValue: 0 },
       orders: [],
+      message: error.message,
     });
   }
 };
@@ -23,13 +24,29 @@ exports.list = async (req, res) => {
  */
 exports.decide = async (req, res) => {
   try {
-    const { decision, reason } = req.body || {};
-    const approver = req.user?.fullName || 'Manager';
-    const order = await service.decideOrder(req.params.id, decision, reason, approver);
-    if (!order) return res.status(404).json({ message: 'Purchase request not found' });
+    const order = await service.decideOrder(req.params.id, req.body || {}, req.user);
     res.json(order);
   } catch (error) {
     console.error('Manager order decision error:', error);
-    res.status(400).json({ message: error.message || 'Failed to update purchase request' });
+    res.status(error.statusCode || 400).json({
+      message: error.message || 'Failed to update purchase request',
+      code: error.code,
+    });
+  }
+};
+
+exports.listReceiptAuthorizations = async (req, res) => {
+  try {
+    res.json(await service.listReceiptAuthorizations(req.query, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
+  }
+};
+
+exports.decideReceiptAuthorization = async (req, res) => {
+  try {
+    res.json(await service.decideReceiptAuthorization(req.params.id, req.body || {}, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 400).json({ message: error.message, code: error.code });
   }
 };

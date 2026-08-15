@@ -5,7 +5,8 @@ const {
   legacyStockStatus,
   normalizeStringList,
   suggestedOrderQuantity,
-  classifyLegacyItem
+  classifyLegacyItem,
+  isValidClassification
 } = require('../src/utils/inventory-domain');
 
 test('derives stock status at threshold boundaries including zero reorder level', () => {
@@ -14,6 +15,12 @@ test('derives stock status at threshold boundaries including zero reorder level'
   assert.equal(deriveStockStatus(5, 5), 'low-stock');
   assert.equal(deriveStockStatus(6, 5), 'in-stock');
   assert.equal(deriveStockStatus(1, 0), 'in-stock');
+});
+
+test('validates shared product-class and subcategory pairs', () => {
+  assert.equal(isValidClassification('Spare Parts', 'Compressor'), true);
+  assert.equal(isValidClassification('Spare Parts', 'Vacuum Pump'), false);
+  assert.equal(isValidClassification('Unknown', 'Compressor'), false);
 });
 
 test('suggests replenishment to maximum stock with a minimum of one', () => {

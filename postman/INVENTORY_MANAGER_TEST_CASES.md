@@ -70,14 +70,15 @@ Legend: 🔒 = requires Bearer token (all except TC-01/02/03 override it). Body 
 
 | # | Test | Method & URL | Body / Notes | Expected |
 |---|---|---|---|---|
-| TC-06 | Create classified item (+side effects) 🔒 | `POST /inventory/item` | HVAC `itemClass`, `subcategory`, compatibility, stock and storage fields | **201**; `stockStatus:"in-stock"`, compatibility `status:"normal"`; `_id` saved to `{{itemId}}` |
-| TC-07 | Duplicate SKU blocked 🔒 | `POST /inventory/item` | same `sku` again | **400** `SKU already exists` |
+| TC-06 | Create classified catalog item 🔒 | `POST /inventory/item` | HVAC classification, compatibility, planning and storage fields; no stock fields | **201**; `available:0`, `reserved:0`, `stockStatus:"out-of-stock"`; `_id` saved to `{{itemId}}` |
+| TC-07 | Duplicate SKU blocked 🔒 | `POST /inventory/item` | same complete catalog payload and `sku` | **409** `SKU already exists` |
 | TC-08 | List contains item 🔒 | `GET /inventory/list` | — | **200**; array includes the new SKU |
 | TC-09 | Get by id 🔒 | `GET /inventory/item/{{itemId}}` | — | **200**; `_id` matches |
 | TC-10 | Unknown id 🔒 | `GET /inventory/item/64b000000000000000000000` | valid-format, nonexistent ObjectId | **404** `Item not found` |
-| TC-11 | Update item 🔒 | `PUT /inventory/item/{{itemId}}` | `{"unitCost":1500,"location":"Warehouse B"}` | **200**; `unitCost` = 1500 |
+| TC-11 | Update master data 🔒 | `PATCH /inventory/item/{{itemId}}` | `{"unitCost":1500,"location":"Warehouse B"}` | **200**; `unitCost` = 1500 |
+| TC-11A | Reject direct stock mutation 🔒 | `PATCH /inventory/item/{{itemId}}` | `{"available":99}` | **400** `USE_STOCK_WORKFLOW`; quantity unchanged |
 
-> **Manual extra check (optional):** create an item with `available: 5, reorderLevel: 10` → response `status` should be `"warning"`; with `available: 0` → `"critical"`.
+Catalog creation never receives physical stock. Use `POST /inventory/receipts` after creating the product.
 
 ### Folder 03 — Suppliers & Procurement
 
@@ -87,9 +88,11 @@ Legend: 🔒 = requires Bearer token (all except TC-01/02/03 override it). Body 
 | TC-13 | Duplicate supplier 🔒 | `POST /inventory/suppliers` | same name | **400** `Supplier already exists` |
 | TC-14 | List suppliers 🔒 | `GET /inventory/suppliers` | — | **200**; includes created name |
 | TC-14A | Receive existing SKU 🔒 | `POST /inventory/receipts` | `inventoryId`, positive quantity, `supplierId`, invoice, cost and storage data | **201**; existing stock increases and response contains both `item` and `procurement` |
-| TC-15 | GRN side effect of TC-06 🔒 | `GET /inventory/procurements` | — | **200**; a record with `invoiceNumber:"PMTEST-INV-001"` exists (proves item creation auto-logged a Goods Received Note) |
+| TC-15 | GRN side effect of TC-14A 🔒 | `GET /inventory/procurements` | — | **200**; a record with `invoiceNumber:"PMTEST-RECEIPT-001"` exists (proves receiving logged the GRN) |
 
 Receipt validation checks: quantity must be a positive whole number; supplier and existing item IDs must exist; serialized receipts require exactly one unique serial per unit; duplicate SKUs and serials return **409**.
+
+Lifecycle: **catalog creation → purchase order (if required) → physical receipt/GRN → reservation/dispatch → return/RMA**.
 
 ### Folder 04 — Dispatch Orders & Material Requests *(data-dependent)*
 
@@ -109,7 +112,7 @@ These two PATCH endpoints can only be meaningfully tested if the DB already cont
 | # | Test | Method & URL | Body / Notes | Expected |
 |---|---|---|---|---|
 | TC-20 | List technicians 🔒 | `GET /inventory/technicians` | reads external `Dassana` DB | **200**; array (possibly empty) |
-| TC-20A | Create serialized tool 🔒 | `POST /inventory/item` | Tools and Test Equipment item containing generated `{{toolAssetTag}}` | **201**; tool ID saved for lending |
+| TC-20A | Receive serialized tool 🔒 | `POST /inventory/receipts` | New Tools and Test Equipment payload plus one generated `{{toolAssetTag}}` | **201**; received tool ID saved for lending |
 | TC-21 | Check out a tool 🔒 | `POST /inventory/asset-loans` | serialized tool ID and its exact unloaned asset tag | **201**; `_id` saved to `{{loanId}}`; duplicate active checkout returns **409** |
 | TC-22 | Loan appears in list 🔒 | `GET /inventory/asset-loans` | — | **200**; contains `{{loanId}}` |
 | TC-23 | Return the tool 🔒 | `POST /inventory/asset-loans/return/{{loanId}}` | uses the loan's Mongo `_id`; no body. Deletes the loan + writes a return log | **200**; returned doc `_id` = `{{loanId}}` |
@@ -162,7 +165,7 @@ These two PATCH endpoints can only be meaningfully tested if the DB already cont
 | `GET /dashboard` | TC-04 |
 | `GET /list` | TC-02, 03, 08 |
 | `GET /item/:id` | TC-09, 10, 35, 37 |
-| `PUT /item/:id` | TC-11 |
+| `PATCH /item/:id` | TC-11, 11A |
 | `POST /item` | TC-06, 07 |
 | `POST /receipts` | TC-14A |
 | `GET /suppliers` | TC-14 |

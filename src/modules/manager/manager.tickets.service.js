@@ -1,139 +1,119 @@
 const mongoose = require('mongoose');
 const Ticket = require('../../models/Ticket');
+const User = require('../../models/User');
+const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 
-/**
- * Manager Tickets Service
- *
- * Reads service tickets from the database and, when the collection is empty or
- * the DB is offline, falls back to a representative seeded set so the Manager →
- * Tickets screen is always usable (same defensive strategy as manager.service.js).
- */
+const TECHNICIAN_ROLES = ['MAIN_TECH', 'SERVICE_TEAM', 'INSPECTION'];
+const SAFE_CUSTOMER_FIELDS = 'fullName email phoneNumber address';
+const SAFE_TECHNICIAN_FIELDS = 'fullName email phoneNumber role';
 
-const HOUR = 60 * 60 * 1000;
-
-function mockTickets() {
-  const now = Date.now();
-  return [
-    {
-      _id: 'mock_t1',
-      ticketId: 'T-2041',
-      subject: 'Compressor failure after install',
-      description: 'Customer reports the outdoor unit shuts off intermittently.',
-      customer: 'Jane Smith',
-      category: 'repair',
-      priority: 'high',
-      status: 'escalated',
-      assignedTo: 'A. Fernando',
-      slaDueAt: new Date(now + 3 * HOUR),
-      createdAt: new Date(now - 45 * 60 * 1000),
-    },
-    {
-      _id: 'mock_t2',
-      ticketId: 'T-2042',
-      subject: 'Annual maintenance visit',
-      description: 'Scheduled preventive maintenance for 2 split units.',
-      customer: 'Ravi Kumar',
-      category: 'maintenance',
-      priority: 'low',
-      status: 'in-progress',
-      assignedTo: 'M. Perera',
-      slaDueAt: new Date(now + 20 * HOUR),
-      createdAt: new Date(now - 5 * HOUR),
-    },
-    {
-      _id: 'mock_t3',
-      ticketId: 'T-2043',
-      subject: 'New AC installation request',
-      description: '3-ton unit installation for a new office space.',
-      customer: 'Acme Holdings',
-      category: 'installation',
-      priority: 'medium',
-      status: 'open',
-      assignedTo: '',
-      slaDueAt: new Date(now + 48 * HOUR),
-      createdAt: new Date(now - 8 * HOUR),
-    },
-    {
-      _id: 'mock_t4',
-      ticketId: 'T-2044',
-      subject: 'Thermostat not responding',
-      description: 'Wall thermostat display is blank after a power cut.',
-      customer: 'Nimal Perera',
-      category: 'repair',
-      priority: 'medium',
-      status: 'open',
-      assignedTo: '',
-      slaDueAt: new Date(now + 12 * HOUR),
-      createdAt: new Date(now - 2 * HOUR),
-    },
-    {
-      _id: 'mock_t5',
-      ticketId: 'T-2039',
-      subject: 'Post-service inspection',
-      description: 'Quality inspection after ducting replacement.',
-      customer: 'Green Valley Hotel',
-      category: 'inspection',
-      priority: 'low',
-      status: 'resolved',
-      assignedTo: 'S. Jayasuriya',
-      slaDueAt: new Date(now - 6 * HOUR),
-      createdAt: new Date(now - 30 * HOUR),
-    },
-  ];
+function serviceError(message, statusCode, code) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
 }
 
-function isOffline() {
-  return mongoose.connection.readyState !== 1;
+function ensureOnline() {
+  if (mongoose.connection.readyState !== 1) {
+    throw serviceError('Manager ticket service is offline', 503, 'SERVICE_OFFLINE');
+  }
 }
 
 exports.listTickets = async (filters = {}) => {
-  let tickets = [];
-  let offline = false;
-
-  try {
-    if (isOffline()) throw new Error('DB offline');
-    tickets = await Ticket.find().sort({ createdAt: -1 }).lean();
-    if (!tickets.length) {
-      tickets = mockTickets();
-      offline = true; // real DB, but empty — surface the seeded set
-    }
-  } catch (err) {
-    tickets = mockTickets();
-    offline = true;
+  ensureOnline();
+  const allTickets = await Ticket.find()
+    .populate('customerId', SAFE_CUSTOMER_FIELDS)
+    .populate('assignedTechnicianId', SAFE_TECHNICIAN_FIELDS)
+    .sort({ createdAt: -1 })
+    .lean();
+  const ids = allTickets.map(ticket => String(ticket._id));
+  const references = allTickets.map(ticket => ticket.ticketId);
+  const authorizations = await ReceiptAuthorization.find({
+    $or: [
+      { affectedWorkId: { $in: ids } },
+      { affectedWorkReference: { $in: references } },
+    ],
+  }).populate('inventoryId', 'name sku available reorderLevel').lean();
+  const constraintsByTicket = new Map();
+  for (const authorization of authorizations) {
+    const key = authorization.affectedWorkId || references.find(reference => reference === authorization.affectedWorkReference);
+    if (!key) continue;
+    const constraints = constraintsByTicket.get(String(key)) || [];
+    constraints.push({
+      authorizationId: authorization._id,
+      authorizationNumber: authorization.authorizationNumber,
+      reason: authorization.nonPoReason,
+      status: authorization.status,
+      financeReviewStatus: authorization.financeReviewStatus,
+      authorizedQuantity: authorization.authorizedQuantity,
+      receivedQuantity: authorization.receivedQuantity,
+      item: authorization.inventoryId || authorization.newItemSnapshot,
+    });
+    constraintsByTicket.set(String(key), constraints);
   }
+  allTickets.forEach(ticket => {
+    ticket.inventoryConstraints = constraintsByTicket.get(String(ticket._id))
+      || constraintsByTicket.get(ticket.ticketId)
+      || [];
+  });
 
-  // Optional in-memory filtering (keeps the mock path working too).
-  if (filters.status && filters.status !== 'all') {
-    tickets = tickets.filter((t) => t.status === filters.status);
-  }
-  if (filters.priority && filters.priority !== 'all') {
-    tickets = tickets.filter((t) => t.priority === filters.priority);
-  }
+  let tickets = allTickets;
+  if (filters.status && filters.status !== 'all') tickets = tickets.filter((ticket) => ticket.status === filters.status);
+  if (filters.priority && filters.priority !== 'all') tickets = tickets.filter((ticket) => ticket.priority === filters.priority);
 
-  const all = tickets;
   const summary = {
-    total: all.length,
-    open: all.filter((t) => t.status === 'open').length,
-    inProgress: all.filter((t) => t.status === 'in-progress').length,
-    escalated: all.filter((t) => t.status === 'escalated').length,
-    resolved: all.filter((t) => t.status === 'resolved').length,
+    total: allTickets.length,
+    open: allTickets.filter((ticket) => ticket.status === 'open').length,
+    inProgress: allTickets.filter((ticket) => ticket.status === 'in-progress').length,
+    escalated: allTickets.filter((ticket) => ticket.status === 'escalated').length,
+    resolved: allTickets.filter((ticket) => ticket.status === 'resolved').length
   };
+  return { status: 'Operational', summary, tickets };
+};
 
-  return { status: offline ? 'Offline' : 'Operational', summary, tickets };
+exports.listTechnicians = async () => {
+  ensureOnline();
+  return User.find({ role: { $in: TECHNICIAN_ROLES } }, SAFE_TECHNICIAN_FIELDS).sort({ fullName: 1 }).lean();
 };
 
 exports.updateTicket = async (id, patch) => {
-  const allowed = ['status', 'priority', 'assignedTo'];
+  ensureOnline();
+  if (!mongoose.isValidObjectId(id)) throw serviceError('Ticket not found', 404, 'TICKET_NOT_FOUND');
   const update = {};
-  for (const key of allowed) {
-    if (patch[key] !== undefined) update[key] = patch[key];
+  if (patch.status !== undefined) {
+    if (!['open', 'in-progress', 'resolved', 'escalated'].includes(patch.status)) {
+      throw serviceError('Invalid ticket status', 400, 'INVALID_STATUS');
+    }
+    update.status = patch.status;
+    update.resolvedAt = patch.status === 'resolved' ? new Date() : null;
+  }
+  if (patch.priority !== undefined) {
+    if (!['high', 'medium', 'low'].includes(patch.priority)) {
+      throw serviceError('Invalid ticket priority', 400, 'INVALID_PRIORITY');
+    }
+    update.priority = patch.priority;
+  }
+  if (patch.assignedTechnicianId !== undefined) {
+    if (!patch.assignedTechnicianId) {
+      update.assignedTechnicianId = null;
+      update.assignedTo = '';
+    } else {
+      if (!mongoose.isValidObjectId(patch.assignedTechnicianId)) {
+        throw serviceError('Technician not found', 404, 'TECHNICIAN_NOT_FOUND');
+      }
+      const technician = await User.findOne({ _id: patch.assignedTechnicianId, role: { $in: TECHNICIAN_ROLES } });
+      if (!technician) throw serviceError('Technician not found or role is not assignable', 404, 'TECHNICIAN_NOT_FOUND');
+      update.assignedTechnicianId = technician._id;
+      update.assignedTo = technician.fullName;
+      if (patch.status === undefined) update.status = 'in-progress';
+    }
   }
 
-  if (isOffline()) {
-    // Optimistic echo so the UI can proceed while offline.
-    return { _id: id, ...update, offline: true };
-  }
-
-  const ticket = await Ticket.findByIdAndUpdate(id, update, { new: true }).lean();
-  return ticket;
+  return Ticket.findByIdAndUpdate(id, update, { new: true, runValidators: true })
+    .populate('customerId', SAFE_CUSTOMER_FIELDS)
+    .populate('assignedTechnicianId', SAFE_TECHNICIAN_FIELDS)
+    .lean();
 };
+
+exports.TECHNICIAN_ROLES = TECHNICIAN_ROLES;

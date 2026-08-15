@@ -11,6 +11,7 @@ router.get("/list", protect, controller.getInventory);
 router.get("/item/:id", protect, controller.getItem);
 // Update item
 router.put("/item/:id", protect, controller.updateItem);
+router.patch("/item/:id", protect, controller.updateItem);
 // Create item
 router.post("/item", protect, controller.createItem);
 router.post("/receipts", protect, controller.receiveInventory);
@@ -19,6 +20,8 @@ router.get("/suppliers", protect, controller.getSuppliers);
 router.post("/suppliers", protect, controller.createSupplier);
 // Procurements
 router.get("/procurements", protect, controller.getProcurements);
+router.get("/receipt-authorizations", protect, controller.getReceiptAuthorizations);
+router.post("/receipt-authorizations", protect, controller.createReceiptAuthorization);
 
 // Orders (Dispatch & Logistics)
 router.get("/orders", protect, controller.getOrders);
@@ -40,6 +43,8 @@ router.get("/asset-return-logs", protect, controller.getAssetReturnLogs);
 router.get("/order-requests", protect, controller.getOrderRequests);
 router.post("/order-requests", protect, controller.createOrderRequest);
 router.patch("/order-requests/:id", protect, controller.updateOrderRequest);
+router.post("/order-requests/:id/submit", protect, controller.submitOrderRequest);
+router.post("/order-requests/:id/issue-po", protect, controller.issuePurchaseOrder);
 router.patch("/order-requests/:id/approve", protect, controller.approveOrderRequest);
 router.patch("/order-requests/:id/reject", protect, controller.rejectOrderRequest);
 router.get("/suggested-orders", protect, controller.getSuggestedOrders);

@@ -3,7 +3,6 @@ const controller = require("./manager.controller");
 const analyticsController = require("./manager.analytics.controller");
 const ticketsController = require("./manager.tickets.controller");
 const ordersController = require("./manager.orders.controller");
-const customersController = require("./manager.customers.controller");
 const { protect } = require("../../middleware/protect");
 
 // Manager dashboard data endpoint
@@ -14,13 +13,13 @@ router.get("/analytics", protect, analyticsController.getAnalytics);
 
 // Tickets management (?status=&priority=)
 router.get("/tickets", protect, ticketsController.list);
+router.get("/technicians", protect, ticketsController.listTechnicians);
 router.patch("/tickets/:id", protect, ticketsController.update);
 
 // Orders / purchase-request approvals (?status=)
 router.get("/orders", protect, ordersController.list);
 router.patch("/orders/:id", protect, ordersController.decide);
-
-// Customer directory (?search=)
-router.get("/customers", protect, customersController.list);
+router.get("/receipt-authorizations", protect, ordersController.listReceiptAuthorizations);
+router.post("/receipt-authorizations/:id/decision", protect, ordersController.decideReceiptAuthorization);
 
 module.exports = router;

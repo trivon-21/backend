@@ -1,138 +1,216 @@
+const mongoose = require('mongoose');
 const Inventory = require('../../models/Inventory');
 const MaterialRequest = require('../../models/MaterialRequest');
-const mongoose = require('mongoose');
+const OrderRequest = require('../../models/OrderRequest');
+const Ticket = require('../../models/Ticket');
+const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const { isLowStock } = require('../../utils/inventory-domain');
 
-/**
- * Aggregates live read-only inventory metrics and marries it with mock metrics for the operational dashboard.
- */
+function serviceError(message) {
+  const error = new Error(message);
+  error.statusCode = 503;
+  error.code = 'DATABASE_OFFLINE';
+  return error;
+}
+
+function priorityRank(priority) {
+  return { high: 3, medium: 2, low: 1 }[priority] || 0;
+}
+
+function unresolved(ticket) {
+  return ticket.status !== 'resolved';
+}
+
+function ticketRoute(status) {
+  return { route: '/manager/tickets', queryParams: status ? { status } : {} };
+}
+
 exports.getDashboardData = async (user) => {
-  let reservedItemsCount = 0;
-  let lowStockAlertsCount = 0;
-  let pendingDeliveriesCount = 0;
-
-  try {
-    const inventory = await Inventory.find();
-    // Sum up the reserved quantity for all inventory items
-    reservedItemsCount = inventory.reduce((sum, item) => sum + (item.reserved || 0), 0);
-    lowStockAlertsCount = inventory.filter(isLowStock).length;
-
-    // Count pending material requests
-    const materialRequests = await MaterialRequest.find({ status: 'pending' });
-    pendingDeliveriesCount = materialRequests.length;
-  } catch (err) {
-    console.error('Error fetching inventory data for manager dashboard:', err);
+  if (mongoose.connection.readyState !== 1) {
+    throw serviceError('Manager dashboard is unavailable while the database is offline');
   }
 
-  // Mock stats for manager dashboard
+  const [tickets, orders, inventory, materialRequests, authorizations] = await Promise.all([
+    Ticket.find().sort({ updatedAt: -1 }).lean(),
+    OrderRequest.find({ status: { $ne: 'draft' } }).sort({ updatedAt: -1 }).lean(),
+    Inventory.find().sort({ updatedAt: -1 }).lean(),
+    MaterialRequest.find({ status: 'pending' }).lean(),
+    ReceiptAuthorization.find().sort({ updatedAt: -1 }).lean(),
+  ]);
+
+  const now = new Date();
+  const nearDue = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const activeTickets = tickets.filter(unresolved);
+  const unassigned = activeTickets.filter((ticket) => !ticket.assignedTechnicianId && !ticket.assignedTo);
+  const overdue = activeTickets.filter((ticket) => ticket.slaDueAt && new Date(ticket.slaDueAt) <= now);
+  const dueSoon = activeTickets.filter((ticket) => {
+    if (!ticket.slaDueAt) return false;
+    const due = new Date(ticket.slaDueAt);
+    return due > now && due <= nearDue;
+  });
+  const pendingOrders = orders.filter((order) => ['pending-manager', 'pending-approval'].includes(order.status));
+  const pendingAuthorizations = authorizations.filter((authorization) => authorization.status === 'pending');
+  const awaitingReceipt = authorizations.filter((authorization) => ['approved', 'partially-received'].includes(authorization.status));
+  const awaitingFinance = authorizations.filter((authorization) => authorization.receivedQuantity > 0 && authorization.financeReviewStatus === 'pending');
+  const lowStock = inventory.filter(isLowStock);
+  const reservedItems = inventory.reduce((sum, item) => sum + Number(item.reserved || 0), 0);
+
   const stats = {
-    pendingTickets: {
-      total: 14,
+    openTickets: {
+      total: activeTickets.length,
       subStats: [
-        { label: 'Unassigned', value: 6 },
-        { label: 'Assigned', value: 8 }
-      ]
+        { label: 'Open', value: activeTickets.filter((ticket) => ticket.status === 'open').length },
+        { label: 'In Progress', value: activeTickets.filter((ticket) => ticket.status === 'in-progress').length },
+      ],
     },
-    vehicleAvailability: {
-      total: '9/12',
+    unassignedTickets: {
+      total: unassigned.length,
       subStats: [
-        { label: 'In Use', value: 9 },
-        { label: 'Available', value: 3 }
-      ]
+        { label: 'High Priority', value: unassigned.filter((ticket) => ticket.priority === 'high').length },
+        { label: 'Other', value: unassigned.filter((ticket) => ticket.priority !== 'high').length },
+      ],
     },
-    todaysSchedule: {
-      total: 18,
+    slaRisk: {
+      total: overdue.length + dueSoon.length,
       subStats: [
-        { label: 'In Progress', value: 5 },
-        { label: 'Completed', value: 4 },
-        { label: 'Remaining', value: 9 }
-      ]
+        { label: 'Overdue', value: overdue.length },
+        { label: 'Due in 24h', value: dueSoon.length },
+      ],
     },
-    escalations: {
-      total: 2,
+    pendingApprovals: {
+      total: pendingOrders.length + pendingAuthorizations.length,
       subStats: [
-        { label: 'Critical Alert', value: 1 },
-        { label: 'SLA Warning', value: 1 }
-      ]
-    }
+        { label: 'Urgent', value: pendingOrders.filter((order) => order.priority === 'urgent').length },
+        { label: 'Value', value: pendingOrders.reduce((sum, order) => sum + Number(order.totalEstimate || 0), 0) },
+        { label: 'Non-PO', value: pendingAuthorizations.length },
+      ],
+    },
   };
 
-  const inventoryKpis = {
-    reservedItems: {
-      label: 'Reserved Items',
-      value: reservedItemsCount,
-      icon: 'clipboard-check',
-      trend: 'For upcoming jobs'
-    },
-    lowStockAlerts: {
-      label: 'Low Stock Alerts',
-      value: lowStockAlertsCount,
-      icon: 'triangle-alert',
-      trend: lowStockAlertsCount > 0 ? `Affects active jobs` : 'All items normal'
-    },
-    pendingDeliveries: {
-      label: 'Pending Deliveries',
-      value: pendingDeliveriesCount,
-      icon: 'truck',
-      trend: 'To job sites today'
-    }
-  };
-
-  const recentActivity = [
-    {
-      id: 'act_m1',
-      type: 'escalation',
-      title: 'Critical Escalation on Ticket #T-2041',
-      description: 'System reported compressor failure after install.',
-      timestamp: new Date(Date.now() - 45 * 60 * 1000)
-    },
-    {
-      id: 'act_m2',
-      type: 'vehicle',
-      title: 'Vehicle Dispatched',
-      description: 'Van 5 dispatched to site for ticket #T-2042.',
-      timestamp: new Date(Date.now() - 150 * 60 * 1000)
-    },
-    {
-      id: 'act_m3',
-      type: 'ticket',
-      title: 'Emergency Service Ticket Created',
-      description: 'Residential leak reported by customer Jane Smith.',
-      timestamp: new Date(Date.now() - 360 * 60 * 1000)
-    }
-  ];
+  const ticketActivity = tickets.slice(0, 6).map((ticket) => ({
+    id: String(ticket._id),
+    type: ticket.status === 'escalated' ? 'escalation' : 'ticket',
+    title: `${ticket.status === 'resolved' ? 'Resolved' : 'Updated'} ${ticket.ticketId}`,
+    description: ticket.subject,
+    timestamp: ticket.updatedAt || ticket.createdAt,
+    ...ticketRoute(ticket.status),
+  }));
+  const orderActivity = orders.slice(0, 6).map((order) => ({
+    id: String(order._id),
+    type: 'order',
+    title: `${order.requestId} is ${String(order.status).replace('-', ' ')}`,
+    description: `${order.supplierName} · ${Number(order.totalEstimate || 0).toLocaleString()}`,
+    timestamp: order.updatedAt || order.createdAt,
+    route: '/manager/orders',
+    queryParams: { status: order.status },
+  }));
+  const recentActivity = [...ticketActivity, ...orderActivity]
+    .filter((item) => item.timestamp)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(0, 8);
 
   const pendingActions = [
-    {
-      id: 'pa1',
-      type: 'vehicle',
-      title: 'Assign Vehicle to Ticket #T-2044',
-      description: 'Inspection ticket scheduled for tomorrow requires a vehicle assignment.',
-      priority: 'high'
-    },
-    {
-      id: 'pa2',
-      type: 'escalation',
-      title: 'Acknowledge Escalation: Ticket #T-2041',
-      description: 'Compressor failure report requires manager acknowledgement.',
-      priority: 'high'
-    },
-    {
-      id: 'pa3',
+    ...pendingOrders.map((order) => ({
+      id: `order-${order._id}`,
       type: 'order',
-      title: 'Review Purchase Request #PR-1022',
-      description: 'Awaiting manager approval for parts replenishment.',
-      priority: 'medium'
-    }
-  ];
+      title: `Review ${order.requestId}`,
+      description: `${order.supplierName} purchase request`,
+      priority: order.priority === 'urgent' ? 'high' : 'medium',
+      createdAt: order.createdAt,
+      route: '/manager/orders',
+      queryParams: { status: 'pending-manager' },
+    })),
+    ...pendingAuthorizations.map((authorization) => ({
+      id: `authorization-${authorization._id}`,
+      type: 'authorization',
+      title: `Review ${authorization.authorizationNumber}`,
+      description: `${authorization.nonPoReason.replaceAll('_', ' ')} · ${authorization.supplierName}`,
+      priority: authorization.nonPoReason === 'EMERGENCY_REPAIR' ? 'high' : 'medium',
+      createdAt: authorization.createdAt,
+      route: '/manager/orders',
+      queryParams: { type: 'non-po', status: 'pending' },
+    })),
+    ...awaitingReceipt.map((authorization) => ({
+      id: `receive-${authorization._id}`,
+      type: 'authorization',
+      title: `Approved receipt awaiting stock posting`,
+      description: authorization.authorizationNumber,
+      priority: authorization.nonPoReason === 'EMERGENCY_REPAIR' ? 'high' : 'medium',
+      createdAt: authorization.approvedAt,
+      route: '/inventory-manager/procurement',
+      queryParams: { receiptMode: 'NON_PO', authorizationId: String(authorization._id) },
+    })),
+    ...awaitingFinance.map((authorization) => ({
+      id: `finance-${authorization._id}`,
+      type: 'finance',
+      title: `Finance reconciliation pending`,
+      description: `${authorization.authorizationNumber} · ${authorization.estimatedTotal.toLocaleString()}`,
+      priority: 'low',
+      createdAt: authorization.updatedAt,
+      route: '/manager/orders',
+      queryParams: { type: 'non-po', finance: 'pending' },
+    })),
+    ...activeTickets.filter((ticket) => ticket.status === 'escalated').map((ticket) => ({
+      id: `escalated-${ticket._id}`,
+      type: 'escalation',
+      title: `Escalated ${ticket.ticketId}`,
+      description: ticket.subject,
+      priority: 'high',
+      createdAt: ticket.createdAt,
+      ...ticketRoute('escalated'),
+    })),
+    ...overdue.map((ticket) => ({
+      id: `overdue-${ticket._id}`,
+      type: 'sla',
+      title: `Overdue SLA: ${ticket.ticketId}`,
+      description: ticket.subject,
+      priority: 'high',
+      createdAt: ticket.slaDueAt,
+      ...ticketRoute(ticket.status),
+    })),
+    ...dueSoon.map((ticket) => ({
+      id: `due-${ticket._id}`,
+      type: 'sla',
+      title: `SLA due soon: ${ticket.ticketId}`,
+      description: ticket.subject,
+      priority: 'medium',
+      createdAt: ticket.slaDueAt,
+      ...ticketRoute(ticket.status),
+    })),
+    ...unassigned.map((ticket) => ({
+      id: `unassigned-${ticket._id}`,
+      type: 'ticket',
+      title: `Assign ${ticket.ticketId}`,
+      description: ticket.subject,
+      priority: ticket.priority === 'high' ? 'high' : 'medium',
+      createdAt: ticket.createdAt,
+      ...ticketRoute(ticket.status),
+    })),
+    ...lowStock.slice(0, 5).map((item) => ({
+      id: `stock-${item._id}`,
+      type: 'inventory',
+      title: `Low stock: ${item.name}`,
+      description: `${item.available || 0} available · reorder at ${item.reorderLevel || 0}`,
+      priority: Number(item.available || 0) === 0 ? 'high' : 'medium',
+      createdAt: item.updatedAt,
+      route: '/inventory-manager/inventory',
+      queryParams: { stockStatus: Number(item.available || 0) === 0 ? 'out-of-stock' : 'low-stock' },
+    })),
+  ].sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority)
+      || new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    .slice(0, 12);
 
   return {
     managerName: user?.fullName || 'Manager',
-    currentDate: new Date(),
-    status: mongoose.connection.readyState === 1 ? 'Operational' : 'Offline',
+    currentDate: now,
+    status: 'Operational',
     stats,
-    inventoryKpis,
+    inventoryKpis: {
+      reservedItems: { label: 'Reserved Items', value: reservedItems, icon: 'clipboard-check' },
+      lowStockAlerts: { label: 'Low Stock Alerts', value: lowStock.length, icon: 'triangle-alert' },
+      pendingMaterialRequests: { label: 'Pending Material Requests', value: materialRequests.length, icon: 'package-clock' },
+    },
     recentActivity,
-    pendingActions
+    pendingActions,
   };
 };
