@@ -11,7 +11,7 @@ const auditLogSchema = new mongoose.Schema(
     performedByRole: {
       type: String,
       enum: ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CSA', 'FINANCE', 'INVENTORY_MANAGER', 'INSPECTION_TEAM', 'SERVICE_TEAM', 'TECHNICIAN', 'SALES', 'CUSTOMER', 'SYSTEM', 'UNKNOWN'],
-      required: true,
+      required: false,
     },
 
     // Log categorization
@@ -19,13 +19,13 @@ const auditLogSchema = new mongoose.Schema(
       type: String,
       enum: ['ACTIVITY', 'ERROR', 'SECURITY'],
       default: 'ACTIVITY',
-      required: true,
+      required: false,
     },
     logLevel: {
       type: String,
       enum: ['INFO', 'WARNING', 'ERROR', 'CRITICAL'],
       default: 'INFO',
-      required: true,
+      required: false,
     },
     module: {
       type: String,
@@ -47,7 +47,7 @@ const auditLogSchema = new mongoose.Schema(
         'AUDIT',
         'OTHER',
       ],
-      required: true,
+      required: false,
     },
 
     // Action details
@@ -77,13 +77,13 @@ const auditLogSchema = new mongoose.Schema(
         'CONFIGURATION',
         'OTHER',
       ],
-      required: true,
+      required: false,
     },
 
     // Entity being acted upon
     entity: {
       type: String,
-      required: true,
+      required: false,
     },
     entityId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -179,6 +179,26 @@ const auditLogSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+
+    // Fields from origin/dev auditLog.model.js
+    resource: {
+      type: String,
+      default: 'PaymentSetting'
+    },
+    before: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
+    after: {
+      type: mongoose.Schema.Types.Mixed
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    }
   },
   {
     timestamps: {

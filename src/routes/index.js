@@ -17,6 +17,15 @@ const inspectionTeamRoutes = require("../modules/inspection-team/inspection_team
 const inventoryManagerRoutes = require("../modules/inventory-manager/inventory_manager.routes");
 const managerRoutes = require("../modules/manager/manager.routes");
 
+// Incoming Catalog/Checkout Routes
+const authMockRoutes = require("./auth.routes");
+const productRoutes = require("./product.routes");
+const cartRoutes = require("./cart.routes");
+const orderRoutes = require("./order.routes");
+const bankDetailRoutes = require("./bankDetail.routes");
+const cartScenarioRoutes = require("./cartScenario.routes");
+const configRoutes = require("./config.routes");
+
 /**
  * Initialize all routes on the app
  * @param {Express.Application} app
@@ -24,6 +33,16 @@ const managerRoutes = require("../modules/manager/manager.routes");
 function initializeRoutes(app) {
   // Public/Auth routes (no auth required for signup, forgot-password)
   app.use("/api/auth", authRoutes);
+  app.use("/api/auth", authMockRoutes); // Mount mock auth routes sequentially
+
+  // Catalog / Checkout / Scenario routes
+  app.use("/api/products", productRoutes);
+  app.use("/api/scenarios", cartScenarioRoutes);
+  app.use("/api/cart", cartRoutes);
+  app.use("/api/orders", orderRoutes);
+  app.use("/api/admin", bankDetailRoutes);
+  app.use("/api/checkout", bankDetailRoutes);
+  app.use("/api/config", configRoutes);
 
   // Super Admin routes (protected - super admin only)
   app.use("/api/super-admin", superAdminRoutes);
