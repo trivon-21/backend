@@ -17,21 +17,32 @@ exports.getAnalyticsData = async (_user, periodKey) => {
   }
 
   const [tickets, orders, inventory, pendingRequests, procurements, authorizations] = await Promise.all([
-    Ticket.find().lean(),
+    Ticket.find().populate('assignedTechnicianId', 'fullName role').lean(),
     OrderRequest.find({ status: { $ne: 'draft' } }).lean(),
     Inventory.find().lean(),
     MaterialRequest.countDocuments({ status: 'pending' }),
     Procurement.find().lean(),
     ReceiptAuthorization.find().lean(),
   ]);
-  const analytics = buildAnalytics(tickets, orders, periodKey, new Date(), procurements, authorizations);
+  const generatedAt = new Date();
+  const analytics = buildAnalytics(
+    tickets,
+    orders,
+    periodKey,
+    generatedAt,
+    procurements,
+    authorizations,
+    inventory,
+    pendingRequests,
+  );
 
   return {
     ...analytics,
     status: 'Operational',
-    generatedAt: new Date(),
+    generatedAt,
     inventorySignals: {
       lowStockAlerts: inventory.filter(isLowStock).length,
+      outOfStockAlerts: analytics.inventoryRisk.outOfStockItems.value,
       reservedItems: inventory.reduce((sum, item) => sum + Number(item.reserved || 0), 0),
       pendingRequests,
     },

@@ -1,22 +1,13 @@
 const analyticsService = require('./manager.analytics.service');
+const { buildAnalytics } = require('../../utils/manager-metrics');
 
 function emptyAnalytics(period) {
+  const generatedAt = new Date();
   return {
-    period,
+    ...buildAnalytics([], [], period, generatedAt),
     status: 'Offline',
-    generatedAt: new Date(),
-    kpis: {
-      ticketsCreated: 0,
-      ticketsResolved: 0,
-      avgResolutionHours: 0,
-      pendingApprovalValue: 0,
-    },
-    ticketTrend: { labels: [], created: [], resolved: [] },
-    ticketStatus: [],
-    serviceTypes: [],
-    technicianWorkload: [],
-    approvalSummary: [],
-    inventorySignals: { lowStockAlerts: 0, reservedItems: 0, pendingRequests: 0 },
+    generatedAt,
+    inventorySignals: { lowStockAlerts: 0, outOfStockAlerts: 0, reservedItems: 0, pendingRequests: 0 },
   };
 }
 
