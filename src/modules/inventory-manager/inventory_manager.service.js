@@ -153,7 +153,7 @@ function synchronizeStatusForResponse(item) {
  * Retrieves aggregated dashboard data including inventory stats, recent activity, and logistics status.
  */
 exports.getDashboardData = async (user) => {
-  const [inventory, activities, logistics, orders, loans, materialRequests, authorizations] = await Promise.all([
+  const [inventory, activities, logistics, orders, loans, materialRequests, orderRequests, authorizations] = await Promise.all([
   Inventory.find(),
   Activity.find({
     type: { $in: ['return', 'dispatch', 'request', 'grn', 'alert'] }
@@ -162,6 +162,7 @@ exports.getDashboardData = async (user) => {
   Order.find(),
   AssetLoan.find(),
   MaterialRequest.find(),
+  OrderRequest.find().lean(),
   ReceiptAuthorization.find().lean(),
   ]);
 
@@ -211,6 +212,24 @@ exports.getDashboardData = async (user) => {
       stockStatus: deriveStockStatus(i.available, i.reorderLevel)
     }));
 
+  const normalAwaitingManager = orderRequests.filter((request) =>
+    ['pending-manager', 'pending-approval'].includes(canonicalPurchaseStatus(request.status)),
+  ).length;
+  const normalAwaitingReceipt = orderRequests.filter((request) =>
+    ['ordered', 'partially-received'].includes(canonicalPurchaseStatus(request.status))
+    && (request.items || []).some((line) => outstandingQuantity(line) > 0),
+  ).length;
+  const normalAwaitingFinance = orderRequests.filter((request) =>
+    canonicalPurchaseStatus(request.status) === 'pending-finance',
+  ).length;
+  const emergencyAwaitingManager = authorizations.filter((item) => item.status === 'pending').length;
+  const emergencyAwaitingReceipt = authorizations.filter((item) =>
+    ['approved', 'partially-received'].includes(item.status),
+  ).length;
+  const emergencyAwaitingFinance = authorizations.filter((item) =>
+    Number(item.receivedQuantity || 0) > 0 && item.financeReviewStatus === 'pending',
+  ).length;
+
   return {
     managerName: user?.fullName?.split(' ')[0] || 'Manager',
     currentDate: new Date(),
@@ -226,9 +245,9 @@ exports.getDashboardData = async (user) => {
     })),
     reorderList,
     procurementWorkflow: {
-      awaitingManager: authorizations.filter(item => item.status === 'pending').length,
-      awaitingReceipt: authorizations.filter(item => ['approved', 'partially-received'].includes(item.status)).length,
-      awaitingFinance: authorizations.filter(item => item.receivedQuantity > 0 && item.financeReviewStatus === 'pending').length,
+      awaitingManager: normalAwaitingManager + emergencyAwaitingManager,
+      awaitingReceipt: normalAwaitingReceipt + emergencyAwaitingReceipt,
+      awaitingFinance: normalAwaitingFinance + emergencyAwaitingFinance,
     },
     logistics: logistics.map(l => ({
       label: l.label,
