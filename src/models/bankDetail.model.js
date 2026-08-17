@@ -31,7 +31,8 @@ const BankDetailSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true,
-  collection: 'bankdetails'
+  collection: 'bank_details'
 });
 
-module.exports = mongoose.model('BankDetail', BankDetailSchema);
+const BankDetail = mongoose.models.BankDetail || mongoose.model('BankDetail', BankDetailSchema, 'bank_details');
+module.exports = BankDetail;

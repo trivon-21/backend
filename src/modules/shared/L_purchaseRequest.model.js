@@ -5,26 +5,49 @@ const purchaseItemSchema = new mongoose.Schema({
   quantity:  Number,
   unitPrice: Number,
   total:     Number,
-});
+  // team fields (keep for compatibility)
+  inventoryId: mongoose.Schema.Types.ObjectId,
+  name:        String,
+  unitCost:    Number,
+  estimatedTotal: Number,
+}, { strict: false });
 
 const purchaseRequestSchema = new mongoose.Schema({
-  requestedBy:    String,   // inventory manager's name
-  requestedById:  { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  requestId:        String,
+  requestedBy:      String,
+  requestedById:    { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   requestedByEmail: String,
-  items:          [purchaseItemSchema],
-  totalAmount:    { type: Number, default: 0 },
-  reason:         String,   // note/justification
-
-  status: {
-    type: String,
-    enum: ["PENDING", "APPROVED", "REJECTED"],
-    default: "PENDING",
-  },
-
-  rejectionReason: String,
+  supplierName:     String,
+  supplierId:       { type: mongoose.Schema.Types.ObjectId },
+  items:            [purchaseItemSchema],
+  totalAmount:      { type: Number, default: 0 },   // your field
+  totalEstimate:    { type: Number, default: 0 },   // team field
+  reason:           String,
+  notes:            String,
+  priority:         String,
+  rejectionReason:  String,
+  approvedBy:       String,
   approvedAt:       Date,
   rejectedAt:       Date,
-  reviewedBy:       String,  // Finance Officer name
-}, { timestamps: true });
+  reviewedBy:       String,
+  status: {
+    type: String,
+    // team uses: pending-manager, approved, rejected
+    // your code uses: PENDING, APPROVED, REJECTED
+    enum: ["pending-manager", "PENDING", "APPROVED", "REJECTED",
+           "approved", "rejected", "pending-finance"],
+    default: "pending-manager",
+  },
+  statusVersion:   { type: Number, default: 0 },
+  source:          { type: String, default: "manual" },
+  decisionHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
+}, { timestamps: true, strict: false });
 
-module.exports = mongoose.model("L_PurchaseRequest", purchaseRequestSchema);
+const PurchaseRequest = mongoose.models.PurchaseRequest
+  || mongoose.model("PurchaseRequest", purchaseRequestSchema, "purchase_requests");
+
+if (!mongoose.models.L_PurchaseRequest) {
+  mongoose.model("L_PurchaseRequest", purchaseRequestSchema, "purchase_requests");
+}
+
+module.exports = PurchaseRequest;

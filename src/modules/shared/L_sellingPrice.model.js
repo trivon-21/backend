@@ -13,4 +13,9 @@ lSellingPriceSchema.pre("save", function (next) {
   next();
 });
 
-module.exports = mongoose.model("L_SellingPrice", lSellingPriceSchema);
+const SellingPrice = mongoose.models.SellingPrice || mongoose.model("SellingPrice", lSellingPriceSchema, "l_sellingprices");
+if (!mongoose.models.L_SellingPrice) {
+  mongoose.model("L_SellingPrice", lSellingPriceSchema, "l_sellingprices");
+}
+
+module.exports = SellingPrice;
