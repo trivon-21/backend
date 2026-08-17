@@ -1,14 +1,17 @@
 const mongoose = require("mongoose");
 
-const lChargeSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true, trim: true },
-  amount: { type: Number, required: true },
-  type: {
-    type: String,
-    enum: ["FIXED", "PERCENTAGE"],
-    default: "FIXED",
-  },
+const schema = new mongoose.Schema({
+  name:        { type: String, trim: true },
+  amount:      { type: Number },
+  type:        { type: String, enum: ["FIXED", "PERCENTAGE"], default: "FIXED" },
   description: { type: String, default: "" },
-}, { timestamps: true });
+}, { strict: false, timestamps: true });
 
-module.exports = mongoose.model("L_Charge", lChargeSchema);
+const Charge = mongoose.models.Charge
+  || mongoose.model("Charge", schema, "charges");
+
+if (!mongoose.models.L_Charge) {
+  mongoose.model("L_Charge", schema, "charges");
+}
+
+module.exports = Charge;

@@ -81,6 +81,21 @@ const getLSellingPriceModel = () => {
   }
 };
 
+function getMaterialName(material) {
+  if (!material) return "";
+  if (typeof material === "string") return material.trim();
+  if (typeof material === "object") {
+    return (
+      material.name ||
+      material.itemName ||
+      material.inventoryName ||
+      material.description ||
+      ""
+    ).toString().trim();
+  }
+  return String(material).trim();
+}
+
 const getLChargeModel = () => {
   try { return mongoose.model("L_Charge"); }
   catch {
@@ -102,12 +117,25 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 async function getSellingPrice(materialName) {
   const LInventory = getLInventoryModel();
   const LSellingPrice = getLSellingPriceModel();
+  const name = getMaterialName(materialName);
+  if (!name) return null;
 
-  let inventory = await LInventory.findOne({ name: materialName });
+  let inventory = await LInventory.findOne({ name });
   if (!inventory) {
-    inventory = await LInventory.findOne({ name: { $regex: materialName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: "i" } });
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    inventory = await LInventory.findOne({
+      $or: [
+        { name: { $regex: escaped, $options: "i" } },
+        { description: { $regex: escaped, $options: "i" } },
+      ],
+    });
   }
-  if (!inventory) return null;
+  if (!inventory) {
+    const sellingPrice = await LSellingPrice.findOne({
+      inventoryName: { $regex: name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: "i" },
+    });
+    return sellingPrice ? sellingPrice.sellingPricePerUnit : null;
+  }
 
   const sp = await LSellingPrice.findOne({ inventoryId: inventory._id });
   return sp ? sp.sellingPricePerUnit : inventory.costPerUnit;
@@ -118,6 +146,42 @@ async function getCharge(chargeName) {
   const LCharge = getLChargeModel();
   const charge = await LCharge.findOne({ name: chargeName });
   return charge ? charge.amount : 0;
+}
+
+async function resolveInvoiceSource(reportId) {
+  const InspectionReport = getReportModel();
+  const LInstallation = getLInstallationModel();
+
+  let report = null;
+  if (InspectionReport) {
+    report = await InspectionReport.findById(reportId);
+  }
+
+  let installation = null;
+  if (!report) {
+    installation = await LInstallation.findById(reportId);
+    if (!installation) {
+      installation = await LInstallation.findOne({
+        $or: [
+          { orderId: reportId },
+          { inspectionTicketId: reportId },
+        ],
+      });
+    }
+  }
+
+  if (!report && installation) {
+    report = {
+      _id: installation._id,
+      orderId: installation.orderId,
+      ticketId: installation.inspectionTicketId,
+      itemName: installation.productType || "",
+      submittedAt: installation.updatedAt || installation.createdAt,
+      updatedAt: installation.updatedAt || installation.createdAt,
+    };
+  }
+
+  return { report, installation };
 }
 
 // ── GET invoice queue ─────────────────────────────────────────────────────────
@@ -131,9 +195,7 @@ exports.getInvoiceQueue = async (req, res) => {
     const LInstallation = getLInstallationModel();
     const Ticket = getTicketModel();
 
-    const installations = await LInstallation.find({
-      "materials.0": { $exists: true },
-    });
+    const installations = await LInstallation.find({});
 
     const result = [];
 
@@ -148,8 +210,6 @@ exports.getInvoiceQueue = async (req, res) => {
         ],
         status: "SUBMITTED",
       });
-      if (!report) continue;
-
       const order = await Order.findById(installation.orderId);
 
       let user = await User.findById(installation.customerId);
@@ -159,7 +219,7 @@ exports.getInvoiceQueue = async (req, res) => {
       }
 
       result.push({
-        reportId: report._id,
+        reportId: report ? report._id : installation._id,
         installationId: installation._id,
         ticketId: installation.inspectionTicketId,
         orderId: order?._id || installation.orderId,
@@ -170,9 +230,10 @@ exports.getInvoiceQueue = async (req, res) => {
           : "Unknown",
         customerEmail: user?.email || "",
         customerAddress: user?.address || installation.location || "",
-        date: report.submittedAt || report.updatedAt,
-        itemName: order?.itemName || installation.productType || "",
-        materialsCount: installation.materials.length,
+        date: report ? (report.submittedAt || report.updatedAt) : (installation.updatedAt || installation.createdAt),
+        itemName: order?.itemName || order?.items?.[0]?.name || order?.items?.[0]?.itemName || installation.productType || "",
+        acModel: order?.itemName || order?.items?.[0]?.name || order?.items?.[0]?.itemName || installation.productType || "",
+        materialsCount: installation.materials?.length || 0,
         location: installation.location || "",
       });
     }
@@ -188,9 +249,10 @@ exports.getInvoiceQueue = async (req, res) => {
 exports.getInvoiceQueueDetails = async (req, res) => {
   try {
     const { reportId } = req.params;
-    const InspectionReport = getReportModel();
-    const report = await InspectionReport.findById(reportId);
-    if (!report) return res.status(404).json({ message: "Report not found" });
+    const resolved = await resolveInvoiceSource(reportId);
+    const report = resolved.report;
+    const installation = resolved.installation;
+    if (!report && !installation) return res.status(404).json({ message: "Report not found" });
 
     const Order = getOrderModel();
     const User = getUserModel();
@@ -200,7 +262,7 @@ exports.getInvoiceQueueDetails = async (req, res) => {
     const ticket = await Ticket.findById(report.ticketId);
     const order = await Order.findById(report.orderId);
     const user = await User.findById(ticket?.customerId || report.customerId);
-    const installation = await LInstallation.findOne({
+    const resolvedInstallation = installation || await LInstallation.findOne({
       $or: [
         { orderId: report.orderId },
         { inspectionTicketId: report.ticketId },
@@ -209,15 +271,19 @@ exports.getInvoiceQueueDetails = async (req, res) => {
 
     res.json({
       report,
-      order: { orderRef: order?.orderRef, itemName: order?.itemName, amount: order?.amount },
+      order: {
+        orderRef: order?.orderRef,
+        itemName: order?.itemName || order?.items?.[0]?.name || order?.items?.[0]?.itemName || report.itemName || "",
+        amount: order?.amount || order?.total || order?.subtotal || 0,
+      },
       customer: {
         name: user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() : "Unknown",
         email: user?.email || "",
         address: user?.address || "",
         phone: user?.phoneNumber || "",
       },
-      materials: installation?.materials || [],
-      materialsCount: installation?.materials?.length || 0,
+      materials: resolvedInstallation?.materials || [],
+      materialsCount: resolvedInstallation?.materials?.length || 0,
     });
   } catch (error) {
     console.error("getInvoiceQueueDetails error:", error);
@@ -236,21 +302,23 @@ exports.generateInvoice = async (req, res) => {
     const LInstallation = getLInstallationModel();
     const Ticket = getTicketModel();
 
-    const report = await InspectionReport.findById(reportId);
-    if (!report) return res.status(404).json({ message: "Report not found" });
+    const resolved = await resolveInvoiceSource(reportId);
+    const report = resolved.report;
+    const installation = resolved.installation;
+    if (!report && !installation) return res.status(404).json({ message: "Report not found" });
 
     const existing = await Invoice.findOne({ orderId: report.orderId });
     if (existing) {
       return res.json({ message: "Invoice already exists", invoice: existing });
     }
 
-    const installation = await LInstallation.findOne({
+    const resolvedInstallation = installation || await LInstallation.findOne({
       $or: [
         { orderId: report.orderId },
         { inspectionTicketId: report.ticketId },
       ]
     });
-    if (!installation || !installation.materials || installation.materials.length === 0) {
+    if (!resolvedInstallation || !resolvedInstallation.materials || resolvedInstallation.materials.length === 0) {
       return res.status(400).json({ message: "No materials found in installation record. Main technician must add materials first." });
     }
 
@@ -258,23 +326,24 @@ exports.generateInvoice = async (req, res) => {
     const order = await Order.findById(report.orderId);
 
     let user = null;
-    if (installation.customerId) user = await User.findById(installation.customerId);
+    if (resolvedInstallation.customerId) user = await User.findById(resolvedInstallation.customerId);
     if (!user && ticket?.customerId) user = await User.findById(ticket.customerId);
 
     const customerName = user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown" : "Unknown";
     const customerEmail = user?.email || "";
-    const customerAddress = user?.address || installation.location || "";
+    const customerAddress = user?.address || resolvedInstallation.location || "";
 
     const items = [];
     let itemNo = 1;
 
-    if (order?.itemName && order?.amount) {
-      const acQty = order.quantity || 1;
-      const acPrice = order.amount || 0;
+    const acModelName = order?.itemName || order?.items?.[0]?.name || order?.items?.[0]?.itemName || resolvedInstallation.productType || "";
+    const acQty = Number(order?.quantity || order?.items?.[0]?.quantity || resolvedInstallation.units || 1) || 1;
+    const acPrice = Number(order?.amount || order?.total || order?.subtotal || order?.items?.[0]?.price || 0) || 0;
 
+    if (acModelName || acPrice > 0) {
       items.push({
         no: itemNo++,
-        itemName: order.itemName,
+        itemName: acModelName || "AC Unit",
         description: "AC Unit Supply",
         qty: acQty,
         rate: acPrice,
@@ -282,13 +351,14 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    for (const material of installation.materials) {
+    for (const material of resolvedInstallation.materials) {
       const qty = Number(material.quantity) || 1;
-      const unitPrice = await getSellingPrice(material.item) || 0;
+      const materialName = getMaterialName(material.item);
+      const unitPrice = await getSellingPrice(materialName) || 0;
 
       items.push({
         no: itemNo++,
-        itemName: material.item,
+        itemName: materialName || "Material",
         description: `Installation material`,
         qty: qty,
         rate: unitPrice,
@@ -311,9 +381,9 @@ exports.generateInvoice = async (req, res) => {
     const grandTotal = subTotal + serviceCharge;
 
     const invoice = new Invoice({
-      orderId: installation.orderId || report.orderId,
-      customerId: installation.customerId || ticket?.customerId,
-      ticketId: installation.inspectionTicketId || report.ticketId,
+      orderId: resolvedInstallation.orderId || report.orderId,
+      customerId: resolvedInstallation.customerId || ticket?.customerId,
+      ticketId: resolvedInstallation.inspectionTicketId || report.ticketId,
       reportId: report._id,
       invoiceType: "INSTALLATION",
       customerName,
@@ -330,9 +400,9 @@ exports.generateInvoice = async (req, res) => {
     await createLog({
       eventType: "INVOICE_GENERATED",
       paymentType: "INVOICE",
-      orderId: (installation.orderId || report.orderId)?.toString() || "",
+      orderId: (resolvedInstallation.orderId || report.orderId)?.toString() || "",
       invoiceId: invoice.invoiceNumber || invoice._id.toString(),
-      customerId: installation.customerId || ticket?.customerId,
+      customerId: resolvedInstallation.customerId || ticket?.customerId,
       customerName,
       customerEmail,
       amount: grandTotal,
@@ -949,10 +1019,11 @@ exports.generateRepairInvoice = async (req, res) => {
 
     for (const material of repair.materials) {
       const qty       = Number(material.quantity) || 1;
-      const unitPrice = await getSellingPrice(material.item) || 0;
+      const materialName = getMaterialName(material.item);
+      const unitPrice = await getSellingPrice(materialName) || 0;
       items.push({
         no:          itemNo++,
-        itemName:    material.item,
+        itemName:    materialName || "Material",
         description: "Repair material",
         qty,
         rate:        unitPrice,

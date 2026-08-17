@@ -1,207 +1,272 @@
 const mongoose = require("mongoose");
-const ServiceTicket = require("../shared/ticket/ServiceTicket.model");
-const { sendServiceRejectionEmail, sendServiceApprovalEmail } = require("../shared/notification/email.service");
 const { createLog } = require("./auditLog.controller");
+const { sendServiceApprovalEmail, sendServiceRejectionEmail } = require("../shared/notification/email.service");
+
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
+
+// ── Model loader — strict:false lets us add payment fields to team's documents ─
+const getServiceTicketModel = () => {
+  try { return mongoose.model("ServiceTicket"); }
+  catch {
+    const s = new mongoose.Schema({
+      customerId:      mongoose.Schema.Types.ObjectId,
+      orderId:         mongoose.Schema.Types.ObjectId,
+      serviceType:     String,
+      requestType:     String,
+      category:        String,
+      serviceFee:      { type: Number, default: 0 },
+      paymentStatus:   String,
+      paymentSlipUrl:  String,
+      slipUploadedAt:  Date,
+      approvedAt:      Date,
+      rejectedAt:      Date,
+      rejectionReason: String,
+      status:          String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("ServiceTicket", s, "service_tickets");
+  }
+};
 
 const getUserModel = () => {
   try { return mongoose.model("User"); }
   catch {
     const s = new mongoose.Schema({
-      fullName: String, lastName: String, email: String, phoneNumber: String,
+      fullName: String, lastName: String,
+      email: String, phoneNumber: String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("User", s);
+    return mongoose.model("User", s, "users");
   }
 };
-// load Order model
-const getOrderModel = () => {
-  try { return mongoose.model("Order"); }
-  catch {
-    const s = new mongoose.Schema({ orderRef: String, itemName: String }, { strict: false });
-    return mongoose.model("Order", s);
+
+// ── Helper: resolve serviceType from team's document ─────────────────────────
+const resolveServiceType = (ticket) => {
+  if (ticket.serviceType) return ticket.serviceType.toUpperCase();
+  if (ticket.requestType) {
+    const rt = ticket.requestType.toLowerCase();
+    if (rt.includes("repair"))      return "REPAIR";
+    if (rt.includes("maintenance")) return "MAINTENANCE";
+    return ticket.requestType.toUpperCase();
   }
-};
-// load InspectionTicket model
-const formatTicket = async (t) => {
-  const User = getUserModel();
-  const Order = getOrderModel();
-  const user = await User.findById(t.customerId);
-  const order = t.orderId ? await Order.findById(t.orderId) : null;
-
-  // Fallback: if user not found, try to get customer name from order
-  let customerName = "Unknown";
-  let customerEmail = "";
-
-  if (user) {
-    customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim() || "Unknown";
-    customerEmail = user.email || "";
-  } else if (order?.customerName) {
-    customerName = order.customerName;
-    customerEmail = order.customerEmail || "";
+  if (ticket.category) {
+    const cat = ticket.category.toLowerCase();
+    if (cat.includes("repair"))      return "REPAIR";
+    if (cat.includes("maintenance")) return "MAINTENANCE";
   }
-
-  return {
-    _id: t._id,
-    orderId: order?.orderRef || (t.orderId?.toString() || "-"),
-    ticketId: `SVC-${t._id.toString().slice(-6).toUpperCase()}`,
-    customerName: customerName,
-    customerEmail: customerEmail,
-    serviceType: t.serviceType,
-    description: t.description || "",
-    amount: t.serviceFee || 0,
-    slipUrl: t.paymentSlipUrl || null,
-    paymentStatus: t.paymentStatus,
-    rejectionReason: t.rejectionReason || null,
-    slipUploadedAt: t.slipUploadedAt,
-    approvedAt: t.approvedAt,
-    rejectedAt: t.rejectedAt,
-    updatedAt: t.updatedAt,
-    createdAt: t.createdAt,
-  };
+  return "REPAIR";
 };
 
-// GET pending verification — serviceType = REPAIR or MAINTENANCE
+// ── GET pending verification ──────────────────────────────────────────────────
 exports.getPendingVerification = async (req, res) => {
   try {
     const { serviceType } = req.params;
-    const tickets = await ServiceTicket.find({
-      serviceType: serviceType.toUpperCase(),
-      paymentStatus: "UNDER_REVIEW",
-    }).sort({ slipUploadedAt: -1 });
-
-    const formatted = await Promise.all(tickets.map(formatTicket));
-    res.json(formatted);
-  } catch (error) {
-    console.error("getPendingVerification error:", error);
-    res.status(500).json({ message: "Failed to fetch", error: error.message });
-  }
-};
-
-// APPROVE
-exports.approvePayment = async (req, res) => {
-  try {
-    const ticket = await ServiceTicket.findById(req.params.id);
-    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-
-    ticket.paymentStatus = "APPROVED";
-    ticket.approvedAt = new Date();
-    ticket.rejectionReason = null;
-    await ticket.save();
-
+    const ServiceTicket = getServiceTicketModel();
     const User = getUserModel();
-    const Order = getOrderModel();
-    const user = await User.findById(ticket.customerId);
-    const order = ticket.orderId ? await Order.findById(ticket.orderId) : null;
 
-    await createLog({
-      eventType: "PAYMENT_APPROVED",
-      paymentType: ticket.serviceType,
-      orderId: order?.orderRef || (ticket.orderId?.toString() || ""),
-      customerId: ticket.customerId,
-      customerName: user?.fullName || "Unknown",
-      customerEmail: user?.email || "",
-      amount: ticket.serviceFee || 0,
-      slipUrl: ticket.paymentSlipUrl || null,
-      performedBy: "Finance Officer",
-    });
+    const query = { paymentStatus: "UNDER_REVIEW" };
 
-    if (user?.email) {
-      await sendServiceApprovalEmail(
-        user.email,
-        user.fullName || "Customer",
-        order?.orderRef || ticket._id.toString(),
-        ticket.serviceType
-      );
+    // Match by serviceType, requestType, or category
+    if (serviceType) {
+      query.$or = [
+        { serviceType: { $regex: serviceType, $options: "i" } },
+        { requestType: { $regex: serviceType, $options: "i" } },
+        { category:    { $regex: serviceType, $options: "i" } },
+      ];
     }
 
-    res.json({ message: "Payment approved and email sent" });
+    const tickets = await ServiceTicket.find(query).sort({ createdAt: 1 });
+
+    const enriched = await Promise.all(tickets.map(async (t) => {
+      const obj = t.toObject();
+      obj.serviceType = resolveServiceType(t);
+      if (t.customerId) {
+        const user = await User.findById(t.customerId);
+        if (user) obj.customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
+      }
+      return obj;
+    }));
+
+    res.json(enriched);
   } catch (error) {
-    console.error("approvePayment error:", error);
-    res.status(500).json({ message: "Approval failed", error: error.message });
+    res.status(500).json({ message: "Failed", error: error.message });
   }
 };
 
-// REJECT
+// ── UPLOAD slip ───────────────────────────────────────────────────────────────
+exports.uploadSlip = async (req, res) => {
+  try {
+    const { slipUrl } = req.body;
+    if (!slipUrl) return res.status(400).json({ message: "Slip required" });
+
+    const ServiceTicket = getServiceTicketModel();
+    const ticket = await ServiceTicket.findByIdAndUpdate(
+      req.params.ticketId,
+      { paymentSlipUrl: slipUrl, slipUploadedAt: new Date(), paymentStatus: "UNDER_REVIEW" },
+      { new: true }
+    );
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+    await createLog({
+      eventType:   "SERVICE_PAYMENT_SUBMITTED",
+      paymentType: resolveServiceType(ticket) === "MAINTENANCE" ? "MAINTENANCE" : "REPAIR",
+      ticketId:    ticket._id.toString(),
+      customerId:  ticket.customerId,
+      amount:      ticket.serviceFee || 0,
+      slipUrl,
+      performedBy: "Customer",
+    });
+
+    res.json({ message: "Slip uploaded", ticket });
+  } catch (error) {
+    res.status(500).json({ message: "Failed", error: error.message });
+  }
+};
+
+// ── APPROVE payment ───────────────────────────────────────────────────────────
+exports.approvePayment = async (req, res) => {
+  try {
+    const ServiceTicket = getServiceTicketModel();
+    const User = getUserModel();
+
+    const ticket = await ServiceTicket.findByIdAndUpdate(
+      req.params.id,
+      { paymentStatus: "APPROVED", approvedAt: new Date() },
+      { new: true }
+    );
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+    const user = ticket.customerId ? await User.findById(ticket.customerId) : null;
+    const customerName  = user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() : "Customer";
+    const customerEmail = user?.email || "";
+    const svcType = resolveServiceType(ticket);
+
+    await createLog({
+      eventType:    "SERVICE_PAYMENT_APPROVED",
+      paymentType:  svcType === "MAINTENANCE" ? "MAINTENANCE" : "REPAIR",
+      ticketId:     ticket._id.toString(),
+      customerId:   ticket.customerId,
+      customerName,
+      customerEmail,
+      amount:       ticket.serviceFee || 0,
+      performedBy:  "Finance Officer",
+    });
+
+    if (customerEmail) {
+      await sendServiceApprovalEmail(customerEmail, customerName, svcType);
+    }
+
+    res.json({ message: "Payment approved", ticket });
+  } catch (error) {
+    res.status(500).json({ message: "Failed", error: error.message });
+  }
+};
+
+// ── REJECT payment ────────────────────────────────────────────────────────────
 exports.rejectPayment = async (req, res) => {
   try {
     const { rejectionReason } = req.body;
-    if (!rejectionReason) return res.status(400).json({ message: "Rejection reason required" });
+    if (!rejectionReason) return res.status(400).json({ message: "Reason required" });
 
-    const ticket = await ServiceTicket.findById(req.params.id);
+    const ServiceTicket = getServiceTicketModel();
+    const User = getUserModel();
+
+    const ticket = await ServiceTicket.findByIdAndUpdate(
+      req.params.id,
+      { paymentStatus: "REJECTED", rejectionReason, rejectedAt: new Date() },
+      { new: true }
+    );
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
-    ticket.paymentStatus = "REJECTED";
-    ticket.rejectionReason = rejectionReason;
-    ticket.rejectedAt = new Date();
-    await ticket.save();
-
-    const User = getUserModel();
-    const Order = getOrderModel();
-    const user = await User.findById(ticket.customerId);
-    const order = ticket.orderId ? await Order.findById(ticket.orderId) : null;
+    const user = ticket.customerId ? await User.findById(ticket.customerId) : null;
+    const customerName  = user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() : "Customer";
+    const customerEmail = user?.email || "";
+    const svcType = resolveServiceType(ticket);
 
     await createLog({
-      eventType: "PAYMENT_REJECTED",
-      paymentType: ticket.serviceType,
-      orderId: order?.orderRef || (ticket.orderId?.toString() || ""),
-      customerId: ticket.customerId,
-      customerName: user?.fullName || "Unknown",
-      customerEmail: user?.email || "",
-      amount: ticket.serviceFee || 0,
-      slipUrl: ticket.paymentSlipUrl || null,
-      rejectionReason: rejectionReason,
-      performedBy: "Finance Officer",
+      eventType:      "SERVICE_PAYMENT_REJECTED",
+      paymentType:    svcType === "MAINTENANCE" ? "MAINTENANCE" : "REPAIR",
+      ticketId:       ticket._id.toString(),
+      customerId:     ticket.customerId,
+      customerName,
+      customerEmail,
+      amount:         ticket.serviceFee || 0,
+      rejectionReason,
+      performedBy:    "Finance Officer",
     });
 
-    // Reupload link — same page used for original slip upload
-    const reuploadLink = `${FRONTEND_URL}/service-payment?ticketId=${ticket._id}`;
-
-    if (user?.email) {
-      await sendServiceRejectionEmail(
-        user.email,
-        user.fullName || "Customer",
-        order?.orderRef || ticket._id.toString(),
-        ticket.serviceType,
-        rejectionReason,
-        reuploadLink
-      );
+    if (customerEmail) {
+      await sendServiceRejectionEmail(customerEmail, customerName, rejectionReason, svcType);
     }
 
-    res.json({ message: "Payment rejected and email sent" });
+    res.json({ message: "Payment rejected", ticket });
   } catch (error) {
-    console.error("rejectPayment error:", error);
-    res.status(500).json({ message: "Rejection failed", error: error.message });
+    res.status(500).json({ message: "Failed", error: error.message });
   }
 };
 
-// GET verified
+// ── GET verified payments ─────────────────────────────────────────────────────
 exports.getVerifiedPayments = async (req, res) => {
   try {
     const { serviceType } = req.params;
-    const tickets = await ServiceTicket.find({
-      serviceType: serviceType.toUpperCase(),
-      paymentStatus: "APPROVED",
-    }).sort({ approvedAt: -1 });
+    const ServiceTicket = getServiceTicketModel();
+    const User = getUserModel();
 
-    const formatted = await Promise.all(tickets.map(formatTicket));
-    res.json(formatted);
+    const query = { paymentStatus: "APPROVED" };
+    if (serviceType) {
+      query.$or = [
+        { serviceType: { $regex: serviceType, $options: "i" } },
+        { requestType: { $regex: serviceType, $options: "i" } },
+        { category:    { $regex: serviceType, $options: "i" } },
+      ];
+    }
+
+    const tickets = await ServiceTicket.find(query).sort({ approvedAt: -1 });
+
+    const enriched = await Promise.all(tickets.map(async (t) => {
+      const obj = t.toObject();
+      obj.serviceType = resolveServiceType(t);
+      if (t.customerId) {
+        const user = await User.findById(t.customerId);
+        if (user) obj.customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
+      }
+      return obj;
+    }));
+
+    res.json(enriched);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch", error: error.message });
+    res.status(500).json({ message: "Failed", error: error.message });
   }
 };
 
-// GET rejected
+// ── GET rejected payments ─────────────────────────────────────────────────────
 exports.getRejectedPayments = async (req, res) => {
   try {
     const { serviceType } = req.params;
-    const tickets = await ServiceTicket.find({
-      serviceType: serviceType.toUpperCase(),
-      paymentStatus: "REJECTED",
-    }).sort({ rejectedAt: -1 });
+    const ServiceTicket = getServiceTicketModel();
+    const User = getUserModel();
 
-    const formatted = await Promise.all(tickets.map(formatTicket));
-    res.json(formatted);
+    const query = { paymentStatus: "REJECTED" };
+    if (serviceType) {
+      query.$or = [
+        { serviceType: { $regex: serviceType, $options: "i" } },
+        { requestType: { $regex: serviceType, $options: "i" } },
+        { category:    { $regex: serviceType, $options: "i" } },
+      ];
+    }
+
+    const tickets = await ServiceTicket.find(query).sort({ rejectedAt: -1 });
+
+    const enriched = await Promise.all(tickets.map(async (t) => {
+      const obj = t.toObject();
+      obj.serviceType = resolveServiceType(t);
+      if (t.customerId) {
+        const user = await User.findById(t.customerId);
+        if (user) obj.customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
+      }
+      return obj;
+    }));
+
+    res.json(enriched);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch", error: error.message });
+    res.status(500).json({ message: "Failed", error: error.message });
   }
 };

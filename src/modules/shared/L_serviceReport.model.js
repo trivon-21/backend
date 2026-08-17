@@ -2,8 +2,8 @@ const mongoose = require("mongoose");
 
 const materialUsedSchema = new mongoose.Schema({
   item: { type: String, required: true },
-  quantity: { type: String, required: true },
-});
+  quantity: { type: mongoose.Schema.Types.Mixed, required: true },
+}, { _id: true });
 
 const lServiceReportSchema = new mongoose.Schema({
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -20,7 +20,7 @@ const lServiceReportSchema = new mongoose.Schema({
   },
   repairType: {
     type: String,
-    enum: ["MINOR", "MAJOR"],
+    enum: ["MINOR", "MAJOR", null],
     default: null,
   },
   units: { type: Number, default: 1, min: 1 },
@@ -40,6 +40,11 @@ const lServiceReportSchema = new mongoose.Schema({
     default: "Pending",
   },
   submittedAt: { type: Date, default: null },
-}, { timestamps: true });
+}, { timestamps: true, strict: false });
 
-module.exports = mongoose.model("L_ServiceReport", lServiceReportSchema);
+const ServiceReport = mongoose.models.ServiceReport || mongoose.model("ServiceReport", lServiceReportSchema, "service_reports");
+if (!mongoose.models.L_ServiceReport) {
+  mongoose.model("L_ServiceReport", lServiceReportSchema, "service_reports");
+}
+
+module.exports = ServiceReport;

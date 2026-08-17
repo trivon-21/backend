@@ -9,8 +9,9 @@ const SystemConfig = require('../src/models/SystemConfig');
 
 async function seedSystemConfig() {
   try {
-    // Connect to database
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/Dashintha_Test');
+    // Connect to the shared team database configured in the environment.
+    const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/airlux';
+    await mongoose.connect(mongoUri);
     console.log('Connected to MongoDB');
 
     // Check if config already exists

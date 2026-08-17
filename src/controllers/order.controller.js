@@ -306,10 +306,12 @@ exports.submitPayment = async (req, res) => {
     if (isBO && req.file) {
       const ext = path.extname(req.file.originalname);
       order.paymentSlipUrl = `uploads/slips/${orderReference}-slip${ext}`;
+      order.paymentStatus = 'Under Review';
     }
 
     // 4. Update Status
     order.status = isBO ? 'Under Review (Finance)' : 'Pending Review';
+    if (isBO) order.orderType = 'Buy Only';
 
     await order.save();
 
