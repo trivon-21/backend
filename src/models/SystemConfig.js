@@ -108,6 +108,10 @@ const systemConfigSchema = new mongoose.Schema(
         type: String,
         default: '+94 11 234 5678',
       },
+      address: {
+        type: String,
+        default: '123 Galle Road, Colombo 03, Sri Lanka',
+      },
     },
     logging: {
       logRetentionDays: {
