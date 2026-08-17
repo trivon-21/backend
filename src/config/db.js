@@ -2,19 +2,33 @@ const mongoose = require("mongoose");
 const dns = require("dns");
 
 function normalizeMongoUri() {
-  const uri = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/Lamya";
+  const explicitUri = process.env.MONGO_URI || process.env.MONGODB_URI;
 
-  try {
-    const parsed = new URL(uri);
-    if (parsed.pathname && parsed.pathname !== "/") {
-      return uri;
+  if (explicitUri && explicitUri.trim()) {
+    try {
+      const parsed = new URL(explicitUri.trim());
+      if (parsed.pathname && parsed.pathname !== "/") {
+        return explicitUri.trim();
+      }
+    } catch (err) {
+      // Ignore URL parse failures for plain local connection strings.
     }
-  } catch (err) {
-    // Ignore URL parse failures for plain local connection strings.
+
+    const dbName = process.env.MONGO_DB_NAME || "airlux";
+    return explicitUri.trim().endsWith("/")
+      ? `${explicitUri.trim()}${dbName}`
+      : `${explicitUri.trim()}/${dbName}`;
   }
 
-  const dbName = process.env.MONGO_DB_NAME || "Lamya";
-  return uri.endsWith("/") ? `${uri}${dbName}` : `${uri}/${dbName}`;
+  const host = process.env.MONGO_HOST || "localhost";
+  const port = process.env.MONGO_PORT || "27017";
+  const dbName = process.env.MONGO_DB_NAME || "airlux";
+
+  if (host.includes("mongodb://") || host.includes("mongodb+srv://")) {
+    return host.endsWith("/") ? `${host}${dbName}` : `${host}/${dbName}`;
+  }
+
+  return `mongodb://${host}:${port}/${dbName}`;
 }
 
 async function connectDB() {
@@ -30,7 +44,7 @@ async function connectDB() {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });
-    const dbName = conn.connection.name || process.env.MONGO_DB_NAME || "Lamya";
+    const dbName = conn.connection.name || process.env.MONGO_DB_NAME || "airlux";
     console.log(`MongoDB connected: ${conn.connection.host} / database: ${dbName}`);
   } catch (err) {
     if (err.message && err.message.includes("querySrv ECONNREFUSED")) {
@@ -45,3 +59,4 @@ async function connectDB() {
 }
 
 module.exports = connectDB;
+module.exports.normalizeMongoUri = normalizeMongoUri;

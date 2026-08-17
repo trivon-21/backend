@@ -11,7 +11,7 @@ const ServiceRequest = require("../src/models/ServiceRequest");
 const Inquiry = require("../src/models/Inquiry");
 const Feedback = require("../src/models/Feedback");
 
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/airlux";
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/airlux";
 
 async function connectDB() {
   try {

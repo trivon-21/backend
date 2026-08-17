@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
-const AuditLog = require("../shared/audit/auditLog.model");
+const PaymentAuditLog = require("../shared/audit/auditLog.model");
 
 exports.createLog = async (data) => {
   try {
-    await AuditLog.create(data);
+    await PaymentAuditLog.create(data);
   } catch (error) {
     console.error("Audit log creation failed:", error.message);
   }
@@ -34,8 +34,8 @@ exports.getLogs = async (req, res) => {
     }
 
     const skip  = (parseInt(page) - 1) * parseInt(limit);
-    const total = await AuditLog.countDocuments(query);
-    const logs  = await AuditLog.find(query)
+    const total = await PaymentAuditLog.countDocuments(query);
+    const logs  = await PaymentAuditLog.find(query)
       .sort({ createdAt: 1 })   // ← oldest first
       .skip(skip)
       .limit(parseInt(limit));
@@ -70,7 +70,7 @@ exports.getLogs = async (req, res) => {
 
 exports.getLog = async (req, res) => {
   try {
-    const log = await AuditLog.findById(req.params.id);
+    const log = await PaymentAuditLog.findById(req.params.id);
     if (!log) return res.status(404).json({ message: "Log not found" });
     res.json(log);
   } catch (error) {
@@ -80,9 +80,9 @@ exports.getLog = async (req, res) => {
 
 exports.getStats = async (req, res) => {
   try {
-    const total    = await AuditLog.countDocuments();
-    const approved = await AuditLog.countDocuments({ eventType: { $in: ["PAYMENT_APPROVED","SERVICE_PAYMENT_APPROVED","INVOICE_ACCEPTED","INVOICE_PAID"] } });
-    const rejected = await AuditLog.countDocuments({ eventType: { $in: ["PAYMENT_REJECTED","SERVICE_PAYMENT_REJECTED","INVOICE_REJECTED","INVOICE_AUTO_CANCELLED"] } });
+    const total    = await PaymentAuditLog.countDocuments();
+    const approved = await PaymentAuditLog.countDocuments({ eventType: { $in: ["PAYMENT_APPROVED","SERVICE_PAYMENT_APPROVED","INVOICE_ACCEPTED","INVOICE_PAID"] } });
+    const rejected = await PaymentAuditLog.countDocuments({ eventType: { $in: ["PAYMENT_REJECTED","SERVICE_PAYMENT_REJECTED","INVOICE_REJECTED","INVOICE_AUTO_CANCELLED"] } });
     res.json({ total, approved, rejected, pending: 0 });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch stats", error: error.message });

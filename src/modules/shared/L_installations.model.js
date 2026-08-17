@@ -12,14 +12,14 @@ const siteDetailsSchema = new mongoose.Schema({
   ceilingHeight: { type: String, default: "" },
   wallType: { type: String, default: "" },
   powerSupply: { type: String, default: "" },
-  outdoorAccess: { type: String, default: "" },
+  outdoorAccess: { type: Boolean, default: false },
 }, { _id: false });
 
 const lInstallationSchema = new mongoose.Schema({
   orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order", default: null },
   inspectionTicketId: { type: mongoose.Schema.Types.ObjectId, ref: "InspectionTicket", default: null },
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  assignedTeamId: { type: Number, default: null },
+  assignedTeamId: { type: mongoose.Schema.Types.ObjectId, default: null },
   assignedTeamName: { type: String, default: "" },
   productType: { type: String, default: "" },
   units: { type: Number, default: 1 },
@@ -33,6 +33,11 @@ const lInstallationSchema = new mongoose.Schema({
     enum: ["Pending", "Assigned", "In Progress", "Completed", "Cancelled"],
     default: "Pending",
   },
-}, { timestamps: true });
+}, { timestamps: true, strict: false });
 
-module.exports = mongoose.model("L_Installation", lInstallationSchema);
+const Installation = mongoose.models.Installation || mongoose.model("Installation", lInstallationSchema, "installations");
+if (!mongoose.models.L_Installation) {
+  mongoose.model("L_Installation", lInstallationSchema, "installations");
+}
+
+module.exports = Installation;

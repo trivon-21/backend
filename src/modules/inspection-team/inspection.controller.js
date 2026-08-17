@@ -88,7 +88,7 @@ exports.startInspection = async (req, res) => {
 // ── GET ongoing inspections ───────────────────────────────────────────────────
 exports.getOngoingInspections = async (req, res) => {
   try {
-    const tickets = await InspectionTicket.find({ status: { $in: ["ONGOING", "REPORT_RECORDED"] } }).sort({ startedAt: -1 });
+    const tickets = await InspectionTicket.find({ status: "ONGOING" }).sort({ startedAt: -1 });
     const Order = getOrderModel();
     const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
