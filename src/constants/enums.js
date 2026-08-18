@@ -120,7 +120,6 @@ const API_SEGMENTS = {
   DASHBOARD: '/dashboard',
   CUSTOMERS: '/customers',
   SERVICE_REPORTS: '/service-reports',
-  AUTH: '/auth',
   TASKS: '/tasks',
   TASKS_BY_ID: '/tasks/:id',
   TASKS_STATUS: '/tasks/:id/status',

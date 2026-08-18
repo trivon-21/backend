@@ -12,7 +12,6 @@ const serviceHistoryController = require('../modules/shared/service-history/serv
 const dashboardRoutes = require('../modules/technician/dashboard.routes');
 const customerRoutes = require('../modules/user/user.routes');
 const serviceReportRoutes = require('../modules/technician/technician.routes');
-const authRoutes = require('../modules/auth/auth.routes');
 const maintenanceRoutes = require('../modules/shared/maintenance/maintenance.routes');
 const { API_SEGMENTS } = require('../constants/enums');
 
@@ -29,7 +28,6 @@ router.use(API_SEGMENTS.DASHBOARD, dashboardRoutes);
 router.use(API_SEGMENTS.CUSTOMERS, customerRoutes);
 router.use(API_SEGMENTS.SERVICE_REPORTS, serviceReportRoutes);
 router.use(API_SEGMENTS.MAINTENANCE, maintenanceRoutes);
-router.use(API_SEGMENTS.AUTH, authRoutes);
 
 router.get(API_SEGMENTS.TASKS, serviceTeamTaskController.getTasks);
 router.get(API_SEGMENTS.TASKS_BY_ID, serviceTeamTaskController.getTaskById);

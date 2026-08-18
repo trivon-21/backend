@@ -209,7 +209,7 @@ MAIL_PASS=your-app-password
 REMINDER_JOB_INTERVAL=60  # minutes (default: 60)
 
 # Server
-PORT=3000
+PORT=5000
 
 # Database
 MONGODB_URI=mongodb://localhost:27017/maintenance-db

@@ -528,7 +528,7 @@ MAIL_PASS=your-app-password
 REMINDER_JOB_INTERVAL=60  # minutes between reminder checks
 
 # Server
-PORT=3000
+PORT=5000
 ```
 
 ---
