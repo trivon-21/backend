@@ -10,9 +10,9 @@ router.post('/schedules/:scheduleId/send-to-csa', controller.sendScheduleToCsa);
 router.post('/schedules/:scheduleId/send-to-customer', controller.sendScheduleToCustomer);
 
 // ================== EXECUTION & TAB CONVERSION PATHS ==================
+router.post('/create-active', controller.createActiveMaintenance); // Replaces automated reminder creation
 router.get('/', controller.getAllMaintenance);
 router.get('/:maintenanceId', controller.getMaintenanceById);
-router.post('/create-active', controller.createActiveMaintenance); // Replaces automated reminder creation
 router.post('/:maintenanceId/send-material-to-im', controller.sendMaterialListToInventoryManager);
 router.post('/:maintenanceId/assign-team', controller.assignTeamToMaintenance);
 

@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Installation = require('../shared/installation/installation.model');
-const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
+const ServiceRequest = require('../shared/repair/repair.model');
 const ServiceReport = require('../technician/technician.model');
 const Maintenance = require('../shared/maintenance/maintenance.model');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
@@ -17,7 +17,7 @@ const {
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
 const toCustomer = (customerDoc, fallbackAddress = '-') => ({
-  name: customerDoc?.name || customerDoc?.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+  fullName: customerDoc?.fullName || customerDoc?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
   address: customerDoc?.address || fallbackAddress,
   phone: customerDoc?.phone || null,
   email: customerDoc?.email || null,
@@ -51,9 +51,9 @@ const formatTask = (job, source) => {
 
 const loadTaskCandidates = async () => {
   const [installations, requests, maintenances] = await Promise.all([
-    Installation.find({}).populate('customerId', 'name customerName address phone email').lean(),
-    ServiceRequest.find({}).populate('customerId', 'name customerName address phone email').lean(),
-    Maintenance.find({}).populate('customerId', 'name customerName address phone email').lean()
+    Installation.find({}).populate('customerId', 'fullName fullName address phone email').lean(),
+    ServiceRequest.find({}).populate('customerId', 'fullName fullName address phone email').lean(),
+    Maintenance.find({}).populate('customerId', 'fullName fullName address phone email').lean()
   ]);
 
   return { installations, requests, maintenances };
@@ -78,9 +78,9 @@ const findTaskRecord = async (id) => {
   const query = { $or: queryParts };
 
   const [installation, request, maintenance] = await Promise.all([
-    Installation.findOne(query).populate('customerId', 'name customerName address phone email').lean(),
-    ServiceRequest.findOne(query).populate('customerId', 'name customerName address phone email').lean(),
-    Maintenance.findOne(query).populate('customerId', 'name customerName address phone email').lean(),
+    Installation.findOne(query).populate('customerId', 'fullName fullName address phone email').lean(),
+    ServiceRequest.findOne(query).populate('customerId', 'fullName fullName address phone email').lean(),
+    Maintenance.findOne(query).populate('customerId', 'fullName fullName address phone email').lean(),
   ]);
 
   if (installation) {
@@ -100,7 +100,7 @@ const findTaskRecord = async (id) => {
     if (report) {
       const linkedModel = report.onModel === 'Installation' ? Installation : ServiceRequest;
       const linkedRecord = await linkedModel.findById(report.serviceRequestId)
-        .populate('customerId', 'name customerName address phone email')
+        .populate('customerId', 'fullName fullName address phone email')
         .lean();
 
       if (linkedRecord) {
@@ -200,3 +200,4 @@ exports.updateTaskStatus = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+

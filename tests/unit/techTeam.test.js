@@ -3,13 +3,13 @@ const teamController = require('../../src/modules/service-team/serviceTeam.contr
 const availabilityUtils = require('../../src/utils/availability.utils');
 
 // Mock database models
-const TechTeam = require('../../src/modules/service-team/serviceTeam.model');
-const TechTeamMember = require('../../src/modules/service-team/serviceTeamMember.model');
-const ServiceRequest = require('../../src/modules/shared/serviceRequest/serviceRequest.model');
+const TechTeam = require('../../src/modules/shared/tech-teams/techTeam.model');
+const TechTeamMember = require('../../src/modules/shared/tech-teams/techTeamMember.model');
+const ServiceRequest = require('../../src/modules/shared/repair/repair.model');
 const Installation = require('../../src/modules/shared/installation/installation.model');
-const Inspection = require('../../src/modules/shared/inspection/inspection.model');
+const Inspection = require('../../src/modules/shared/inspection/inspectionTicket.model');
 const Maintenance = require('../../src/modules/shared/maintenance/maintenance.model');
-const Customer = require('../../src/modules/customer/customer.model');
+const Customer = require('../../src/modules/user/user.model');
 const mongoose = require('mongoose');
 
 // Mock mongoose validation
@@ -65,3 +65,4 @@ describe('Main Technician: Team Management', () => {
     });
   });
 });
+

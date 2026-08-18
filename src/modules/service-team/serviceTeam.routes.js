@@ -1,6 +1,12 @@
 // src/routes/techTeam.route.js
 const express = require('express');
 const router = express.Router();
+// Debug middleware (uses logger; only prints when VERBOSE_LOGS=true)
+const logger = require('../../utils/logger');
+router.use((req, res, next) => {
+	logger.debug('/api/tech-teams request', { method: req.method, path: req.path, bodyKeys: Object.keys(req.body || {}) });
+	next();
+});
 const techTeamController = require('./serviceTeam.controller');
 
 // Existing routes

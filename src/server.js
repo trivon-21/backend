@@ -18,7 +18,7 @@ const runStartupRepair = async () => {
     const Installation = require('./modules/shared/installation/installation.model');
     const MaintenanceSchedule = require('./modules/shared/maintenance/maintenanceSchedule.model');
     const { buildServiceTemplate, buildScheduleEndDate } = require('./modules/shared/maintenance/scheduleTemplate');
-    const Customer = require('./modules/customer/customer.model');
+    const Customer = require('./modules/user/user.model');
     const {
       EXECUTION_STATUS,
       MAINTENANCE_SCHEDULE_STATUS,
@@ -32,12 +32,45 @@ const runStartupRepair = async () => {
 
     if (orphaned.length === 0) {
       console.log('✅ Startup repair: all completed installations already have a MaintenanceSchedule.');
-      return;
+    } else {
+      console.log(`⚙️  Startup repair: found ${orphaned.length} completed installation(s) with no schedule — creating now...`);
+      let created = 0;
+      for (const inst of orphaned) {
+        try {
+          const customer = await Customer.findById(inst.customerId).lean();
+          if (!customer) continue;
+
+          const services = buildServiceTemplate(new Date(inst.date || inst.serviceDate || inst.createdAt));
+          const scheduleEndDate = buildScheduleEndDate(new Date(inst.date || inst.serviceDate || inst.createdAt));
+          const newSchedule = new MaintenanceSchedule({
+            customerId: customer._id,
+            customerName: customer.name,
+            customerEmail: customer.email,
+            customerPhone: customer.contactNo,
+            productType: inst.productType,
+            location: inst.location,
+            ticketId: `MS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            status: MAINTENANCE_SCHEDULE_STATUS.NEW,
+            services,
+            scheduleEndDate,
+            installationId: inst._id,
+            installationDate: inst.date || inst.serviceDate || inst.createdAt
+          });
+
+          const saved = await newSchedule.save();
+          await Installation.findByIdAndUpdate(inst._id, {
+            maintenanceScheduleId: saved._id,
+            maintenanceStatus: INSTALLATION_MAINTENANCE_STATUS.PENDING_CSA
+          });
+          created++;
+        } catch (err) {
+          console.error(`Error repairing installation ${inst._id}:`, err);
+        }
+      }
+      console.log(`✅ Startup repair complete. Created ${created} missing schedules.`);
     }
 
-    console.log(`⚙️  Startup repair: found ${orphaned.length} completed installation(s) with no schedule — creating now...`);
-
-    let created = 0;
+    return;
     let repaired = 0;
 
     for (const inst of orphaned) {
@@ -112,4 +145,5 @@ const startServer = async () => {
 };
 
 startServer();
+
 

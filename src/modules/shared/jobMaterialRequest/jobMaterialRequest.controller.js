@@ -1,7 +1,7 @@
-const NewRequest = require('../serviceRequest/newRequest.model');
-const ServiceRequest = require('../serviceRequest/serviceRequest.model');
+const NewRequest = require('../serviceTicket/serviceTicket.model');
+const ServiceRequest = require('../repair/repair.model');
 const Installation = require('../installation/installation.model');
-const Customer = require('../../customer/customer.model');
+const Customer = require('../../user/user.model');
 const Maintenance = require('../maintenance/maintenance.model');
 const { calculateWarrantyStatus } = require('../../../utils/warranty.utils');
 const {
@@ -50,27 +50,27 @@ exports.getNewServiceTickets = async (req, res) => {
 
     // Fetch all new requests with customer details populated
     const newRequests = await NewRequest.find()
-      .populate('customerId', 'name email contactNo address')
+      .populate('customerId', 'fullName name email phoneNumber contactNo address')
       .lean();
 
     // Fetch ServiceRequests with 'Finance Rejected' status (can be recreated)
     const rejectedServiceRequests = await ServiceRequest.find({ status: WORKFLOW_STATUS.FINANCE_REJECTED })
-      .populate('customerId', 'name email contactNo address')
+      .populate('customerId', 'fullName name email phoneNumber contactNo address')
       .lean();
 
     // Fetch Installations with 'Finance Rejected' status (can be recreated)
     const rejectedInstallations = await Installation.find({ status: WORKFLOW_STATUS.FINANCE_REJECTED })
-      .populate('customerId', 'name email contactNo address')
+      .populate('customerId', 'fullName name email phoneNumber contactNo address')
       .lean();
 
     // Fetch Installations with 'New' status (freshly approved from inspection review)
     const newInstallations = await Installation.find({ status: WORKFLOW_STATUS.NEW })
-      .populate('customerId', 'name email contactNo address')
+      .populate('customerId', 'fullName name email phoneNumber contactNo address')
       .lean();
 
     // Fetch Maintenances with 'New' or 'Finance Rejected' status
     const newMaintenances = await Maintenance.find({ status: { $in: [MAINTENANCE_STATUS.NEW, MAINTENANCE_STATUS.FINANCE_REJECTED] } })
-      .populate('customerId', 'name email contactNo address')
+      .populate('customerId', 'fullName name email phoneNumber contactNo address')
       .lean();
 
     // Build customer lookup map to avoid N+1 queries
@@ -101,18 +101,20 @@ exports.getNewServiceTickets = async (req, res) => {
       // Calculate warranty status for this customer
       const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(customerObjectId);
 
+      const resolvedServiceType = request.serviceType || request.requestType || request.request_type || 'Repair';
+
       return {
         ticketId: request._id,
         productType: request.productType || 'N/A',
-        serviceType: request.serviceType || request.requestType || request.request_type || 'Repair',
+        serviceType: resolvedServiceType,
         serviceDescription: request.serviceDescription || request.description || '-',
-        customerName: customer?.name || request.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+        fullName: customer?.fullName || request.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         customerEmail: customer?.email || request.customerEmail || '-',
-        customerContactNo: customer?.contactNo || request.customerPhone || request.customerContactNo || '-',
+        customerphoneNumber: customer?.phoneNumber || request.customerPhone || request.customerphoneNumber || '-',
         customerAddress: customer?.address || request.customerAddress || request.location || '-',
         isUnderWarranty,
         isFreeOfCharge,
-        requestType: REQUEST_TYPES.SERVICE,
+        requestType: resolvedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair',
         status: WORKFLOW_STATUS.NEW,
         materials: [],
         financeNotes: '',
@@ -131,13 +133,13 @@ exports.getNewServiceTickets = async (req, res) => {
         productType: request.productType || 'N/A',
         serviceType: request.serviceType || request.requestType || request.request_type || 'Repair',
         serviceDescription: request.serviceDescription || request.description || '-',
-        customerName: customer?.name || 'Unknown Customer',
+        fullName: customer?.fullName || 'Unknown Customer',
         customerEmail: customer?.email || '-',
-        customerContactNo: customer?.contactNo || '-',
+        customerphoneNumber: customer?.phoneNumber || '-',
         customerAddress: customer?.address || '-',
         isUnderWarranty: request.isUnderWarranty || false,
         isFreeOfCharge: request.isFreeOfCharge || false,
-        requestType: REQUEST_TYPES.SERVICE,
+        requestType: request.serviceType || 'Repair',
         status: WORKFLOW_STATUS.FINANCE_REJECTED,
         note: 'Finance Rejected - Available for Re-submission',
         materials: request.materials || [],
@@ -157,9 +159,9 @@ exports.getNewServiceTickets = async (req, res) => {
         ticketId: installation._id,
         productType: installation.productType || 'N/A',
         serviceDescription: siteDetailsSummary,
-        customerName: customer?.name || 'Unknown Customer',
+        fullName: customer?.fullName || 'Unknown Customer',
         customerEmail: customer?.email || '-',
-        customerContactNo: customer?.contactNo || '-',
+        customerphoneNumber: customer?.phoneNumber || '-',
         customerAddress: customer?.address || installation.location || '-',
         isUnderWarranty: false,
         isFreeOfCharge: false,
@@ -184,9 +186,9 @@ exports.getNewServiceTickets = async (req, res) => {
         ticketId: installation._id,
         productType: installation.productType || 'N/A',
         serviceDescription: siteDetailsSummary,
-        customerName: customer?.name || 'Unknown Customer',
+        fullName: customer?.fullName || 'Unknown Customer',
         customerEmail: customer?.email || '-',
-        customerContactNo: customer?.contactNo || '-',
+        customerphoneNumber: customer?.phoneNumber || '-',
         customerAddress: customer?.address || installation.location || '-',
         isUnderWarranty: false,
         isFreeOfCharge: false,
@@ -211,13 +213,13 @@ exports.getNewServiceTickets = async (req, res) => {
         productType: maintenance.productType || 'N/A',
         serviceType: 'Maintenance',
         serviceDescription: maintenance.scheduledServiceType || 'Scheduled Maintenance',
-        customerName: customer?.name || maintenance.customerName || 'Unknown Customer',
+        fullName: customer?.fullName || maintenance.fullName || 'Unknown Customer',
         customerEmail: customer?.email || maintenance.customerEmail || '-',
-        customerContactNo: customer?.contactNo || maintenance.customerPhone || '-',
+        customerphoneNumber: customer?.phoneNumber || maintenance.customerPhone || '-',
         customerAddress: customer?.address || maintenance.location || '-',
         isUnderWarranty: true, // As per spec, first 4 are under warranty. Usually we pull this from somewhere, default true.
         isFreeOfCharge: true,
-        requestType: REQUEST_TYPES.SERVICE, // Treat as Service Request in UI
+        requestType: 'Maintenance', // Treat as Maintenance in UI
         status: maintenance.status,
         note: maintenance.status === MAINTENANCE_STATUS.FINANCE_REJECTED ? 'Finance Rejected - Available for Re-submission' : 'New Maintenance - ready for material submission',
         materials: maintenance.materialList || [],
@@ -245,9 +247,9 @@ exports.submitMaterialRequest = async (req, res) => {
       financeNotes, 
       isFreeOfCharge, 
       isUnderWarranty,
-      customerName,
+      fullName,
       customerEmail,
-      customerContactNo,
+      customerphoneNumber,
       customerAddress
     } = req.body;
     
@@ -364,19 +366,19 @@ exports.submitMaterialRequest = async (req, res) => {
     if (derivedServiceType === 'Maintenance') {
       let resolvedCustomerId = sourceDoc.customerId;
       // Prioritize sourceDoc fields — request body values may be placeholder strings from a failed lookup
-      let resolvedCustomerName = sourceDoc.customerName || (customerName !== DEFAULTS.UNKNOWN_CUSTOMER ? customerName : null);
+      let resolvedfullName = sourceDoc.fullName || (fullName !== DEFAULTS.UNKNOWN_CUSTOMER ? fullName : null);
       let resolvedCustomerEmail = sourceDoc.customerEmail || (customerEmail !== '-' ? customerEmail : null);
-      let resolvedCustomerPhone = sourceDoc.customerPhone || sourceDoc.customerContactNo || (customerContactNo !== '-' ? customerContactNo : null);
+      let resolvedCustomerPhone = sourceDoc.customerPhone || sourceDoc.customerphoneNumber || (customerphoneNumber !== '-' ? customerphoneNumber : null);
       let resolvedLocation = sourceDoc.location || sourceDoc.customerAddress || (customerAddress !== '-' ? customerAddress : null);
 
       // If we have customerId but some fields are still missing, try querying Customer collection as fallback
-      if (resolvedCustomerId && (!resolvedCustomerName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
-        const Customer = require('../../customer/customer.model');
+      if (resolvedCustomerId && (!resolvedfullName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
+        const Customer = require('../../user/user.model');
         const cust = await Customer.findById(resolvedCustomerId).lean();
         if (cust) {
-          if (!resolvedCustomerName) resolvedCustomerName = cust.name;
+          if (!resolvedfullName) resolvedfullName = cust.fullName;
           if (!resolvedCustomerEmail) resolvedCustomerEmail = cust.email;
-          if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.contactNo;
+          if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.phoneNumber;
           if (!resolvedLocation) resolvedLocation = cust.address;
         }
       }
@@ -385,7 +387,7 @@ exports.submitMaterialRequest = async (req, res) => {
         _id: sourceDoc._id,
         ticketId: sourceDoc.ticketId || `MN-${Date.now().toString().slice(-4)}`,
         customerId: resolvedCustomerId || null,
-        customerName: resolvedCustomerName || 'Unknown Customer',
+        fullName: resolvedfullName || 'Unknown Customer',
         customerEmail: resolvedCustomerEmail || '-',
         customerPhone: resolvedCustomerPhone || '-',
         productType: sourceDoc.productType || 'Unknown',
@@ -403,19 +405,19 @@ exports.submitMaterialRequest = async (req, res) => {
     } else {
       let resolvedCustomerId = sourceDoc.customerId;
       // Prioritize sourceDoc fields — request body values may be placeholder strings from a failed lookup
-      let resolvedCustomerName = sourceDoc.customerName || (customerName !== DEFAULTS.UNKNOWN_CUSTOMER ? customerName : null);
+      let resolvedfullName = sourceDoc.fullName || (fullName !== DEFAULTS.UNKNOWN_CUSTOMER ? fullName : null);
       let resolvedCustomerEmail = sourceDoc.customerEmail || (customerEmail !== '-' ? customerEmail : null);
-      let resolvedCustomerPhone = sourceDoc.customerPhone || sourceDoc.customerContactNo || (customerContactNo !== '-' ? customerContactNo : null);
+      let resolvedCustomerPhone = sourceDoc.customerPhone || sourceDoc.customerphoneNumber || (customerphoneNumber !== '-' ? customerphoneNumber : null);
       let resolvedLocation = sourceDoc.location || sourceDoc.customerAddress || (customerAddress !== '-' ? customerAddress : null);
 
       // Try querying Customer collection as fallback
-      if (resolvedCustomerId && (!resolvedCustomerName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
-        const Customer = require('../../customer/customer.model');
+      if (resolvedCustomerId && (!resolvedfullName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
+        const Customer = require('../../user/user.model');
         const cust = await Customer.findById(resolvedCustomerId).lean();
         if (cust) {
-          if (!resolvedCustomerName) resolvedCustomerName = cust.name;
+          if (!resolvedfullName) resolvedfullName = cust.fullName;
           if (!resolvedCustomerEmail) resolvedCustomerEmail = cust.email;
-          if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.contactNo;
+          if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.phoneNumber;
           if (!resolvedLocation) resolvedLocation = cust.address;
         }
       }
@@ -424,7 +426,7 @@ exports.submitMaterialRequest = async (req, res) => {
       const serviceEntry = new ServiceRequest({
         ...sourceDoc,
         customerId: resolvedCustomerId || null,
-        customerName: resolvedCustomerName || 'Unknown Customer',
+        fullName: resolvedfullName || 'Unknown Customer',
         customerEmail: resolvedCustomerEmail || '-',
         customerPhone: resolvedCustomerPhone || '-',
         location: resolvedLocation || '-',
@@ -446,9 +448,9 @@ exports.submitMaterialRequest = async (req, res) => {
     res.json({ 
       success: true, 
       message: "Material request submitted to Finance",
-      data: {
+        data: {
         serviceRequestId: resolvedId,
-        requestType: derivedServiceType === 'Maintenance' ? 'Maintenance' : REQUEST_TYPES.SERVICE,
+        requestType: derivedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair',
         warrantyStatus: isUnderWarranty ? 'Under Warranty' : 'Out of Warranty',
         freeOfCharge: isFreeOfCharge,
         status: derivedServiceType === 'Maintenance' ? MAINTENANCE_STATUS.PENDING : WORKFLOW_STATUS.PENDING
@@ -467,9 +469,9 @@ exports.sendToInventoryManager = async (req, res) => {
     // Remove '#' prefix if present (from UI display format)
     const resolvedId = String(req.params.id || '').replace(/^#/, '');
     const { 
-      customerName, 
+      fullName, 
       customerEmail, 
-      customerContactNo, 
+      customerphoneNumber, 
       location, 
       materials 
     } = req.body;
@@ -684,3 +686,6 @@ exports.cancelMaterialRequest = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
+
+

@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
-const ServiceRequest = require('../serviceRequest/serviceRequest.model');
+const ServiceRequest = require('../repair/repair.model');
 const Installation = require('../installation/installation.model');
-const Inspection = require('../inspection/inspection.model');
+const Inspection = require('../inspection/inspectionTicket.model');
 const ServiceReport = require('../../technician/technician.model');
-const Customer = require('../../customer/customer.model');
+const Customer = require('../../user/user.model');
 const { getLocalApiBaseUrl, DEFAULT_TEAM_NAME } = require('../../../config/app.config');
 const { INTERNAL_FETCH_TIMEOUT_MS } = require('../../../config/defaults.config');
 const {
@@ -23,16 +23,16 @@ const {
  * Returns the MongoDB collection handle for customer documents.
  * @returns {import('mongodb').Collection}
  */
-const getCustomerCollection = () => mongoose.connection.db.collection('Customers');
+const getCustomerCollection = () => mongoose.connection.db.collection('users');
 
 /**
  * Builds normalized customer details with safe fallback values.
  * @param {object | null} customerDoc
  * @param {string} fallbackName
- * @returns {{name: string, address: string}}
+ * @returns {{fullName: string, address: string}}
  */
 const buildCustomerDetails = (customerDoc, fallbackName = 'Unknown Customer') => ({
-  name: customerDoc?.name || customerDoc?.customerName || fallbackName,
+  fullName: customerDoc?.fullName || customerDoc?.fullName || fallbackName,
   address: customerDoc?.address || '-',
 });
 
@@ -57,7 +57,7 @@ const resolveCustomerById = async (customerId) => {
         ...(mongoose.Types.ObjectId.isValid(stringId) ? [{ _id: new mongoose.Types.ObjectId(stringId) }] : []),
       ],
     },
-    { projection: { name: 1, customerName: 1, address: 1 } }
+    { projection: { fullName: 1, fullName: 1, address: 1 } }
   );
 
   return customer || null;
@@ -193,10 +193,10 @@ exports.getCustomerHistory = async (req, res) => {
     const anchorCustomerId = anchorCustomerIdStr;
 
     const customerDoc = await resolveCustomerById(anchorCustomerId);
-    const customerDetails = buildCustomerDetails(customerDoc, anchor.customerName || 'Unknown Customer');
+    const customerDetails = buildCustomerDetails(customerDoc, anchor.fullName || 'Unknown Customer');
     const taskDetails = await loadTaskDetails(id, requestedTeamName);
     const resolvedCustomer = taskDetails?.customer || null;
-    const customerName = resolvedCustomer?.name || customerDetails.name;
+    const fullName = resolvedCustomer?.fullName || customerDetails.fullName;
     const customerAddress = resolvedCustomer?.address || customerDetails.address || anchor.location || '-';
 
     const customerIdCandidates = [anchorCustomerId, anchorCustomerIdStr].filter((value) => value !== null && value !== undefined);
@@ -254,7 +254,7 @@ exports.getCustomerHistory = async (req, res) => {
         ticketId: `#${String(item._id)}`,
         serviceType: type,
         productType: item.productType || 'N/A',
-        date: normalizedStatus === EXECUTION_STATUS.ASSIGNED ? null : (item.serviceDate || item.date || item.createdAt || null),
+        date: normalizedStatus === EXECUTION_STATUS.ASSIGNED ? null : (item.scheduledDate || item.serviceDate || item.date || item.createdAt || null),
         status: normalizedStatus,
         assignedTeam: type === REQUEST_TYPES.INSPECTION
           ? DEFAULTS.INSPECTION_TEAM_NAME
@@ -286,7 +286,7 @@ exports.getCustomerHistory = async (req, res) => {
       data: {
         customerId: anchorCustomerIdStr,
         summary: {
-          customerName,
+          fullName,
           location: customerAddress,
           productType: anchor.productType || latestInstallation?.productType || 'N/A',
           installationDate: anchor.serviceDate || anchor.date || latestInstallation?.serviceDate || latestInstallation?.date || null
@@ -298,3 +298,5 @@ exports.getCustomerHistory = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
+

@@ -1,6 +1,6 @@
 const InspectionReport = require('./inspectionReport.model');
 const Installation = require('../installation/installation.model');
-const Customer = require('../../customer/customer.model');
+const Customer = require('../../user/user.model');
 const {
   WORKFLOW_STATUS,
   INSPECTION_REVIEW_STATUS,
@@ -48,7 +48,7 @@ exports.getAllReports = async (req, res) => {
     ));
 
     const customers = customerIds.length > 0
-      ? await Customer.find({ _id: { $in: customerIds } }, 'name address contactNo').lean()
+      ? await Customer.find({ _id: { $in: customerIds } }, 'fullName address phoneNumber').lean()
       : [];
 
     const customerById = new Map(customers.map((customer) => [String(customer._id), customer]));
@@ -79,7 +79,7 @@ exports.getAllReports = async (req, res) => {
       return {
         ...report,
         customerId: customer || report.customerId || null,
-        customerName: customer?.name || null,
+        fullName: customer?.fullName || null,
         customerAddress: customer?.address || null,
       };
     });
@@ -100,7 +100,7 @@ exports.getReportById = async (req, res) => {
 
     const customerId = toCustomerId(report.customerId);
     let customer = customerId
-      ? await Customer.findById(customerId, 'name email contactNo address').lean()
+      ? await Customer.findById(customerId, 'fullName name email phoneNumber contactNo address').lean()
       : null;
 
     if (!customer) {
@@ -121,7 +121,7 @@ exports.getReportById = async (req, res) => {
       }
 
       if (fallbackCustomerId) {
-        customer = await Customer.findById(fallbackCustomerId, 'name email contactNo address').lean();
+        customer = await Customer.findById(fallbackCustomerId, 'fullName name email phoneNumber contactNo address').lean();
       }
     }
 
@@ -130,7 +130,7 @@ exports.getReportById = async (req, res) => {
       data: {
         ...report,
         customerId: customer || report.customerId || null,
-        customerName: customer?.name || null,
+        fullName: customer?.fullName || null,
         customerAddress: customer?.address || null,
       }
     });
@@ -142,7 +142,7 @@ exports.getReportById = async (req, res) => {
 // 3. UPDATE Requirements (Reviewed Status)
 exports.updateRequirements = async (req, res) => {
   try {
-    const report = await InspectionReport.findById(req.params.id);
+    const report = await InspectionReport.findById(req.params.id).lean();
     if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
 
     if (!req.body.requirements) {
@@ -174,26 +174,24 @@ exports.approveReport = async (req, res) => {
     }
 
     const normalizedReviewNotes = String(req.body.financeNotes || '').trim();
-    if (!report.inspectionMeta) {
-      report.inspectionMeta = {};
-    }
-    report.inspectionMeta.recommendedProducts = [recommendedProduct];
-    report.reviewNotes = normalizedReviewNotes || report.reviewNotes;
+    const inspectionMeta = report.inspectionMeta || {};
+    inspectionMeta.recommendedProducts = [recommendedProduct];
+    const reviewNotes = normalizedReviewNotes || report.reviewNotes;
 
     // Promote details to the Installations collection for this exact inspection report.
     const installationPayload = {
       customerId: report.customerId,
-      inspectionReportId: report._id,
+      inspectionTicketId: report._id,
       productType: recommendedProduct,
       location: report.siteDetails?.buildingType || 'Site Location',
       serviceDate: report.inspectionMeta?.date || null,
       siteDetails: report.siteDetails,
       materials: report.requirements?.materials || [],
       labour: report.requirements?.labour || null,
-      financeNotes: normalizedReviewNotes || report.reviewNotes,
-      reviewNotes: report.reviewNotes,
+      financeNotes: reviewNotes,
+      reviewNotes,
       inspectionSnapshot: {
-        inspectionMeta: report.inspectionMeta || {},
+        inspectionMeta: inspectionMeta,
         findings: report.findings || [],
         requirements: report.requirements || {},
         photos: report.photos || [],
@@ -201,24 +199,34 @@ exports.approveReport = async (req, res) => {
       status: WORKFLOW_STATUS.NEW,
     };
 
-    const existingInstallation = await Installation.findOne({ inspectionReportId: report._id });
-
-    if (existingInstallation) {
-      await Installation.findByIdAndUpdate(
-        existingInstallation._id,
-        {
-          $set: installationPayload,
-        },
-        { new: true }
+    // Use a raw collection upsert to avoid triggering Mongoose validation/hooks
+    // that may attempt to re-validate the original InspectionReport document
+    // (legacy enum values can cause those validations to fail). This writes
+    // directly to MongoDB and then we update the report with a raw update.
+    try {
+      await Installation.collection.updateOne(
+        { inspectionTicketId: report._id },
+        { $set: installationPayload, $setOnInsert: { createdAt: new Date() } },
+        { upsert: true }
       );
-    } else {
-      await Installation.create({
-        ...installationPayload,
-      });
+    } catch (instErr) {
+      // If the raw collection write fails for any reason, propagate so caller
+      // gets an error. We do not want silent failures here.
+      throw instErr;
     }
 
-    report.status = INSPECTION_REVIEW_STATUS.APPROVED;
-    await report.save();
+    // Update the report document without running Mongoose validation (some
+    // legacy findings.status values in the DB don't match the app enums).
+    await InspectionReport.collection.updateOne(
+      { _id: report._id },
+      {
+        $set: {
+          'inspectionMeta.recommendedProducts': inspectionMeta.recommendedProducts,
+          reviewNotes,
+          status: INSPECTION_REVIEW_STATUS.APPROVED
+        }
+      }
+    );
 
     res.json({ success: true, message: 'Report approved and installation created in New status' });
   } catch (err) {
@@ -246,3 +254,5 @@ exports.rejectReport = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
+

@@ -1,7 +1,7 @@
 const Maintenance = require('./maintenance.model');
 const MaintenanceSchedule = require('./maintenanceSchedule.model');
 const Installation = require('../installation/installation.model');
-const ServiceRequest = require('../serviceRequest/serviceRequest.model');
+const ServiceRequest = require('../repair/repair.model');
 const { 
   MAINTENANCE_SCHEDULE_STATUS, 
   MAINTENANCE_STATUS,
@@ -38,7 +38,7 @@ exports.getAllSchedules = async (req, res) => {
       const searchRegex = new RegExp(search.trim(), 'i');
       query.$or = [
         { ticketId: searchRegex },
-        { customerName: searchRegex },
+        { fullName: searchRegex },
         { location: searchRegex }
       ];
     }
@@ -169,7 +169,7 @@ exports.createActiveMaintenance = async (req, res) => {
       ticketId: `${schedule.ticketId}-ACT`, // Appends ACT to show it is active
       maintenanceScheduleId: schedule._id,
       customerId: schedule.customerId,
-      customerName: schedule.customerName,
+      fullName: schedule.fullName,
       customerEmail: schedule.customerEmail,
       customerPhone: schedule.customerPhone,
       productType: schedule.productType,
@@ -199,23 +199,14 @@ exports.getAllMaintenance = async (req, res) => {
   try {
     const { status, search } = req.query;
     const query = {};
-    const executionStatuses = [
-      MAINTENANCE_STATUS.ASSIGNED,
-      MAINTENANCE_STATUS.SCHEDULED,
-      MAINTENANCE_STATUS.IN_PROGRESS,
-      MAINTENANCE_STATUS.ON_HOLD,
-      MAINTENANCE_STATUS.COMPLETED
-    ];
 
     if (status && status !== 'All') {
       query.status = status;
-    } else {
-      query.status = { $in: executionStatuses };
     }
 
     if (search) {
       const searchRegex = new RegExp(search.trim(), 'i');
-      query.$or = [{ ticketId: searchRegex }, { customerName: searchRegex }, { productType: searchRegex }];
+      query.$or = [{ ticketId: searchRegex }, { fullName: searchRegex }, { productType: searchRegex }];
     }
 
     const tickets = await Maintenance.find(query)
@@ -230,42 +221,7 @@ exports.getAllMaintenance = async (req, res) => {
       maintenanceType: ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated')
     }));
 
-    // Also fetch customer-initiated maintenance from ServiceRequest
-    const srQuery = { serviceType: 'Maintenance', ...query };
-    const srTickets = await ServiceRequest.find(srQuery)
-      .populate('customerId')
-      .populate('assignedTeam')
-      .sort({ serviceDate: 1, createdAt: 1 })
-      .lean();
-
-    // Map ServiceRequest to match Maintenance ticket shape for UI
-    const mappedSrTickets = srTickets.map(sr => ({
-      _id: sr._id,
-      ticketId: sr._id,
-      customerId: sr.customerId,
-      customerName: sr.customerId?.name || sr.customerName || 'Unknown',
-      customerEmail: sr.customerId?.email || sr.customerEmail || '',
-      customerPhone: sr.customerId?.contactNo || sr.customerPhone || '',
-      productType: sr.productType || 'Customer Initiated',
-      location: sr.location || '',
-      date: sr.serviceDate || sr.createdAt,
-      scheduledServiceType: sr.serviceDescription || 'Maintenance',
-      status: sr.status,
-      materialList: sr.materials || [],
-      totalEstimatedCost: 0,
-      assignedTeam: sr.assignedTeam?.teamName || sr.assignedTeamName,
-      assignedTeamId: sr.assignedTeamId || (sr.assignedTeam ? sr.assignedTeam._id : null),
-      createdAt: sr.createdAt,
-      updatedAt: sr.updatedAt,
-      isCustomerInitiated: true,
-      maintenanceType: 'Customer Initiated'
-    }));
-
-    const combined = [...mappedTickets, ...mappedSrTickets];
-    // Sort combined array
-    combined.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-
-    res.json({ success: true, count: combined.length, data: combined });
+    res.json({ success: true, count: mappedTickets.length, data: mappedTickets });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -286,39 +242,6 @@ exports.getMaintenanceById = async (req, res) => {
       ticket.isCustomerInitiated = ticket.maintenanceType === 'Customer Initiated' || ticket.isCustomerInitiated || false;
       ticket.maintenanceType = ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated');
       return res.json({ success: true, data: ticket });
-    }
-
-    // Fallback: try ServiceRequest collection
-    let srTicket = await ServiceRequest.findById(maintenanceId)
-      .populate('customerId')
-      .populate('assignedTeam')
-      .lean();
-      
-    if (srTicket) {
-      const mappedSrTicket = {
-        _id: srTicket._id,
-        ticketId: srTicket._id,
-        customerId: srTicket.customerId,
-        customerName: srTicket.customerId?.name || srTicket.customerName || 'Unknown',
-        customerEmail: srTicket.customerId?.email || srTicket.customerEmail || '',
-        customerPhone: srTicket.customerId?.contactNo || srTicket.customerPhone || '',
-        productType: srTicket.productType || 'Customer Initiated',
-        location: srTicket.location || '',
-        date: srTicket.serviceDate || srTicket.createdAt,
-        scheduledServiceType: srTicket.serviceDescription || 'Maintenance',
-        status: srTicket.status,
-        materialList: srTicket.materials || [],
-        totalEstimatedCost: 0,
-        assignedTeam: srTicket.assignedTeam?.teamName || srTicket.assignedTeamName,
-        assignedTeamId: srTicket.assignedTeamId || (srTicket.assignedTeam ? srTicket.assignedTeam._id : null),
-        assignedTeamData: srTicket.assignedTeam || null,
-        createdAt: srTicket.createdAt,
-        updatedAt: srTicket.updatedAt,
-        isCustomerInitiated: true,
-        maintenanceType: 'Customer Initiated',
-        serviceHistory: [] // Future scope
-      };
-      return res.json({ success: true, data: mappedSrTicket });
     }
 
     return res.status(404).json({ success: false, message: 'Maintenance record not found' });
@@ -374,3 +297,4 @@ exports.assignTeamToMaintenance = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+

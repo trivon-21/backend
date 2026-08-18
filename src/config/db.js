@@ -5,7 +5,9 @@ const connectDb = async () => {
     throw new Error('MONGO_URI is not defined in environment variables.');
   }
 
-  await mongoose.connect(process.env.MONGO_URI);
+  await mongoose.connect(process.env.MONGO_URI, {
+    dbName: 'airlux',
+  });
 };
 
 module.exports = connectDb;

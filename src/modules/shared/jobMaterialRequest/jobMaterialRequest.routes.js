@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const materialController = require('./inventory.controller');
-const NewRequest = require('../serviceRequest/newRequest.model');
-const ServiceRequest = require('../serviceRequest/serviceRequest.model');
+const materialController = require('./jobMaterialRequest.controller');
+const NewRequest = require('../serviceTicket/serviceTicket.model');
+const ServiceRequest = require('../repair/repair.model');
 const Installation = require('../installation/installation.model');
-const Customer = require('../../customer/customer.model');
+const Customer = require('../../user/user.model');
 const Maintenance = require('../maintenance/maintenance.model');
 const { calculateWarrantyStatus } = require('../../../utils/warranty.utils');
 const {
@@ -99,7 +99,7 @@ router.get('/', async (req, res) => {
                     customerEmail: customer?.email || '-',
                     customerContactNo: customer?.contactNo || '-',
                     location: customer?.address || item.location || '-',
-                    requestType: REQUEST_TYPES.SERVICE
+                    requestType: item.serviceType || 'Repair'
                 };
             });
 
@@ -136,9 +136,9 @@ router.get('/', async (req, res) => {
                 customerEmail: customer?.email || '-',
                 customerContactNo: customer?.contactNo || '-',
                 location: customer?.address || req.location || '-',
-                status: WORKFLOW_STATUS.NEW,
-                requestType: REQUEST_TYPES.SERVICE,
-                serviceType: req.serviceType || req.requestType || req.request_type || 'Repair',
+                    status: WORKFLOW_STATUS.NEW,
+                    serviceType: req.serviceType || req.requestType || req.request_type || 'Repair',
+                    requestType: req.serviceType === 'Maintenance' ? 'Maintenance' : 'Repair',
                 isUnderWarranty,
                 isFreeOfCharge
             };
@@ -157,7 +157,7 @@ router.get('/', async (req, res) => {
                     customerEmail: customer?.email || '-',
                     customerContactNo: customer?.contactNo || '-',
                     location: customer?.address || item.location || '-',
-                    requestType: REQUEST_TYPES.SERVICE,
+                    requestType: 'Maintenance',
                     serviceType: 'Maintenance',
                     materials: item.materialList || []
                 };
@@ -192,3 +192,5 @@ const validateMaterialSubmission = [
 router.post('/submit-to-finance', validateMaterialSubmission, materialController.sendToFinance);
 
 module.exports = router;
+
+

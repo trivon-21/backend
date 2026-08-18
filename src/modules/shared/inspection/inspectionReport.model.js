@@ -1,63 +1,30 @@
 const mongoose = require('mongoose');
-const { INSPECTION_REVIEW_STATUS } = require('../../../constants/enums');
+const { Schema } = mongoose;
 
-const inspectionReportSchema = new mongoose.Schema({
-  customerId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Customer', 
-    required: true 
+const inspectionReportSchema = new Schema(
+  {
+    ticketId: { type: Schema.Types.ObjectId, ref: 'InspectionTicket', required: true },
+    orderId: { type: Schema.Types.ObjectId, ref: 'InstallationOrder' },
+    inspectorId: { type: Schema.Types.ObjectId, ref: 'User' },
+    customerName: String,
+    contactNumber: String,
+    siteAddress: String,
+    siteType: String,
+    inspectionDate: String,
+    siteStatus: String,
+    floorLevel: String,
+    elevatorAvailability: Boolean,
+    parkingAvailability: String,
+    rooms: [Schema.Types.Mixed],
+    photos: [{ name: String, dataUrl: String }],
+    inspectorName: String,
+    acknowledgeDate: String,
+    acknowledgeTime: String,
+    status: { type: String, enum: ['DRAFT', 'RECORDED', 'SUBMITTED'], default: 'DRAFT' },
+    submittedAt: Date,
+    recordedAt: Date,
   },
-  status: {
-    type: String,
-    enum: [
-      INSPECTION_REVIEW_STATUS.PENDING,
-      INSPECTION_REVIEW_STATUS.REVIEWED,
-      INSPECTION_REVIEW_STATUS.APPROVED,
-      INSPECTION_REVIEW_STATUS.REJECTED,
-    ],
-    default: INSPECTION_REVIEW_STATUS.PENDING
-  },
-  siteDetails: {
-    buildingType: String,
-    floors: Number,
-    rooms: Number,
-    ceilingHeight: String,
-    wallType: String,
-    powerSupply: String,
-    outdoorAccess: String
-  },
-  inspectionMeta: {
-    team: String,
-    date: Date,
-    time: String,
-    notes: String,
-    recommendedProducts: [String]
-  },
-  findings: [{
-    category: String,
-    description: String,
-    status: { type: String, enum: ['Good', 'Needs Attention'] }
-  }],
-  requirements: {
-    materials: [{
-      item: String,
-      quantity: String
-    }],
-    labour: {
-      technicians: Number,
-      helpers: Number,
-      duration: String
-    }
-  },
-  photos: [{
-    url: String,
-    caption: String
-  }],
-  reviewNotes: String
-}, { 
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
+  { timestamps: true, collection: 'inspectionreports' }
+);
 
-module.exports = mongoose.model('InspectionReport', inspectionReportSchema, 'InspectionReports');
+module.exports = mongoose.model('InspectionReport', inspectionReportSchema);

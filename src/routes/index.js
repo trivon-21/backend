@@ -1,16 +1,16 @@
 const express = require('express');
 
 const inspectionReportRoutes = require('../modules/shared/inspection/inspectionReport.routes');
-const inspectionRoutes = require('../modules/shared/inspection/inspection.routes');
+const inspectionRoutes = require('../modules/shared/inspection/inspectionTicket.routes');
 const installationRoutes = require('../modules/shared/installation/installation.routes');
-const serviceRequestRoutes = require('../modules/shared/serviceRequest/serviceRequest.routes');
-const materialRequestRoutes = require('../modules/shared/inventory/inventory.routes');
+const serviceRequestRoutes = require('../modules/shared/repair/repair.routes');
+const materialRequestRoutes = require('../modules/shared/jobMaterialRequest/jobMaterialRequest.routes');
 const techTeamRoutes = require('../modules/service-team/serviceTeam.routes');
 const serviceTeamTaskController = require('../modules/service-team/task.controller');
 const serviceTeamMemberController = require('../modules/service-team/team.controller');
 const serviceHistoryController = require('../modules/shared/service-history/serviceHistory.controller');
 const dashboardRoutes = require('../modules/technician/dashboard.routes');
-const customerRoutes = require('../modules/customer/customer.routes');
+const customerRoutes = require('../modules/user/user.routes');
 const serviceReportRoutes = require('../modules/technician/technician.routes');
 const authRoutes = require('../modules/auth/auth.routes');
 const maintenanceRoutes = require('../modules/shared/maintenance/maintenance.routes');
@@ -38,3 +38,7 @@ router.get(API_SEGMENTS.TEAM_DETAILS, serviceTeamMemberController.getTeamDetails
 router.get(API_SEGMENTS.SERVICE_HISTORY, serviceHistoryController.getCustomerHistory);
 
 module.exports = router;
+
+
+
+

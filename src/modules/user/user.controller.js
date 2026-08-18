@@ -1,14 +1,14 @@
-const Customer = require('./customer.model');
+const Customer = require('./user.model');
 
 // Create a new customer
 exports.createCustomer = async (req, res) => {
   try {
-    const { name, email, contactNo, address } = req.body;
+    const { fullName, email, phoneNumber, address } = req.body;
 
     const newCustomer = new Customer({
-      name,
+      fullName,
       email,
-      contactNo,
+      phoneNumber,
       address
     });
 
@@ -47,3 +47,4 @@ exports.getCustomerById = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+

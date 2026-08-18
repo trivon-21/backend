@@ -1,5 +1,5 @@
 const Installation = require('../shared/installation/installation.model');
-const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
+const ServiceRequest = require('../shared/repair/repair.model');
 const TechTeam = require('../shared/tech-teams/techTeam.model');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
 const {
@@ -212,7 +212,7 @@ exports.getUrgentAlerts = async (req, res) => {
     }
 
     // Alert: Team availability
-    const activeTeam = teams.find((team) => matchesTeamName(team.teamName || team.name || team.team, requestedTeamName));
+    const activeTeam = teams.find((team) => matchesTeamName(team.teamName || team.fullName || team.team, requestedTeamName));
     const isTeamBusyFromLiveJobs = inProgressCount > 0;
     if (activeTeam && isTeamBusyFromLiveJobs) {
       alerts.push({
@@ -259,3 +259,4 @@ const capitalize = (str) => {
   if (!str) return '';
   return str.charAt(0).toUpperCase() + str.slice(1).replace(/\s+/g, ' ');
 };
+

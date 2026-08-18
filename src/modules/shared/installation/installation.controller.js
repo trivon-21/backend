@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const Installation = require('./installation.model');
-const Customer = require('../../customer/customer.model');
-const TechTeam = require('../../service-team/serviceTeam.model');
+const Customer = require('../../user/user.model');
+const TechTeam = require('../tech-teams/techTeam.model');
 
 // ✅ FIXED PATH: Going up one level to 'shared' and into 'maintenance'
 const MaintenanceSchedule = require('../maintenance/maintenanceSchedule.model');
@@ -17,14 +17,14 @@ const {
 // 1. GET all for the Installations Tab
 exports.getAllInstallations = async (req, res) => {
   try {
-    const visibleStatuses = STATUS_GROUPS.EXECUTION_VISIBLE;
-    
-    const query = { status: { $in: visibleStatuses } };
-    if (req.query.status && req.query.status !== 'All') query.status = req.query.status;
+    // Build query — if a specific status filter is provided, use it; otherwise fetch all
+    const query = {};
+    if (req.query.status && req.query.status !== 'All') {
+      query.status = req.query.status;
+    }
 
     const installations = await Installation.find(query)
-      .populate('customerId', 'name address')
-      .populate('assignedTeam', 'teamName')
+      .populate('customerId', 'fullName name address')
       .lean();
 
     const toCustomerId = (value) => {
@@ -37,9 +37,10 @@ exports.getAllInstallations = async (req, res) => {
       return String(value);
     };
 
+    // Collect customer IDs from both customerId and userId fields
     const customerIds = Array.from(new Set(
       installations
-        .map((item) => toCustomerId(item.customerId))
+        .map((item) => toCustomerId(item.customerId) || (item.userId ? String(item.userId) : null))
         .filter(Boolean)
     ));
 
@@ -62,19 +63,44 @@ exports.getAllInstallations = async (req, res) => {
 
     const data = installations.map((item) => {
       const customerId = toCustomerId(item.customerId);
+      const userId = item.userId ? String(item.userId) : null;
       const populatedCustomer = item.customerId && typeof item.customerId === 'object' ? item.customerId : null;
-      const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+      const customer = (customerId && customerById.get(customerId))
+        || (userId && customerById.get(userId))
+        || populatedCustomer;
       const resolvedTeam = item.assignedTeamId ? teamById.get(String(item.assignedTeamId)) : null;
-      const assignedTeamName = item.assignedTeam?.teamName
-        || item.assignedTeamName
+      const assignedTeamName = item.assignedTeamName
         || resolvedTeam?.teamName
-        || (typeof item.assignedTeam === 'string' ? item.assignedTeam : null)
+        || item.assignedTeamRef?.teamName
+        || (typeof item.assignedTeamRef === 'string' ? item.assignedTeamRef : null)
         || DEFAULTS.UNASSIGNED;
+
+      // Derive customer fullName — from populated customer, shippingDetails, or fallback
+      const shippingName = item.shippingDetails
+        ? [item.shippingDetails.firstName, item.shippingDetails.lastName].filter(Boolean).join(' ')
+        : null;
+      const fullName = customer?.fullName || item.fullName || shippingName || DEFAULTS.UNKNOWN_CUSTOMER;
+
+      // Derive location — from customer, shippingDetails, or existing field
+      const shippingAddress = item.shippingDetails
+        ? [item.shippingDetails.address, item.shippingDetails.city].filter(Boolean).join(', ')
+        : null;
+      const location = customer?.address || shippingAddress || item.location || '-';
+
+      // Derive product type — from existing field or first item in items array
+      const productType = item.productType
+        || (item.items && item.items.length > 0 ? item.items[0].fullName || item.items[0].productId : null)
+        || 'N/A';
+
+      // Use orderId as ticketId if ticketId is missing
+      const ticketId = item.ticketId || item.orderId || item._id;
 
       return {
         ...item,
-        customerName: customer?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
-        location: customer?.address || '-',
+        ticketId,
+        fullName,
+        location,
+        productType,
         assignedTeam: assignedTeamName,
         assignedTeamName
       };
@@ -90,17 +116,46 @@ exports.getAllInstallations = async (req, res) => {
 exports.getInstallationById = async (req, res) => {
   try {
     const id = req.params.id;
-    const installation = await Installation.findById(id)
-      .populate('customerId', 'name email contactNo address')
-      .lean();
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+    const installation = await Installation.findOne({
+      $or: [
+        { _id: isValidId ? id : null },
+        { ticketId: id },
+        { $expr: { $eq: [{ $toString: "$_id" }, id] } },
+        { $expr: { $eq: [{ $toString: "$orderId" }, id] } }
+      ]
+    }).populate('customerId', 'fullName name email phoneNumber contactNo address').lean();
 
     if (!installation) {
       return res.status(404).json({ success: false, message: 'Installation not found' });
     }
 
+    
+    let siteDetails = installation.siteDetails;
+    if (!siteDetails || Object.keys(siteDetails).length === 0) {
+      if (installation.inspectionTicketId) {
+        const InspectionReport = require('../inspection/inspectionReport.model');
+        const report = await InspectionReport.findOne({ ticketId: installation.inspectionTicketId }).lean();
+        if (report) {
+          siteDetails = {
+            buildingType: report.siteType || '-',
+            floors: report.floorLevel ? parseInt(report.floorLevel) || 1 : 1,
+            rooms: report.rooms ? report.rooms.length : 0,
+            ceilingHeight: 'N/A',
+            wallType: report.rooms && report.rooms[0] ? report.rooms[0].wallCondition || '-' : '-',
+            powerSupply: report.rooms && report.rooms[0] && report.rooms[0].powerPointsNearby ? 'Available' : 'Not Available',
+            outdoorAccess: report.parkingAvailability ? true : false
+          };
+        }
+      }
+    }
+
     const enrichedInstallation = {
       ...installation,
+      siteDetails,
       location: installation.customerId?.address || installation.location || '-',
+      customerId: installation.customerId ? { ...installation.customerId, name: installation.customerId.name || installation.customerId.fullName, contactNo: installation.customerId.contactNo || installation.customerId.phoneNumber } : null,
     };
 
     res.json({ success: true, data: enrichedInstallation });
@@ -117,8 +172,19 @@ exports.getInstallationById = async (req, res) => {
 exports.updateInstallationStatus = async (req, res) => {
   try {
     const { status, date } = req.body;
-
-    const installation = await Installation.findById(req.params.id);
+    const id = req.params.id;
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+    
+    const installation = await Installation.findOne({
+      $or: [
+        { _id: isValidId ? id : null },
+        { ticketId: id },
+        { $expr: { $eq: [{ $toString: "$_id" }, id] } },
+        { $expr: { $eq: [{ $toString: "$orderId" }, id] } }
+      ]
+    });
+    
     if (!installation) {
       return res.status(404).json({ success: false, message: 'Installation not found' });
     }
@@ -143,8 +209,18 @@ exports.updateInstallationStatus = async (req, res) => {
 exports.completeInstallation = async (req, res) => {
   try {
     const { id } = req.params;
-
-    const installation = await Installation.findById(id);
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+    
+    const installation = await Installation.findOne({
+      $or: [
+        { _id: isValidId ? id : null },
+        { ticketId: id },
+        { $expr: { $eq: [{ $toString: "$_id" }, id] } },
+        { $expr: { $eq: [{ $toString: "$orderId" }, id] } }
+      ]
+    });
+    
     if (!installation) {
       return res.status(404).json({ success: false, message: 'Installation record not found.' });
     }
@@ -158,7 +234,7 @@ exports.completeInstallation = async (req, res) => {
     await installation.save(); // Hook runs here — any hook error is now propagated as a thrown exception
 
     // Reload to confirm maintenanceScheduleId was linked by the hook
-    const finalizedInstallation = await Installation.findById(id).populate('maintenanceScheduleId');
+    const finalizedInstallation = await Installation.findOne({ $or: [{ _id: id }, { ticketId: id }, { orderId: id }] }).populate('maintenanceScheduleId');
 
     const scheduleCreated = !!finalizedInstallation.maintenanceScheduleId;
 
@@ -224,9 +300,9 @@ exports.repairMissingSchedules = async (req, res) => {
           ticketId,
           installationId:   inst._id,
           customerId:       inst.customerId,
-          customerName:     customer?.name     || 'Unknown Customer',
+          fullName:     customer?.fullName     || 'Unknown Customer',
           customerEmail:    customer?.email    || null,
-          customerPhone:    customer?.contactNo || null,
+          customerPhone:    customer?.phoneNumber || null,
           installationDate,
           scheduleEndDate:  buildScheduleEndDate(installationDate),
           location:         customer?.address  || inst.location || '-',
@@ -343,7 +419,7 @@ exports.getCompletedInstallationsForMaintenance = async (req, res) => {
         ]
       }
     })
-      .populate('customerId', 'name email address contactNo')
+      .populate('customerId', 'fullName name email address phoneNumber contactNo')
       .populate('maintenanceScheduleId')
       .lean();
 
@@ -352,3 +428,5 @@ exports.getCompletedInstallationsForMaintenance = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
+

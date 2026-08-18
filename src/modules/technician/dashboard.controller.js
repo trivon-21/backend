@@ -1,9 +1,9 @@
 const InspectionReport = require('../shared/inspection/inspectionReport.model');
-const Inspection = require('../shared/inspection/inspection.model');
+const Inspection = require('../shared/inspection/inspectionTicket.model');
 const Installation = require('../shared/installation/installation.model');
-const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
-const ServiceTeam = require('../service-team/serviceTeam.model');
-const Customer = require('../customer/customer.model');
+const ServiceRequest = require('../shared/repair/repair.model');
+const ServiceTeam = require('../shared/tech-teams/techTeam.model');
+const Customer = require('../user/user.model');
 const serviceTeamDashboardController = require('../service-team/dashboard.controller');
 const { WORKFLOW_STATUS, EXECUTION_STATUS, DEFAULTS } = require('../../constants/enums');
 
@@ -51,7 +51,7 @@ const getCustomerIdFromRecord = (record) => {
   return String(value);
 };
 
-const loadCustomerNameMap = async (records) => {
+const loadfullNameMap = async (records) => {
   const customerIds = Array.from(new Set(
     records
       .map(getCustomerIdFromRecord)
@@ -63,17 +63,17 @@ const loadCustomerNameMap = async (records) => {
     return new Map();
   }
 
-  const customers = await Customer.find({ _id: { $in: customerIds } }).select('_id name').lean();
-  return new Map(customers.map((customer) => [String(customer._id), customer.name || DEFAULTS.UNKNOWN_CUSTOMER]));
+  const customers = await Customer.find({ _id: { $in: customerIds } }).select('_id fullName').lean();
+  return new Map(customers.map((customer) => [String(customer._id), customer.fullName || DEFAULTS.UNKNOWN_CUSTOMER]));
 };
 
-const resolveCustomerName = (record, customerNameMap) => {
+const resolvefullName = (record, fullNameMap) => {
   const customerId = getCustomerIdFromRecord(record);
-  if (customerId && customerNameMap.has(customerId)) {
-    return customerNameMap.get(customerId);
+  if (customerId && fullNameMap.has(customerId)) {
+    return fullNameMap.get(customerId);
   }
 
-  const embeddedName = record?.customerId?.name;
+  const embeddedName = record?.customerId?.fullName;
   if (embeddedName) {
     return embeddedName;
   }
@@ -88,7 +88,7 @@ const buildInspectionTeamResolver = (teams) => {
   const nameToId = new Map(
     inspectionTeams
       .map((team) => [String(team.teamName || '').trim().toLowerCase(), String(team._id)])
-      .filter(([name]) => Boolean(name))
+      .filter(([fullName]) => Boolean(fullName))
   );
 
   const singleInspectionTeamId = inspectionTeams.length === 1 ? String(inspectionTeams[0]._id) : '';
@@ -200,7 +200,7 @@ exports.getRecentActivity = async (req, res) => {
       ServiceRequest.find().sort({ createdAt: -1 }).limit(limit).lean(),
     ]);
 
-    const customerNameMap = await loadCustomerNameMap([
+    const fullNameMap = await loadfullNameMap([
       ...recentInspectionReports,
       ...recentInstallations,
       ...recentServiceRequests,
@@ -209,33 +209,33 @@ exports.getRecentActivity = async (req, res) => {
     const activities = [];
 
     recentInspectionReports.forEach((item) => {
-      const customerName = resolveCustomerName(item, customerNameMap);
+      const fullName = resolvefullName(item, fullNameMap);
       activities.push({
         type: ACTIVITY_TYPES.INSPECTION,
         id: item._id,
-        title: `New Inspection Report - ${customerName}`,
+        title: `New Inspection Report - ${fullName}`,
         timestamp: item.updatedAt,
         icon: ACTIVITY_TYPES.INSPECTION,
       });
     });
 
     recentInstallations.forEach((item) => {
-      const customerName = resolveCustomerName(item, customerNameMap);
+      const fullName = resolvefullName(item, fullNameMap);
       activities.push({
         type: ACTIVITY_TYPES.INSTALLATION,
         id: item._id,
-        title: `Installation Progress Update - ${customerName}`,
+        title: `Installation Progress Update - ${fullName}`,
         timestamp: item.updatedAt,
         icon: ACTIVITY_TYPES.INSTALLATION,
       });
     });
 
     recentServiceRequests.forEach((item) => {
-      const customerName = resolveCustomerName(item, customerNameMap);
+      const fullName = resolvefullName(item, fullNameMap);
       activities.push({
         type: ACTIVITY_TYPES.SERVICE,
         id: item._id,
-        title: `Service Request Update - ${customerName}`,
+        title: `Service Request Update - ${fullName}`,
         timestamp: item.createdAt,
         icon: ACTIVITY_TYPES.SERVICE,
       });
@@ -302,3 +302,4 @@ exports.getUrgentAlerts = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+

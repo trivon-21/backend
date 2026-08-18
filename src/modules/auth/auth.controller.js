@@ -1,8 +1,11 @@
+const bcrypt = require('bcryptjs');
 const Info = require('./auth.model');
 const {
   TEAM_KEYS,
   TEAM_NAME_PREFIX,
   ROLE_KEYS,
+  MAIN_TECH_ROLES,
+  SERVICE_TEAM_ROLES,
   ROUTES,
   EMAIL_HINTS,
   MESSAGES,
@@ -50,11 +53,12 @@ const buildRoute = (doc) => {
 
   const role = String(doc.role || '').trim().toLowerCase();
   const normalizedEmail = String(doc.email || '').trim().toLowerCase();
-  if (role === ROLE_KEYS.MAIN_TECHNICIAN || role === ROLE_KEYS.TECHNICIAN) {
+
+  if (MAIN_TECH_ROLES.includes(role)) {
     return ROUTES.MAIN_TECHNICIAN_DASHBOARD;
   }
 
-  if (role === ROLE_KEYS.SERVICE_TEAM) {
+  if (SERVICE_TEAM_ROLES.includes(role)) {
     return ROUTES.SERVICE_TEAM_DASHBOARD;
   }
 
@@ -83,20 +87,17 @@ const login = async (req, res) => {
     }
 
     const escapedEmail = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const numericPassword = Number(password);
-    const passwordMatches = [password];
-    if (!Number.isNaN(numericPassword)) {
-      passwordMatches.push(numericPassword);
-    }
 
+    // Find user by email only — password is verified separately via bcrypt
     const infoDoc = await Info.findOne({
       email: { $regex: `^${escapedEmail}$`, $options: 'i' },
-      password: { $in: passwordMatches },
     }).lean();
 
-    if (!infoDoc) {
+    // Verify the password against the stored bcrypt hash
+    if (!infoDoc || !infoDoc.passwordHash || !(await bcrypt.compare(password, infoDoc.passwordHash))) {
       return res.status(401).json({ success: false, error: MESSAGES.INVALID_CREDENTIALS });
     }
+
 
     const teamSession = buildTeamSession(infoDoc);
     const route = buildRoute(infoDoc);

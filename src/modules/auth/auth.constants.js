@@ -11,6 +11,17 @@ const ROLE_KEYS = {
   SERVICE_TEAM: 'service-team',
 };
 
+// All accepted role values that map to each dashboard (lowercased for comparison)
+const MAIN_TECH_ROLES = [
+  'main-technician', 'main_technician', 'maintechnician',
+  'main-tech', 'main_tech', 'maintech',
+  'technician',
+];
+
+const SERVICE_TEAM_ROLES = [
+  'service-team', 'service_team', 'serviceteam',
+];
+
 const ROUTES = {
   LOGIN: '/login',
   MAIN_TECHNICIAN_DASHBOARD: '/main-technician-dashboard',
@@ -34,6 +45,8 @@ module.exports = {
   TEAM_KEYS,
   TEAM_NAME_PREFIX,
   ROLE_KEYS,
+  MAIN_TECH_ROLES,
+  SERVICE_TEAM_ROLES,
   ROUTES,
   EMAIL_HINTS,
   MESSAGES,

@@ -12,4 +12,4 @@ router.get('/:id', installationController.getInstallationById);
 router.patch('/:id/status', installationController.updateInstallationStatus);
 router.post('/:id/complete', installationController.completeInstallation);
 
-module.exports = router;
+module.exports = router;

@@ -124,7 +124,9 @@ const error = (message, errorValue = {}, context = {}) => {
 };
 
 const debug = (message, data = {}) => {
-  if (process.env.NODE_ENV !== 'production') {
+  const verbose = String(process.env.VERBOSE_LOGS || '').toLowerCase();
+  // Only emit debug logs when VERBOSE_LOGS=true (or NODE_ENV !== 'production' and explicitly set)
+  if (verbose === 'true') {
     return writeLog('debug', LOG_LEVELS.DEBUG, message, data);
   }
 

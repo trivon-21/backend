@@ -1,10 +1,12 @@
 // src/controllers/techTeam.controller.js
-const TechTeam = require('./serviceTeam.model');
-const TechTeamMember = require('./serviceTeamMember.model');
-const Customer = require('../customer/customer.model');
-const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
+const logger = require('../../utils/logger');
+logger.debug('serviceTeam.controller loaded');
+const TechTeam = require('../shared/tech-teams/techTeam.model');
+const TechTeamMember = require('../shared/tech-teams/techTeamMember.model');
+const Customer = require('../user/user.model');
+const ServiceRequest = require('../shared/repair/repair.model');
 const Installation = require('../shared/installation/installation.model');
-const Inspection = require('../shared/inspection/inspection.model');
+const Inspection = require('../shared/inspection/inspectionTicket.model');
 const Maintenance = require('../shared/maintenance/maintenance.model');
 const mongoose = require('mongoose');
 const {
@@ -45,14 +47,14 @@ const normalizeTicketId = (value) => {
 };
 
 const mapTeamMembers = (members) => members.map((member) => ({
-  name: member.name || 'Unknown Member',
+  fullName: member.fullName || 'Unknown Member',
   role: member.role || 'Technician'
 }));
 
 const mapActiveJob = (item, type) => ({
   id: item._id,
   ticketId: normalizeTicketId(item.ticketId || String(item._id).slice(-4).toUpperCase()),
-  customerName: item.customerId?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+  fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
   location: item.customerId?.address || item.location || '-',
   type,
   date: item.serviceDate || item.date || item.createdAt || null
@@ -67,7 +69,7 @@ const buildInspectionTeamResolver = (teams, fallbackTeamId = '') => {
   const nameToId = new Map(
     inspectionTeams
       .map((team) => [String(team.teamName || '').trim().toLowerCase(), String(team._id)])
-      .filter(([name]) => Boolean(name))
+      .filter(([fullName]) => Boolean(fullName))
   );
 
   const singleInspectionTeamId = inspectionTeams.length === 1 ? String(inspectionTeams[0]._id) : '';
@@ -121,7 +123,7 @@ exports.getAllTeamsWithMembers = async (req, res) => {
         accumulator.set(key, []);
       }
       accumulator.get(key).push({
-        name: member.name || 'Unknown Member',
+        fullName: member.fullName || 'Unknown Member',
         role: member.role || 'Technician'
       });
       return accumulator;
@@ -269,15 +271,19 @@ exports.getAllTeamsWithMembers = async (req, res) => {
 
 exports.getPendingAssignments = async (req, res) => {
   try {
-    const [serviceRequests, installations, maintenances] = await Promise.all([
+    const [serviceRequests, installations, inspections, maintenances] = await Promise.all([
       ServiceRequest.find({ status: WORKFLOW_STATUS.SENT_TO_IM })
-        .populate('customerId', 'name address')
+        .populate('customerId', 'fullName name address')
         .lean(),
       Installation.find({ status: WORKFLOW_STATUS.SENT_TO_IM })
-        .populate('customerId', 'name address')
+        .populate('customerId', 'fullName name address')
+        .lean(),
+      // Include inspections that have been approved by Finance and are pending assignment
+      Inspection.find({ status: WORKFLOW_STATUS.FINANCE_APPROVED })
+        .populate('customerId', 'fullName name address')
         .lean(),
       Maintenance.find({ status: MAINTENANCE_STATUS.SENT_TO_IM })
-        .populate('customerId', 'name address')
+        .populate('customerId', 'fullName name address')
         .lean()
     ]);
 
@@ -285,7 +291,7 @@ exports.getPendingAssignments = async (req, res) => {
       ...serviceRequests.map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
-        customerName: item.customerId?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+        fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.SERVICE,
         productType: item.productType || '-'
@@ -293,15 +299,24 @@ exports.getPendingAssignments = async (req, res) => {
       ...installations.map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
-        customerName: item.customerId?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+        fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.INSTALLATION,
+        productType: item.productType || '-'
+      })),
+      // Treat inspections as a pending job type so they appear in the assign modal
+      ...inspections.map((item) => ({
+        _id: item._id,
+        ticketId: normalizeTicketId(item.ticketId || item._id),
+        fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
+        location: item.customerId?.address || item.location || '-',
+        requestType: REQUEST_TYPES.INSPECTION,
         productType: item.productType || '-'
       })),
       ...maintenances.map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
-        customerName: item.customerId?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+        fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: 'Maintenance',
         productType: item.productType || 'Customer Initiated'
@@ -317,6 +332,7 @@ exports.getPendingAssignments = async (req, res) => {
 exports.assignServiceRequestToTeam = async (req, res) => {
   try {
     const { serviceRequestId, teamId, requestType } = req.body || {};
+    logger.debug('assignServiceRequestToTeam called with', { serviceRequestId, teamId, requestType });
     const resolvedServiceRequestId = String(serviceRequestId || '').replace(/^#/, '').trim();
     
     // Parse teamId to number if numeric, as test DB uses numeric IDs
@@ -332,12 +348,14 @@ exports.assignServiceRequestToTeam = async (req, res) => {
     }
 
     const team = await TechTeam.findById(resolvedTeamId).lean();
+    logger.debug('Resolved team', team ? { id: team._id, fullName: team.teamName } : null);
     if (!team) {
       return res.status(404).json({ success: false, error: 'Team not found.' });
     }
 
     const normalizedRequestType = String(requestType || '').toLowerCase();
     const isInstallation = normalizedRequestType === REQUEST_TYPES.INSTALLATION.toLowerCase();
+    const isInspection = normalizedRequestType === REQUEST_TYPES.INSPECTION.toLowerCase() || normalizedRequestType === 'inspection';
     const isMaintenance = normalizedRequestType === 'maintenance';
     
     let Model = ServiceRequest;
@@ -348,23 +366,47 @@ exports.assignServiceRequestToTeam = async (req, res) => {
     } else if (isMaintenance) {
       Model = Maintenance;
       targetStatus = MAINTENANCE_STATUS.ASSIGNED;
+    } else if (isInspection) {
+      Model = Inspection;
+      targetStatus = EXECUTION_STATUS.ASSIGNED;
     }
 
+    // assignedTeam must be an ObjectId reference; some teams use numeric _id.
+    // Use the original incoming `teamId` string to decide whether an ObjectId
+    // should be set. Only set `assignedTeam` when the provided `teamId` is a
+    // 24-character hex string (typical Mongo ObjectId). This avoids trying to
+    // write numeric IDs into ObjectId fields (which causes BSON cast errors).
+    const isObjectIdHex = /^[a-fA-F0-9]{24}$/.test(String(resolvedTeamIdStr));
+    const assignedTeamFieldName = isInstallation ? 'assignedTeamRef' : 'assignedTeam';
     const updatePayload = {
-      assignedTeam: isMaintenance ? team.teamName : team._id,
+      ...(isObjectIdHex ? { [assignedTeamFieldName]: mongoose.Types.ObjectId(String(resolvedTeamIdStr)) } : {}),
       assignedTeamId: team._id,
       assignedTeamName: team.teamName,
       status: targetStatus
     };
 
-    const assignment = await Model.findByIdAndUpdate(
-      resolvedServiceRequestId,
-      updatePayload,
-      { new: true }
-    );
+    logger.debug('assignServiceRequestToTeam: isObjectIdHex', { isObjectIdHex, resolvedTeamIdStr });
+
+    logger.debug('Updating model', { model: Model.modelName, id: resolvedServiceRequestId, payload: updatePayload });
+    let assignment;
+    try {
+      // Use the raw collection update to avoid Mongoose casting errors when
+      // document schemas expect ObjectId but the environment stores numeric
+      // team IDs. This performs a direct MongoDB update.
+      const filter = { _id: mongoose.Types.ObjectId(resolvedServiceRequestId) };
+      const resUpdate = await Model.collection.updateOne(filter, { $set: updatePayload });
+      logger.debug('Raw update result', { result: resUpdate && resUpdate.result ? resUpdate.result : resUpdate });
+      // Fetch the updated document via the model for consistent return shape
+      assignment = await Model.findById(resolvedServiceRequestId).lean();
+      logger.debug('Assignment result (fetched)', { assignment: assignment ? { _id: assignment._id, status: assignment.status } : null });
+    } catch (updateErr) {
+      logger.error('Error performing raw update', updateErr && updateErr.message ? updateErr.message : updateErr);
+      throw updateErr;
+    }
 
     if (!assignment) {
-      return res.status(404).json({ success: false, error: `${isInstallation ? 'Installation' : 'Service request'} not found.` });
+      const notFoundType = isInstallation ? 'Installation' : isMaintenance ? 'Maintenance' : isInspection ? 'Inspection' : 'Service request';
+      return res.status(404).json({ success: false, error: `${notFoundType} not found.` });
     }
 
     const currentActiveJobsCount = Number(team.activeJobsCount || 0);
@@ -375,7 +417,7 @@ exports.assignServiceRequestToTeam = async (req, res) => {
 
     res.json({
       success: true,
-      message: `${isInstallation ? 'Installation' : 'Service request'} assigned successfully.`
+      message: `${isInspection ? 'Inspection' : isInstallation ? 'Installation' : isMaintenance ? 'Maintenance' : 'Service request'} assigned successfully.`
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -434,7 +476,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
       activeJobs = inspections.map((item) => ({
         id: item._id,
         ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
-        customerName: item.customerId?.name || DEFAULTS.UNKNOWN_CUSTOMER,
+        fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         type: REQUEST_TYPES.INSPECTION,
         date: item.serviceDate || item.date
@@ -470,7 +512,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
         ...services.map((item) => ({
           id: item._id,
           ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
-          customerName: item.customerId?.name || DEFAULTS.UNKNOWN_CUSTOMER,
+          fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
           type: REQUEST_TYPES.SERVICE,
           date: item.serviceDate || item.date
@@ -478,7 +520,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
         ...installations.map((item) => ({
           id: item._id,
           ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
-          customerName: item.customerId?.name || DEFAULTS.UNKNOWN_CUSTOMER,
+          fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
           type: REQUEST_TYPES.INSTALLATION,
           date: item.date || item.serviceDate
@@ -486,7 +528,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
         ...maintenances.map((item) => ({
           id: item._id,
           ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
-          customerName: item.customerId?.name || DEFAULTS.UNKNOWN_CUSTOMER,
+          fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
           type: 'Maintenance',
           date: item.date || item.serviceDate
@@ -518,3 +560,6 @@ exports.getTeamScheduleDetails = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
+
+

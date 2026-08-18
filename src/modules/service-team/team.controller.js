@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Installation = require('../shared/installation/installation.model');
-const ServiceRequest = require('../shared/serviceRequest/serviceRequest.model');
+const ServiceRequest = require('../shared/repair/repair.model');
 const Maintenance = require('../shared/maintenance/maintenance.model');
 const TechTeam = require('../shared/tech-teams/techTeam.model');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
@@ -39,11 +39,11 @@ const toObjectId = (v) => {
 /**
  * Normalizes raw member documents into API-safe shape.
  * @param {Record<string, any>} doc
- * @returns {{id: string, name: string, role: string, phone: any, email: any}}
+ * @returns {{id: string, fullName: string, role: string, phone: any, email: any}}
  */
 const toMember = (doc = {}) => ({
   id: String(doc._id || ''),
-  name: String(doc.name || doc.memberName || doc.fullName || '').trim(),
+  fullName: String(doc.fullName || doc.memberName || doc.fullName || '').trim(),
   role: String(doc.role || doc.designation || 'Member').trim(),
   phone: doc.phone || doc.mobile || null,
   email: doc.email || null
@@ -59,7 +59,7 @@ const getTeamB = async () => {
     $or: [
       { teamName: { $regex: '^service\\s*team\\s*b$', $options: 'i' } },
       { teamName: { $regex: '^team\\s*b$', $options: 'i' } },
-      { name: { $regex: '^service\\s*team\\s*b$', $options: 'i' } },
+      { fullName: { $regex: '^service\\s*team\\s*b$', $options: 'i' } },
       { code: { $regex: '^b$', $options: 'i' } },
       { teamCode: { $regex: '^b$', $options: 'i' } }
     ]
@@ -67,7 +67,7 @@ const getTeamB = async () => {
 };
 
 /**
- * Loads team members by ID/name links from candidate collections.
+ * Loads team members by ID/fullName links from candidate collections.
  * @param {{teamId: string | null, teamName: string}} params
  * @returns {Promise<Record<string, any>[]>}
  */
@@ -75,7 +75,7 @@ const fetchMembersByTeam = async ({ teamId, teamName }) => {
   const db = mongoose.connection.db;
   if (!db) return [];
 
-  const collectionsToTry = ['TechTeamMembers', 'techteammembers'];
+  const collectionsToTry = ['tech_team_members', 'TechTeamMembers', 'techteammembers'];
   let all = [];
 
   for (const c of collectionsToTry) {
@@ -95,27 +95,27 @@ const fetchMembersByTeam = async ({ teamId, teamName }) => {
       if (teamName) {
         orFilters.push({ teamName: { $regex: `^${teamName}$`, $options: 'i' } });
         orFilters.push({ team: { $regex: `^${teamName}$`, $options: 'i' } });
-        orFilters.push({ 'team.name': { $regex: `^${teamName}$`, $options: 'i' } });
+        orFilters.push({ 'team.fullName': { $regex: `^${teamName}$`, $options: 'i' } });
       }
 
       // alias fallback
       for (const alias of TEAM_B_ALIASES) {
         orFilters.push({ teamName: { $regex: alias, $options: 'i' } });
         orFilters.push({ team: { $regex: alias, $options: 'i' } });
-        orFilters.push({ 'team.name': { $regex: alias, $options: 'i' } });
+        orFilters.push({ 'team.fullName': { $regex: alias, $options: 'i' } });
       }
 
       const docs = await collection.find({ $or: orFilters }).toArray();
       all = all.concat(docs);
     } catch {
-      // ignore and try next collection name
+      // ignore and try next collection fullName
     }
   }
 
   // de-duplicate by _id
   const seen = new Set();
   return all.filter((m) => {
-    const key = String(m._id || `${m.name || ''}-${m.phone || ''}-${m.email || ''}`);
+    const key = String(m._id || `${m.fullName || ''}-${m.phone || ''}-${m.email || ''}`);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -126,7 +126,7 @@ exports.getTeamDetails = async (req, res) => {
   try {
     const teamB = await getTeamB();
     const teamId = teamB?._id ? String(teamB._id) : null;
-    const teamName = teamB?.teamName || teamB?.name || DEFAULT_TEAM_NAME;
+    const teamName = teamB?.teamName || teamB?.fullName || DEFAULT_TEAM_NAME;
 
     const [installs, requests, maintenances, rawMembers] = await Promise.all([
       Installation.find({}).lean(),
@@ -139,7 +139,7 @@ exports.getTeamDetails = async (req, res) => {
     const inProgressJobsCount = teamBJobs.filter((j) => normalize(j.status) === normalize(EXECUTION_STATUS.IN_PROGRESS)).length;
     const freeSlots = calculateAvailableSlots(teamBJobs);
 
-    const formattedMembers = rawMembers.map(toMember).filter((m) => m.name);
+    const formattedMembers = rawMembers.map(toMember).filter((m) => m.fullName);
 
     const teamLeader =
       formattedMembers.find((m) => {
@@ -175,3 +175,4 @@ exports.getTeamDetails = async (req, res) => {
     });
   }
 };
+

@@ -1,5 +1,5 @@
 const Installation = require('../modules/shared/installation/installation.model');
-const ServiceRequest = require('../modules/shared/serviceRequest/serviceRequest.model');
+const ServiceRequest = require('../modules/shared/repair/repair.model');
 const { EXECUTION_STATUS } = require('../constants/enums');
 
 /**

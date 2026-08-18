@@ -1,11 +1,11 @@
 const assert = require('assert');
-const serviceController = require('../../src/modules/shared/serviceRequest/serviceRequest.controller');
+const serviceController = require('../../src/modules/shared/repair/repair.controller');
 
 // Mock database models
-const ServiceRequest = require('../../src/modules/shared/serviceRequest/serviceRequest.model');
+const ServiceRequest = require('../../src/modules/shared/repair/repair.model');
 const Installation = require('../../src/modules/shared/installation/installation.model');
-const Inspection = require('../../src/modules/shared/inspection/inspection.model');
-const Customer = require('../../src/modules/customer/customer.model');
+const Inspection = require('../../src/modules/shared/inspection/inspectionTicket.model');
+const Customer = require('../../src/modules/user/user.model');
 const mongoose = require('mongoose');
 
 // Mock mongoose validation
@@ -86,3 +86,4 @@ describe('Main Technician: Service Requests', () => {
     });
   });
 });
+
