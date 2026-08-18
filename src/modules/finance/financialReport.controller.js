@@ -54,16 +54,17 @@ exports.getRevenueSummary = async (req, res) => {
     });
     const pendingRevenue = acceptedInvoices.reduce((s, i) => s + (i.grandTotal || 0), 0);
 
-    // 3. Inspection fees — approvedAt with updatedAt fallback
+    // 3. Inspection fees — match by exclusion (same logic as verified payments list)
+    //    so newly-scheduled/inspected tickets still count as revenue
     let inspectionRevenue = 0;
     const Ticket = getTicketModel();
     if (Ticket) {
       const approvedTickets = await Ticket.find({
-        status: { $in: ["PAYMENT_CONFIRMED", "INSPECTION_SCHEDULED", "INSPECTED", "SUBMITTED"] },
+        status: { $nin: ["PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "PAYMENT_REJECTED"] },
+        approvedAt: { $exists: true, $ne: null },
         $or: [
           { approvedAt: { $gte: start, $lte: end } },
-          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
-          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+          { updatedAt: { $gte: start, $lte: end } },
         ]
       });
       const inspFee = await getLCharge("inspection") || 2500;
@@ -85,19 +86,34 @@ exports.getRevenueSummary = async (req, res) => {
       serviceRevenue = approvedSvc.reduce((s, t) => s + (t.serviceFee || 0), 0);
     }
 
-    // 5. Buy-only payments — real value is "Confirmed" not "Approved"
+    // 5. Buy-only payments — match by status OR paymentStatus (team schema has both fields;
+    //    which one actually gets set depends on the exact approval codepath, so check both)
     let buyOnlyRevenue = 0;
     const Order = getOrderModel();
     if (Order) {
       const approvedOrders = await Order.find({
-        paymentStatus: { $in: ["Confirmed", "Approved"] },
-        $or: [
-          { approvedAt: { $gte: start, $lte: end } },
-          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
-          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        $and: [
+          {
+            $or: [
+              { status: "Payment Confirmed" },
+              { status: "Confirmed" },
+              { paymentStatus: "Confirmed" },
+              { paymentStatus: "Approved" },
+            ]
+          },
+          {
+            $or: [
+              { approvedAt: { $gte: start, $lte: end } },
+              { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+              { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+            ]
+          }
         ]
       });
-      buyOnlyRevenue = approvedOrders.reduce((s, o) => s + (o.amount || 0), 0);
+      buyOnlyRevenue = approvedOrders.reduce((s, o) => {
+        const amount = o.amount || o.items?.[0]?.price || o.total || o.subtotal || 0;
+        return s + amount;
+      }, 0);
     }
 
     // 6. Purchase expenses (money going OUT)
@@ -105,14 +121,14 @@ exports.getRevenueSummary = async (req, res) => {
     const PurchaseRequest = getPurchaseRequestModel();
     if (PurchaseRequest) {
       const approvedPurchases = await PurchaseRequest.find({
-        status: "APPROVED",
+        status: { $in: ["APPROVED", "approved"] },
         $or: [
           { approvedAt: { $gte: start, $lte: end } },
           { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
           { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
         ]
       });
-      purchaseExpenses = approvedPurchases.reduce((s, p) => s + (p.totalAmount || 0), 0);
+      purchaseExpenses = approvedPurchases.reduce((s, p) => s + (p.totalAmount || p.totalEstimate || 0), 0);
     }
 
     const monthlyData = await getMonthlyBreakdown(Invoice, 6);
@@ -136,7 +152,8 @@ exports.getRevenueSummary = async (req, res) => {
   }
 };
 
-// ── Helper: monthly breakdown ─────────────────────────────────────────────────
+// ── Helper: monthly breakdown — 'total' field represents pure revenue          ─
+//    (buyOnly + inspection + service + invoice), matching the bar chart's need ─
 async function getMonthlyBreakdown(Invoice, months) {
   const result = [];
   const now = new Date();
@@ -153,30 +170,45 @@ async function getMonthlyBreakdown(Invoice, months) {
     });
     const invoiceTotal = invoices.reduce((s, inv) => s + (inv.grandTotal || 0), 0);
 
-    // 2. Buy Only — real status "Confirmed"
+    // 2. Buy Only — match by status OR paymentStatus
     let buyOnly = 0;
     try {
       const Order = mongoose.model("Order");
       const orders = await Order.find({
-        paymentStatus: { $in: ["Confirmed", "Approved"] },
-        $or: [
-          { approvedAt: { $gte: start, $lte: end } },
-          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
-          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+        $and: [
+          {
+            $or: [
+              { status: "Payment Confirmed" },
+              { status: "Confirmed" },
+              { paymentStatus: "Confirmed" },
+              { paymentStatus: "Approved" },
+            ]
+          },
+          {
+            $or: [
+              { approvedAt: { $gte: start, $lte: end } },
+              { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+              { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+            ]
+          }
         ]
       });
-      buyOnly = orders.reduce((s, o) => s + (o.amount || 0), 0);
+      buyOnly = orders.reduce((s, o) => {
+        const amount = o.amount || o.items?.[0]?.price || o.total || o.subtotal || 0;
+        return s + amount;
+      }, 0);
     } catch {}
 
-    // 3. Inspection fees — with updatedAt fallback
+    // 3. Inspection fees — match by exclusion
     let inspection = 0;
     try {
       const Ticket = mongoose.model("InspectionTicket");
       const tickets = await Ticket.find({
+        status: { $nin: ["PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "PAYMENT_REJECTED"] },
+        approvedAt: { $exists: true, $ne: null },
         $or: [
           { approvedAt: { $gte: start, $lte: end } },
-          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
-          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+          { updatedAt: { $gte: start, $lte: end } },
         ]
       });
       const inspFee = await getLCharge("inspection") || 2500;
@@ -203,19 +235,19 @@ async function getMonthlyBreakdown(Invoice, months) {
     try {
       const PurchaseRequest = mongoose.model("L_PurchaseRequest");
       const purchases = await PurchaseRequest.find({
-        status: "APPROVED",
+        status: { $in: ["APPROVED", "approved"] },
         $or: [
           { approvedAt: { $gte: start, $lte: end } },
           { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
           { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
         ]
       });
-      purchase = purchases.reduce((s, p) => s + (p.totalAmount || 0), 0);
+      purchase = purchases.reduce((s, p) => s + (p.totalAmount || p.totalEstimate || 0), 0);
     } catch {}
 
     result.push({
       month:      d.toLocaleDateString("en-GB", { month: "short", year: "numeric" }),
-      total:      invoiceTotal + buyOnly + inspection + service,
+      total:      invoiceTotal + buyOnly + inspection + service, // pure revenue for the bar chart
       invoice:    invoiceTotal,
       buyOnly,
       inspection,
@@ -329,45 +361,59 @@ exports.getPaymentCollections = async (req, res) => {
       status:    "Paid",
     }));
 
-    // 2. Buy Only approved orders — real status "Confirmed"
+    // 2. Buy Only approved orders — match by status OR paymentStatus
     const Order = getOrderModel();
     if (Order) {
       const orders = await Order.find({
-        paymentStatus: { $in: ["Confirmed", "Approved"] },
-        $or: [
-          { approvedAt: { $gte: start, $lte: end } },
-          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
-          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
-        ],
+        $and: [
+          {
+            $or: [
+              { status: "Payment Confirmed" },
+              { status: "Confirmed" },
+              { paymentStatus: "Confirmed" },
+              { paymentStatus: "Approved" },
+            ]
+          },
+          {
+            $or: [
+              { approvedAt: { $gte: start, $lte: end } },
+              { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
+              { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+            ]
+          }
+        ]
       });
       for (const o of orders) {
         let customerName = "—";
         try {
           const User = mongoose.model("User");
-          const user = await User.findById(o.customer);
+          const user = await User.findById(o.customer || o.userId);
           if (user) customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
           else if (o.customerName) customerName = o.customerName;
+          else if (o.shippingDetails) customerName = `${o.shippingDetails.firstName || ""} ${o.shippingDetails.lastName || ""}`.trim();
         } catch {}
+        const amount = o.amount || o.items?.[0]?.price || o.total || o.subtotal || 0;
         collections.push({
           date:      o.approvedAt || o.updatedAt,
           type:      "Buy Only Payment",
-          reference: o.orderRef || o._id.toString().slice(-6).toUpperCase(),
+          reference: o.orderRef || o.orderReference || o._id.toString().slice(-6).toUpperCase(),
           customer:  customerName,
-          amount:    o.amount || 0,
+          amount,
           method:    "Bank Transfer",
           status:    "Approved",
         });
       }
     }
 
-    // 3. Inspection payments — with updatedAt fallback
+    // 3. Inspection payments — match by exclusion
     const Ticket = getTicketModel();
     if (Ticket) {
       const tickets = await Ticket.find({
+        status: { $nin: ["PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "PAYMENT_REJECTED"] },
+        approvedAt: { $exists: true, $ne: null },
         $or: [
           { approvedAt: { $gte: start, $lte: end } },
-          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
-          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
+          { updatedAt: { $gte: start, $lte: end } },
         ],
       });
       for (const t of tickets) {
@@ -424,7 +470,7 @@ exports.getPaymentCollections = async (req, res) => {
     const PurchaseRequest = getPurchaseRequestModel();
     if (PurchaseRequest) {
       const approvedPurchases = await PurchaseRequest.find({
-        status: "APPROVED",
+        status: { $in: ["APPROVED", "approved"] },
         $or: [
           { approvedAt: { $gte: start, $lte: end } },
           { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
@@ -436,13 +482,14 @@ exports.getPaymentCollections = async (req, res) => {
         type:      "Purchase Expense",
         reference: `PR-${p._id.toString().slice(-6).toUpperCase()}`,
         customer:  p.requestedBy || "—",
-        amount:    -(p.totalAmount || 0),
+        amount:    -(p.totalAmount || p.totalEstimate || 0),
         method:    "Bank Transfer",
         status:    "Approved",
       }));
     }
 
-    collections.sort((a, b) => new Date(a.date) - new Date(b.date));
+    // FIX: newest first (was oldest first)
+    collections.sort((a, b) => new Date(b.date) - new Date(a.date));
     res.json(collections);
   } catch (error) {
     console.error("getPaymentCollections error:", error);

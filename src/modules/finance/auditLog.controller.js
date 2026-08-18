@@ -36,7 +36,7 @@ exports.getLogs = async (req, res) => {
     const skip  = (parseInt(page) - 1) * parseInt(limit);
     const total = await PaymentAuditLog.countDocuments(query);
     const logs  = await PaymentAuditLog.find(query)
-      .sort({ createdAt: 1 })   // ← oldest first
+      .sort({ createdAt: -1 })   // ← newest first
       .skip(skip)
       .limit(parseInt(limit));
 
