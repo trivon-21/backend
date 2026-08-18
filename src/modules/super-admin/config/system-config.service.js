@@ -316,6 +316,7 @@ class SystemConfigService {
       systemName: config.systemInfo.systemName,
       supportEmail: config.systemInfo.supportEmail,
       supportPhoneNumber: config.systemInfo.supportPhoneNumber,
+      address: config.systemInfo.address,
     };
 
     const changes = {};
@@ -359,6 +360,19 @@ class SystemConfigService {
           newValue: updates.supportPhoneNumber,
         };
         config.systemInfo.supportPhoneNumber = updates.supportPhoneNumber;
+      }
+    }
+
+    if (updates.hasOwnProperty('address')) {
+      if (typeof updates.address !== 'string' || updates.address.length === 0) {
+        throw new Error('Address must be non-empty string');
+      }
+      if (oldValues.address !== updates.address) {
+        changes.address = {
+          oldValue: oldValues.address,
+          newValue: updates.address,
+        };
+        config.systemInfo.address = updates.address;
       }
     }
 
