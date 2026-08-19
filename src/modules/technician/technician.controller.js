@@ -365,4 +365,9 @@ exports.updateServiceReport = async (req, res) => {
   }
 };
 
+exports.toString = (req, res) => {
+  res.json({ message: "Technician module placeholder" });
+};
+
+
 

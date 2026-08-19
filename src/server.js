@@ -1,10 +1,22 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+// Register legacy shared model collections used by finance and reporting flows.
+require('./modules/shared/L_installations.model');
+require('./modules/shared/L_inventories.model');
+require('./modules/shared/L_charges.model');
+require('./modules/shared/L_sellingPrice.model');
+require('./modules/shared/L_serviceReport.model');
+require('./modules/shared/L_bankDetails.model');
+require('./modules/shared/L_repair.model');
+require('./modules/shared/L_purchaseRequest.model');
+
 const app = require('./app');
 const { connectDb } = require('./config');
-
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+const { schedulePaymentAutoCancelJob } = require('./jobs/paymentAutoCancelJob');
+const maintenanceNotificationService = require('./services/maintenance-notification.service');
 
 const PORT = process.env.PORT || 5000;
 
@@ -69,63 +81,23 @@ const runStartupRepair = async () => {
       }
       console.log(`✅ Startup repair complete. Created ${created} missing schedules.`);
     }
-
-    return;
-    let repaired = 0;
-
-    for (const inst of orphaned) {
-      try {
-        // Maybe a schedule exists but the reference on the installation is missing
-        const existing = await MaintenanceSchedule.findOne({ installationId: inst._id });
-        if (existing) {
-          await Installation.findByIdAndUpdate(inst._id, {
-            maintenanceScheduleId: existing._id,
-            maintenanceStatus: INSTALLATION_MAINTENANCE_STATUS.SCHEDULE_CREATED
-          });
-          repaired++;
-          continue;
-        }
-
-        const customer = await Customer.findById(inst.customerId).lean();
-        const tsSegment = Date.now().toString(36).toUpperCase();
-        const idSuffix  = String(inst._id).slice(-6).toUpperCase();
-        const ticketId  = `MS-${tsSegment}-${idSuffix}`;
-
-        const installationDate = inst.serviceDate || inst.date || inst.createdAt || new Date();
-
-        const schedule = await MaintenanceSchedule.create({
-          ticketId,
-          installationId:   inst._id,
-          customerId:       inst.customerId,
-          customerName:     customer?.name     || 'Unknown Customer',
-          customerEmail:    customer?.email    || null,
-          customerPhone:    customer?.contactNo || null,
-          installationDate,
-          scheduleEndDate:  buildScheduleEndDate(installationDate),
-          location:         customer?.address  || inst.location || '-',
-          productType:      inst.productType   || 'Standard AC System',
-          services:         buildServiceTemplate(),   // 6 services: first 4 under warranty
-          status: MAINTENANCE_SCHEDULE_STATUS.NEW,
-        });
-
-        await Installation.findByIdAndUpdate(inst._id, {
-          maintenanceScheduleId: schedule._id,
-          maintenanceStatus: INSTALLATION_MAINTENANCE_STATUS.SCHEDULE_CREATED
-        });
-
-        created++;
-        console.log(`  → Created schedule ${ticketId} for installation ${inst._id}`);
-      } catch (err) {
-        console.error(`  ✗ Failed for installation ${inst._id}:`, err.message);
-      }
-    }
-
-    console.log(`✅ Startup repair complete: ${created} created, ${repaired} references repaired.`);
   } catch (err) {
-    // Never crash the server over a repair failure
-    console.error('⚠️  Startup repair encountered an error (non-fatal):', err.message);
+    console.error('⚠️ Startup repair encountered an error (non-fatal):', err.message);
   }
 };
+
+function scheduleScheduledMaintenanceStartWatcher() {
+  const runCheck = async () => {
+    try {
+      await maintenanceNotificationService.processScheduledMaintenanceStartNotifications();
+    } catch (error) {
+      console.error('Scheduled maintenance start watcher failed:', error.message);
+    }
+  };
+
+  runCheck();
+  setInterval(runCheck, 60 * 1000);
+}
 
 const startServer = async () => {
   try {
@@ -134,6 +106,14 @@ const startServer = async () => {
 
     // Run the repair job after DB is ready, before accepting traffic
     await runStartupRepair();
+
+    try {
+      schedulePaymentAutoCancelJob();
+      scheduleScheduledMaintenanceStartWatcher();
+      console.log('Background jobs scheduled successfully');
+    } catch (err) {
+      console.warn('Warning: Could not schedule background jobs:', err.message);
+    }
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
@@ -145,5 +125,3 @@ const startServer = async () => {
 };
 
 startServer();
-
-

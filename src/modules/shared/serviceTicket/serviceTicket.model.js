@@ -40,4 +40,4 @@ serviceTicketSchema.pre('save', function (next) {
   next();
 });
 
-module.exports = mongoose.model('ServiceTicket', serviceTicketSchema);
+module.exports = mongoose.models.ServiceTicket || mongoose.model('ServiceTicket', serviceTicketSchema);

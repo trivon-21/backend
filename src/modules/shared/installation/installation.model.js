@@ -28,4 +28,4 @@ const installationSchema = new Schema(
   { timestamps: true, collection: 'installations' }
 );
 
-module.exports = mongoose.model('Installation', installationSchema);
+module.exports = mongoose.models.Installation || mongoose.model('Installation', installationSchema);

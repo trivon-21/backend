@@ -47,4 +47,4 @@ const userSchema = new Schema(
 userSchema.index({ email: 1 }, { unique: true, sparse: true });
 userSchema.index({ phoneNumber: 1 }, { unique: true, sparse: true });
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.models.User || mongoose.model('User', userSchema);

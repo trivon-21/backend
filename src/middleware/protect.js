@@ -1,0 +1,34 @@
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+
+exports.protect = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await User.findById(decoded.id).select("-passwordHash");
+    if (!user) return res.status(401).json({ message: "User not found" });
+
+    // Check if user account is deactivated
+    if (!user.isActive) {
+      return res.status(403).json({
+        code: "ACCOUNT_DEACTIVATED",
+        message: "This account has been deactivated",
+        deactivationReason: user.deactivationReason || ""
+      });
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
+};
+
+// Compatibility alias for older code that imports `protectRoute`
+exports.protectRoute = exports.protect;

@@ -27,4 +27,4 @@ const inspectionReportSchema = new Schema(
   { timestamps: true, collection: 'inspectionreports' }
 );
 
-module.exports = mongoose.model('InspectionReport', inspectionReportSchema);
+module.exports = mongoose.models.InspectionReport || mongoose.model('InspectionReport', inspectionReportSchema);
