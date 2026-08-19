@@ -1,0 +1,11 @@
+const express = require('express');
+const router = express.Router();
+const controller = require('./inspectionReport.controller');
+
+router.get('/', controller.getAllReports);
+router.get('/:id', controller.getReportById);
+router.patch('/:id/requirements', controller.updateRequirements);
+router.patch('/:id/approve', controller.approveReport);
+router.patch('/:id/reject', controller.rejectReport);
+
+module.exports = router;

@@ -33,4 +33,4 @@ const inspectionTicketSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("InspectionTicket", inspectionTicketSchema);
+module.exports = mongoose.models.InspectionTicket || mongoose.model("InspectionTicket", inspectionTicketSchema);

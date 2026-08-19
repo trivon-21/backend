@@ -21,4 +21,4 @@ const serviceTicketSchema = new mongoose.Schema(
   { strict: false, timestamps: true }
 );
 
-module.exports = mongoose.model("ServiceTicket", serviceTicketSchema);
+module.exports = mongoose.models.ServiceTicket || mongoose.model("ServiceTicket", serviceTicketSchema);

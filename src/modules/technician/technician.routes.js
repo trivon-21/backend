@@ -1,8 +1,10 @@
-const router = require("express").Router();
-const controller = require("./technician.controller");
-const { protect } = require("../../middleware/protect");
+const express = require('express');
+const router = express.Router();
+const controller = require('./technician.controller');
 
-// Add routes here
-router.get("/", protect, controller.toString);
+router.get('/', controller.getAllServiceReports);
+router.post('/submit', controller.submitServiceReport);
+router.get('/:id', controller.getServiceReportById);
+router.patch('/:id', controller.updateServiceReport);
 
 module.exports = router;

@@ -1,35 +1,37 @@
 /**
- * Error handling middleware - centralized error handling
+ * Centralized Error Handling Middleware
  */
 const errorHandler = (err, req, res, next) => {
-  console.error("Error:", err.message);
-  console.error("Stack:", err.stack);
+  console.error('Error:', err.message);
+  if (err.stack) console.error('Stack:', err.stack);
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {
-    const messages = Object.values(err.errors).map(e => e.message);
-    return res.status(400).json({ message: "Validation error", errors: messages });
+    const messages = Object.values(err.errors).map((e) => e.message);
+    return res.status(400).json({ success: false, message: 'Validation error', errors: messages });
   }
 
   // MongoDB duplicate key error
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
-    return res.status(409).json({ message: `${field} already exists` });
+    const field = Object.keys(err.keyValue || {})[0] || 'Field';
+    return res.status(409).json({ success: false, message: `${field} already exists` });
   }
 
   // JWT errors
   if (err.name === 'JsonWebTokenError') {
-    return res.status(401).json({ message: 'Invalid token' });
+    return res.status(401).json({ success: false, message: 'Invalid token' });
   }
   if (err.name === 'TokenExpiredError') {
-    return res.status(401).json({ message: 'Token expired' });
+    return res.status(401).json({ success: false, message: 'Token expired' });
   }
 
   // Default error
   res.status(err.statusCode || 500).json({
+    success: false,
     message: err.message || 'Internal server error',
     error: process.env.NODE_ENV === 'development' ? err : {}
   });
 };
 
-module.exports = { errorHandler };
+module.exports = errorHandler;
+module.exports.errorHandler = errorHandler;

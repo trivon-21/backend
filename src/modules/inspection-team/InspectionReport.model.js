@@ -60,4 +60,4 @@ const inspectionReportSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("InspectionReport", inspectionReportSchema);
+module.exports = mongoose.models.InspectionReport || mongoose.model("InspectionReport", inspectionReportSchema);

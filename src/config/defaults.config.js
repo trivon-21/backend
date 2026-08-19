@@ -1,0 +1,5 @@
+const INTERNAL_FETCH_TIMEOUT_MS = Number(process.env.INTERNAL_FETCH_TIMEOUT_MS || 10000);
+
+module.exports = {
+  INTERNAL_FETCH_TIMEOUT_MS,
+};

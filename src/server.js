@@ -1,58 +1,127 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const connectDB = require('./config/db');
-const productRoutes = require('./routes/product.routes');
-const cartRoutes = require('./routes/cart.routes');
-const orderRoutes = require('./routes/order.routes');
-const bankDetailRoutes = require('./routes/bankDetail.routes');
-const authRoutes = require('./routes/auth.routes');
-const cartScenarioRoutes = require('./routes/cartScenario.routes');
 const path = require('path');
+const dotenv = require('dotenv');
 
-const app = express();
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-// Connect to MongoDB Atlas
-connectDB();
+// Register legacy shared model collections used by finance and reporting flows.
+require('./modules/shared/L_installations.model');
+require('./modules/shared/L_inventories.model');
+require('./modules/shared/L_charges.model');
+require('./modules/shared/L_sellingPrice.model');
+require('./modules/shared/L_serviceReport.model');
+require('./modules/shared/L_bankDetails.model');
+require('./modules/shared/L_repair.model');
+require('./modules/shared/L_purchaseRequest.model');
 
-// Middleware
-app.use(cors({
-    origin: 'http://localhost:4200',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
+const app = require('./app');
+const { connectDb } = require('./config');
+const { schedulePaymentAutoCancelJob } = require('./jobs/paymentAutoCancelJob');
+const maintenanceNotificationService = require('./services/maintenance-notification.service');
 
-app.use(express.json());
+const PORT = process.env.PORT || 5000;
 
-// Health check
-app.get('/', (req, res) => {
-    res.json({ success: true, message: 'AirLux API is running' });
-});
+/**
+ * Startup repair job — runs once after DB connects.
+ * Scans for completed Installations with no linked MaintenanceSchedule and
+ * creates the missing records. Safe: never deletes data, never throws to crash boot.
+ */
+const runStartupRepair = async () => {
+  try {
+    const Installation = require('./modules/shared/installation/installation.model');
+    const MaintenanceSchedule = require('./modules/shared/maintenance/maintenanceSchedule.model');
+    const { buildServiceTemplate, buildScheduleEndDate } = require('./modules/shared/maintenance/scheduleTemplate');
+    const Customer = require('./modules/user/user.model');
+    const {
+      EXECUTION_STATUS,
+      MAINTENANCE_SCHEDULE_STATUS,
+      INSTALLATION_MAINTENANCE_STATUS
+    } = require('./constants/enums');
 
-// Routes
-app.use('/api/products', productRoutes);
-app.use('/api/scenarios', cartScenarioRoutes);
-app.use('/api/cart', cartRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/admin', bankDetailRoutes);
-app.use('/api/checkout', bankDetailRoutes);
-app.use('/api/auth', authRoutes);
+    const orphaned = await Installation.find({
+      status: EXECUTION_STATUS.COMPLETED,
+      maintenanceScheduleId: null
+    }).lean();
 
-// Static files
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+    if (orphaned.length === 0) {
+      console.log('✅ Startup repair: all completed installations already have a MaintenanceSchedule.');
+    } else {
+      console.log(`⚙️  Startup repair: found ${orphaned.length} completed installation(s) with no schedule — creating now...`);
+      let created = 0;
+      for (const inst of orphaned) {
+        try {
+          const customer = await Customer.findById(inst.customerId).lean();
+          if (!customer) continue;
 
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({ success: false, message: 'Route not found' });
-});
+          const services = buildServiceTemplate(new Date(inst.date || inst.serviceDate || inst.createdAt));
+          const scheduleEndDate = buildScheduleEndDate(new Date(inst.date || inst.serviceDate || inst.createdAt));
+          const newSchedule = new MaintenanceSchedule({
+            customerId: customer._id,
+            customerName: customer.name,
+            customerEmail: customer.email,
+            customerPhone: customer.contactNo,
+            productType: inst.productType,
+            location: inst.location,
+            ticketId: `MS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            status: MAINTENANCE_SCHEDULE_STATUS.NEW,
+            services,
+            scheduleEndDate,
+            installationId: inst._id,
+            installationDate: inst.date || inst.serviceDate || inst.createdAt
+          });
 
-// Global error handler
-app.use((err, req, res, next) => {
-    console.error('Unhandled error:', err);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-});
+          const saved = await newSchedule.save();
+          await Installation.findByIdAndUpdate(inst._id, {
+            maintenanceScheduleId: saved._id,
+            maintenanceStatus: INSTALLATION_MAINTENANCE_STATUS.PENDING_CSA
+          });
+          created++;
+        } catch (err) {
+          console.error(`Error repairing installation ${inst._id}:`, err);
+        }
+      }
+      console.log(`✅ Startup repair complete. Created ${created} missing schedules.`);
+    }
+  } catch (err) {
+    console.error('⚠️ Startup repair encountered an error (non-fatal):', err.message);
+  }
+};
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+function scheduleScheduledMaintenanceStartWatcher() {
+  const runCheck = async () => {
+    try {
+      await maintenanceNotificationService.processScheduledMaintenanceStartNotifications();
+    } catch (error) {
+      console.error('Scheduled maintenance start watcher failed:', error.message);
+    }
+  };
+
+  runCheck();
+  setInterval(runCheck, 60 * 1000);
+}
+
+const startServer = async () => {
+  try {
+    await connectDb();
+    console.log('MongoDB connected');
+
+    // Run the repair job after DB is ready, before accepting traffic
+    await runStartupRepair();
+
+    try {
+      schedulePaymentAutoCancelJob();
+      scheduleScheduledMaintenanceStartWatcher();
+      console.log('Background jobs scheduled successfully');
+    } catch (err) {
+      console.warn('Warning: Could not schedule background jobs:', err.message);
+    }
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Server startup failed:', error.message);
+    process.exit(1);
+  }
+};
+
+startServer();
