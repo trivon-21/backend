@@ -78,3 +78,5 @@ temp/
 
 # Local project documentation (temporarily excluded)
 docs/
+AGENTS.md
+seeds
