@@ -327,15 +327,19 @@ exports.rejectPayment = async (req, res) => {
   }
 };
 
-// ── GET verified payments ─────────────────────────────────────────────────────
+// ── GET verified payments ──────────────────────────────────────────────────────
+// FIX: match by exclusion instead of an exact whitelist — a ticket that has been
+// approved (has approvedAt) and is NOT pending/rejected should always show here,
+// regardless of what status it moves to afterward (scheduled, inspected, etc.)
 exports.getVerifiedPayments = async (req, res) => {
   try {
     const InspectionTicket = getTicketModel();
     const User = getUserModel();
 
     const tickets = await InspectionTicket.find({
-      status: { $in: ["PAYMENT_CONFIRMED", "INSPECTION_SCHEDULED", "INSPECTED", "SUBMITTED"] }
-    }).sort({ createdAt: -1 });
+      status: { $nin: ["PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "PAYMENT_REJECTED"] },
+      approvedAt: { $exists: true, $ne: null },
+    }).sort({ approvedAt: -1, createdAt: -1 });
 
     const enriched = await Promise.all(tickets.map(async (t) => {
       const obj = t.toObject();

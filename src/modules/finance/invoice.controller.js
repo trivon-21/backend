@@ -58,26 +58,19 @@ const getLInstallationModel = () => {
   }
 };
 
-const getLInventoryModel = () => {
-  try { return mongoose.model("L_Inventory"); }
+// ── Team's shared inventory collection ─────────────────────────────────────────
+const getInventoryModel = () => {
+  try { return mongoose.model("Inventory"); }
   catch {
     const s = new mongoose.Schema({
-      name: String, costPerUnit: Number, unit: String,
+      name: String,
+      sku: String,
+      category: String,
+      unit: String,
+      unitCost: Number,
+      available: Number,
     }, { strict: false, timestamps: true });
-    return mongoose.model("L_Inventory", s);
-  }
-};
-
-const getLSellingPriceModel = () => {
-  try { return mongoose.model("L_SellingPrice"); }
-  catch {
-    const s = new mongoose.Schema({
-      inventoryId: mongoose.Schema.Types.ObjectId,
-      inventoryName: String,
-      costPerUnit: Number,
-      sellingPricePerUnit: Number,
-    }, { strict: false, timestamps: true });
-    return mongoose.model("L_SellingPrice", s);
+    return mongoose.model("Inventory", s, "inventory");
   }
 };
 
@@ -113,32 +106,32 @@ const { sendInvoiceEmail, sendInvoiceAcceptedEmail, sendInvoiceRejectedEmail,
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
-// ── Helper: find selling price for a material name ────────────────────────────
+// Profit margin — same 25% your original L_SellingPrice logic used
+const PROFIT_MARGIN = 0.25;
+
+// ── Helper: find selling price for a material name — now reads team's Inventory ─
 async function getSellingPrice(materialName) {
-  const LInventory = getLInventoryModel();
-  const LSellingPrice = getLSellingPriceModel();
+  const Inventory = getInventoryModel();
   const name = getMaterialName(materialName);
   if (!name) return null;
 
-  let inventory = await LInventory.findOne({ name });
-  if (!inventory) {
+  let item = await Inventory.findOne({ name });
+  if (!item) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    inventory = await LInventory.findOne({
+    item = await Inventory.findOne({
       $or: [
         { name: { $regex: escaped, $options: "i" } },
-        { description: { $regex: escaped, $options: "i" } },
+        { sku:  { $regex: escaped, $options: "i" } },
       ],
     });
   }
-  if (!inventory) {
-    const sellingPrice = await LSellingPrice.findOne({
-      inventoryName: { $regex: name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: "i" },
-    });
-    return sellingPrice ? sellingPrice.sellingPricePerUnit : null;
-  }
+  if (!item) return null;
 
-  const sp = await LSellingPrice.findOne({ inventoryId: inventory._id });
-  return sp ? sp.sellingPricePerUnit : inventory.costPerUnit;
+  const cost = item.unitCost || item.costPerUnit || 0;
+  if (!cost) return 0;
+
+  // Apply the same 25% profit margin your original L_SellingPrice logic used
+  return Math.round(cost * (1 + PROFIT_MARGIN));
 }
 
 // ── Helper: get fixed charge by name ─────────────────────────────────────────
@@ -274,7 +267,7 @@ exports.getInvoiceQueueDetails = async (req, res) => {
       order: {
         orderRef: order?.orderRef,
         itemName: order?.itemName || order?.items?.[0]?.name || order?.items?.[0]?.itemName || report.itemName || "",
-        amount: order?.amount || order?.total || order?.subtotal || 0,
+        amount: order?.items?.[0]?.price || order?.amount || order?.subtotal || order?.total || 0,
       },
       customer: {
         name: user ? `${user.fullName || ""} ${user.lastName || ""}`.trim() : "Unknown",
@@ -338,7 +331,8 @@ exports.generateInvoice = async (req, res) => {
 
     const acModelName = order?.itemName || order?.items?.[0]?.name || order?.items?.[0]?.itemName || resolvedInstallation.productType || "";
     const acQty = Number(order?.quantity || order?.items?.[0]?.quantity || resolvedInstallation.units || 1) || 1;
-    const acPrice = Number(order?.amount || order?.total || order?.subtotal || order?.items?.[0]?.price || 0) || 0;
+    // Prioritize the actual item price over order total (which may include inspection fee etc.)
+    const acPrice = Number(order?.items?.[0]?.price || order?.amount || order?.subtotal || order?.total || 0) || 0;
 
     if (acModelName || acPrice > 0) {
       items.push({
