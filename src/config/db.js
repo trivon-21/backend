@@ -7,9 +7,11 @@ function normalizeMongoUri() {
   if (explicitUri && explicitUri.trim()) {
     try {
       const parsed = new URL(explicitUri.trim());
-      if (parsed.pathname && parsed.pathname !== '/') {
-        return explicitUri.trim();
+      const dbName = process.env.MONGO_DB_NAME || 'airlux';
+      if (!parsed.pathname || parsed.pathname === '/') {
+        parsed.pathname = '/' + dbName;
       }
+      return parsed.toString();
     } catch (err) {
       // Ignore URL parse failures for plain local connection strings.
     }
