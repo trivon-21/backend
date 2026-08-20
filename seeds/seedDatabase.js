@@ -6,12 +6,15 @@ require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
 // Models
 const User = require("../src/models/User");
+const Product = require("../src/models/product.model");
 const Order = require("../src/models/Order");
-const ServiceRequest = require("../src/models/ServiceRequest");
+const InstallationOrder = require("../src/models/installationOrder.model");
+const ServiceTicket = require("../src/modules/shared/serviceTicket/serviceTicket.model");
 const Inquiry = require("../src/models/Inquiry");
 const Feedback = require("../src/models/Feedback");
 
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/airlux";
+const MONGO_DB_NAME = process.env.MONGO_DB_NAME || "airlux";
 
 async function connectDB() {
   try {
@@ -19,7 +22,7 @@ async function connectDB() {
     const dnsServers = (process.env.MONGO_DNS_SERVERS || "8.8.8.8,1.1.1.1").split(",");
     dns.setServers(dnsServers);
 
-    await mongoose.connect(MONGO_URI);
+    await mongoose.connect(MONGO_URI, { dbName: MONGO_DB_NAME });
     console.log("✓ Connected to MongoDB");
   } catch (error) {
     console.error("✗ MongoDB connection error:", error.message);
@@ -30,8 +33,10 @@ async function connectDB() {
 async function clearCollections() {
   try {
     await User.deleteMany({});
+    await Product.deleteMany({});
     await Order.deleteMany({});
-    await ServiceRequest.deleteMany({});
+    await InstallationOrder.deleteMany({});
+    await ServiceTicket.deleteMany({});
     await Inquiry.deleteMany({});
     await Feedback.deleteMany({});
     console.log("✓ Cleared all collections");
@@ -45,9 +50,10 @@ async function seedUsers() {
 
   const users = [
     {
-      fullName: "Super",
-      lastName: "Admin",
-      email: "admin@example.com",
+      _id: new mongoose.Types.ObjectId("6a86b68cf09ec22a4f0089c6"),
+      fullName: "Ashen",
+      lastName: "Perera",
+      email: "admin@airlux.lk",
       phoneNumber: "+94770000000",
       passwordHash: hashedPassword,
       gender: "Male",
@@ -58,50 +64,116 @@ async function seedUsers() {
       authMethods: ["email"]
     },
     {
-      fullName: "John",
-      lastName: "Doe",
-      email: "john@example.com",
-      phoneNumber: "+94771234567",
+      _id: new mongoose.Types.ObjectId("6a86b68df09ec22a4f0089c8"),
+      fullName: "Nadeesha",
+      lastName: "Fernando",
+      email: "nadeesha@example.com",
+      phoneNumber: "+94770000002",
       passwordHash: hashedPassword,
-      gender: "Male",
-      address: "123 Main Street, Colombo",
+      gender: "Female",
+      address: "45 Negombo Road, Negombo",
       role: "CUSTOMER",
       emailVerified: true,
       phoneVerified: true,
       authMethods: ["email", "phone"]
     },
     {
-      fullName: "Sarah",
-      lastName: "Johnson",
-      email: "sarah@example.com",
-      phoneNumber: "+94772345678",
-      passwordHash: hashedPassword,
-      gender: "Female",
-      address: "456 Oak Avenue, Kandy",
-      role: "CUSTOMER",
-      emailVerified: true,
-      phoneVerified: true,
-      authMethods: ["email"],
-      additionalEmails: [
-        {
-          email: "sarah.work@example.com",
-          verified: true,
-          addedAt: new Date()
-        }
-      ]
-    },
-    {
-      fullName: "Michael",
-      lastName: "Smith",
-      email: "michael@example.com",
-      phoneNumber: "+94773456789",
+      _id: new mongoose.Types.ObjectId("6a86b68df09ec22a4f0089ca"),
+      fullName: "Kasun",
+      lastName: "Silva",
+      email: "kasun@airlux.lk",
+      phoneNumber: "+94772222222",
       passwordHash: hashedPassword,
       gender: "Male",
-      address: "789 Pine Road, Galle",
-      role: "CUSTOMER",
+      address: "Technician Hub, Galle",
+      role: "MAIN_TECH",
       emailVerified: true,
-      phoneVerified: false,
-      authMethods: ["phone"]
+      phoneVerified: true,
+      authMethods: ["email"]
+    },
+    {
+      _id: new mongoose.Types.ObjectId("6a86b68df09ec22a4f0089cc"),
+      fullName: "Ishara",
+      lastName: "Jayasuriya",
+      email: "ishara@airlux.lk",
+      phoneNumber: "+94773333333",
+      passwordHash: hashedPassword,
+      gender: "Female",
+      address: "Finance Dept, Colombo",
+      role: "FINANCE",
+      emailVerified: true,
+      phoneVerified: true,
+      authMethods: ["email"]
+    },
+    {
+      _id: new mongoose.Types.ObjectId("6a86b68df09ec22a4f0089ce"),
+      fullName: "Ruwan",
+      lastName: "Perera",
+      email: "ruwan@airlux.lk",
+      phoneNumber: "+94774444444",
+      passwordHash: hashedPassword,
+      gender: "Male",
+      address: "CSA Lounge, Kandy",
+      role: "CSA",
+      emailVerified: true,
+      phoneVerified: true,
+      authMethods: ["email"]
+    },
+    {
+      _id: new mongoose.Types.ObjectId("6a86b68df09ec22a4f0089d0"),
+      fullName: "Dilshan",
+      lastName: "Silva",
+      email: "dilshan@airlux.lk",
+      phoneNumber: "+94775555555",
+      passwordHash: hashedPassword,
+      gender: "Male",
+      address: "Inspection Team Office, Colombo",
+      role: "INSPECTION",
+      emailVerified: true,
+      phoneVerified: true,
+      authMethods: ["email"]
+    },
+    {
+      _id: new mongoose.Types.ObjectId("6a86b68df09ec22a4f0089d2"),
+      fullName: "Nuwan",
+      lastName: "Jayewardene",
+      email: "nuwan@airlux.lk",
+      phoneNumber: "+94776666666",
+      passwordHash: hashedPassword,
+      gender: "Male",
+      address: "Service HQ, Negombo",
+      role: "SERVICE_TEAM",
+      emailVerified: true,
+      phoneVerified: true,
+      authMethods: ["email"]
+    },
+    {
+      _id: new mongoose.Types.ObjectId("6a86b68df09ec22a4f0089d4"),
+      fullName: "Amal",
+      lastName: "Perera",
+      email: "amal@airlux.lk",
+      phoneNumber: "+94777777777",
+      passwordHash: hashedPassword,
+      gender: "Male",
+      address: "Main Warehouse, Colombo",
+      role: "INVENTORY",
+      emailVerified: true,
+      phoneVerified: true,
+      authMethods: ["email"]
+    },
+    {
+      _id: new mongoose.Types.ObjectId("6a86b68ef09ec22a4f0089d6"),
+      fullName: "Priyantha",
+      lastName: "Bandara",
+      email: "priyantha@airlux.lk",
+      phoneNumber: "+94778888888",
+      passwordHash: hashedPassword,
+      gender: "Male",
+      address: "Executive Suite, Colombo",
+      role: "MANAGER",
+      emailVerified: true,
+      phoneVerified: true,
+      authMethods: ["email"]
     }
   ];
 
@@ -110,253 +182,219 @@ async function seedUsers() {
   return createdUsers;
 }
 
-async function seedOrders(users) {
-  const orders = [
+async function seedProducts() {
+  const products = [
     {
-      customer: users[1]._id,
-      itemName: "Daikin 1.5 Ton Air Conditioner",
-      productImage: "https://via.placeholder.com/300x300?text=Daikin",
-      quantity: 1,
-      amount: 45000,
-      paymentStatus: "Confirmed",
-      orderType: "Buy & Install",
-      orderStatus: "Delivered",
-      status: "Pending",
-      deliveryTrackingId: "DL123456789",
-      warrantyStart: new Date("2024-04-04"),
-      warrantyExpiry: new Date("2026-04-04"),
-      amcStatus: "Active"
+      _id: new mongoose.Types.ObjectId("6a86b68ef09ec22a4f0089e2"),
+      name: "Airlux SplitCool 12000BTU",
+      description: "Inverter split-type air conditioner, energy efficient, ideal for medium rooms.",
+      brand: "Airlux",
+      category: "Split AC",
+      image: "https://example.com/images/splitcool-12000.jpg",
+      images: [],
+      capacity: 12000,
+      price: 145000,
+      variants: [
+        { capacity: 9000, price: 120000, label: "9000 BTU" },
+        { capacity: 12000, price: 145000, label: "12000 BTU" },
+        { capacity: 18000, price: 189000, label: "18000 BTU" }
+      ],
+      specs: [
+        { key: "Energy Rating", value: "5 Star" },
+        { key: "Refrigerant", value: "R32" }
+      ],
+      warrantyInfo: {
+        comprehensive: "1 year",
+        compressor: "5 years",
+        covered: ["Compressor", "PCB"],
+        notCovered: ["Physical damage", "Water damage"]
+      },
+      features: ["Inverter technology", "Low noise", "Wi-Fi ready"],
+      inStock: true,
+      averageRating: 0,
+      reviewCount: 0,
+      reviews: []
     },
     {
-      customer: users[1]._id,
-      itemName: "LG 2 Ton Window AC",
-      productImage: "https://via.placeholder.com/300x300?text=LG",
-      quantity: 2,
-      amount: 32000,
-      paymentStatus: "Under Review",
-      orderType: "Buy Only",
-      orderStatus: "Payment Uploaded",
-      status: "Pending",
-      paymentSlipUrl: "https://via.placeholder.com/300x300?text=Receipt"
+      _id: new mongoose.Types.ObjectId("6a86b68ef09ec22a4f0089e3"),
+      name: "LG 2 Ton Window AC",
+      description: "Window air conditioner with powerful cooling and dual rotor technology.",
+      brand: "LG",
+      category: "Window AC",
+      image: "https://example.com/images/lg-window-2ton.jpg",
+      images: [],
+      capacity: 24000,
+      price: 95000,
+      variants: [],
+      specs: [
+        { key: "Energy Rating", value: "3 Star" },
+        { key: "Refrigerant", value: "R22" }
+      ],
+      warrantyInfo: {
+        comprehensive: "1 year",
+        compressor: "10 years",
+        covered: ["Compressor"],
+        notCovered: ["Cabinet rust"]
+      },
+      features: ["Dual inverter", "Remote control", "Auto clean"],
+      inStock: true,
+      averageRating: 0,
+      reviewCount: 0,
+      reviews: []
     },
     {
-      customer: users[2]._id,
-      itemName: "Hitachi 1 Ton Split AC",
-      productImage: "https://via.placeholder.com/300x300?text=Hitachi",
-      quantity: 1,
-      amount: 38000,
-      paymentStatus: "Confirmed",
-      orderType: "Buy & Install",
-      orderStatus: "Installation Completed",
-      status: "Completed",
-      deliveryTrackingId: "DL987654321",
-      warrantyStart: new Date("2023-06-15"),
-      warrantyExpiry: new Date("2025-06-15"),
-      amcStatus: "Expired"
-    },
-    {
-      customer: users[2]._id,
-      itemName: "Voltas 1.5 Ton AC Unit",
-      productImage: "https://via.placeholder.com/300x300?text=Voltas",
-      quantity: 1,
-      amount: 28000,
-      paymentStatus: "Pending Payment",
-      orderType: "Buy Only",
-      orderStatus: "Order Placed",
-      status: "Pending"
-    },
-    {
-      customer: users[3]._id,
-      itemName: "Samsung 1.5 Ton Inverter AC",
-      productImage: "https://via.placeholder.com/300x300?text=Samsung",
-      quantity: 1,
-      amount: 52000,
-      paymentStatus: "Confirmed",
-      orderType: "Buy & Install",
-      orderStatus: "Installation Scheduled",
-      status: "Pending",
-      deliveryTrackingId: "DL555666777",
-      warrantyStart: new Date("2024-03-20"),
-      warrantyExpiry: new Date("2026-03-20"),
-      amcStatus: "Active"
+      _id: new mongoose.Types.ObjectId("6a86b68ef09ec22a4f0089e4"),
+      name: "Samsung 1.5 Ton Inverter AC",
+      description: "Fast cooling digital inverter, copper condenser, antibacterial filter.",
+      brand: "Samsung",
+      category: "Split AC",
+      image: "https://example.com/images/samsung-inverter-1.5.jpg",
+      images: [],
+      capacity: 18000,
+      price: 165000,
+      variants: [],
+      specs: [
+        { key: "Energy Rating", value: "4 Star" },
+        { key: "Refrigerant", value: "R32" }
+      ],
+      warrantyInfo: {
+        comprehensive: "2 years",
+        compressor: "10 years",
+        covered: ["Compressor", "Condenser coil"],
+        notCovered: ["Plastic parts"]
+      },
+      features: ["Triple protector plus", "Easy filter plus", "Durafin"],
+      inStock: true,
+      averageRating: 0,
+      reviewCount: 0,
+      reviews: []
     }
   ];
 
-  const createdOrders = await Order.insertMany(orders);
-  console.log(`✓ Created ${createdOrders.length} orders`);
-  return createdOrders;
+  const createdProducts = await Product.insertMany(products);
+  console.log(`✓ Created ${createdProducts.length} products`);
+  return createdProducts;
 }
 
-async function seedServiceRequests(users, orders) {
-  const serviceRequests = [
+async function seedOrders(users, products) {
+  // Buy Only order (goes to Order model)
+  const orderBO = {
+    _id: new mongoose.Types.ObjectId("6a86b68ff09ec22a4f0089e6"),
+    orderReference: "ALX-BO-0001",
+    userId: users[1]._id,
+    items: [
+      {
+        productId: products[0]._id,
+        name: products[0].name,
+        price: products[0].price,
+        quantity: 1,
+        purchaseType: "buy_only"
+      }
+    ],
+    shippingDetails: {
+      firstName: "Nadeesha",
+      lastName: "Fernando",
+      email: "nadeesha@example.com",
+      phone: "+94770000002",
+      address: "45 Negombo Road",
+      city: "Negombo",
+      postalCode: "11500"
+    },
+    subtotal: 145000,
+    additionalCharges: 0,
+    total: 145000,
+    status: "Pending Payment",
+    consultationCompleted: false
+  };
+
+  // Buy & Install order (goes to InstallationOrder model)
+  const orderBI = {
+    _id: new mongoose.Types.ObjectId("6a86b68ff09ec22a4f0089e8"),
+    orderReference: "ALX-BI-0001",
+    userId: users[1]._id,
+    items: [
+      {
+        productId: products[0]._id,
+        name: products[0].name,
+        price: products[0].price,
+        quantity: 1,
+        purchaseType: "buy_and_install"
+      }
+    ],
+    shippingDetails: {
+      firstName: "Nadeesha",
+      lastName: "Fernando",
+      email: "nadeesha@example.com",
+      phone: "+94770000002",
+      address: "45 Negombo Road",
+      city: "Negombo",
+      postalCode: "11500"
+    },
+    subtotal: 145000,
+    additionalCharges: 5000,
+    total: 150000,
+    status: "Awaiting Inspection",
+    inspectionFee: 5000,
+    consultationCompleted: false
+  };
+
+  const createdBO = await Order.create(orderBO);
+  const createdBI = await InstallationOrder.create(orderBI);
+
+  console.log("✓ Created 1 Order (Buy Only)");
+  console.log("✓ Created 1 Installation Order (Buy & Install)");
+
+  return { createdBO, createdBI };
+}
+
+async function seedServiceTickets(users) {
+  const tickets = [
     {
-      customer: users[1]._id,
-      acUnitModel: "Daikin FTKA50TV",
-      acUnitSerial: "DK001234567",
-      acWarrantyStatus: "Active",
-      acAmcStatus: "Active",
-      serviceType: "General Service",
-      problemDescription: "AC is making noise during operation",
-      preferredDate: new Date("2024-04-15"),
-      preferredTimeSlot: "10:00 AM - 12:00 PM",
-      estimatedCharges: 1500,
-      paymentRequired: false,
-      status: "Assigned"
+      _id: new mongoose.Types.ObjectId("6a86b690f09ec22a4f0089fa"),
+      customerId: users[1]._id, // Nadeesha Fernando
+      requestType: "Maintenance",
+      description: "Customer requested first free service after installation.",
+      serviceFee: 0,
+      category: "maintenance",
+      priority: "medium",
+      status: "Assigned",
+      assignedTechnicianId: users[2]._id, // Kasun Silva (MAIN_TECH)
+      slaDueAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) // 14 days from now
     },
     {
-      customer: users[1]._id,
-      acUnitModel: "LG LSA3NK",
-      acUnitSerial: "LG567890123",
-      acWarrantyStatus: "Active",
-      acAmcStatus: "Not Active",
-      serviceType: "Gas Refill",
-      problemDescription: "AC is not cooling properly",
-      preferredDate: new Date("2024-04-20"),
-      preferredTimeSlot: "02:00 PM - 04:00 PM",
-      estimatedCharges: 2500,
-      paymentRequired: true,
-      status: "Pending"
-    },
-    {
-      customer: users[2]._id,
-      acUnitModel: "Hitachi RMAS512HBEA",
-      acUnitSerial: "HT111222333",
-      acWarrantyStatus: "Expired",
-      acAmcStatus: "Not Active",
-      serviceType: "Repair",
-      problemDescription: "Compressor is not working",
-      preferredDate: new Date("2024-04-10"),
-      preferredTimeSlot: "09:00 AM - 11:00 AM",
-      estimatedCharges: 5000,
-      paymentRequired: true,
-      status: "In Progress"
-    },
-    {
-      customer: users[3]._id,
-      acUnitModel: "Samsung AR18NV3HEWK",
-      acUnitSerial: "SM444555666",
-      acWarrantyStatus: "Active",
-      acAmcStatus: "Active",
-      serviceType: "AMC Service",
-      problemDescription: "Regular maintenance and cleaning",
-      preferredDate: new Date("2024-04-25"),
-      preferredTimeSlot: "11:00 AM - 01:00 PM",
-      estimatedCharges: 0,
-      paymentRequired: false,
-      status: "Pending"
-    },
-    {
-      customer: users[3]._id,
-      acUnitModel: "Voltas 185 DXM",
-      acUnitSerial: "VT777888999",
-      acWarrantyStatus: "Unknown",
-      acAmcStatus: "Not Active",
-      serviceType: "Installation Issue",
-      problemDescription: "Unit is vibrating excessively after installation",
-      preferredDate: new Date("2024-04-12"),
-      preferredTimeSlot: "03:00 PM - 05:00 PM",
-      estimatedCharges: 1000,
-      paymentRequired: false,
-      status: "Completed"
+      customerId: users[1]._id,
+      requestType: "Repair",
+      description: "AC is cooling slowly and blowing warm air periodically.",
+      serviceFee: 1500,
+      category: "repair",
+      priority: "high",
+      status: "New"
     }
   ];
 
-  const createdServiceRequests = await ServiceRequest.insertMany(serviceRequests);
-  console.log(`✓ Created ${createdServiceRequests.length} service requests`);
-  return createdServiceRequests;
+  const createdTickets = await ServiceTicket.insertMany(tickets);
+  console.log(`✓ Created ${createdTickets.length} service tickets`);
+  return createdTickets;
 }
 
 async function seedInquiries(users) {
   const inquiries = [
     {
       customer: users[1]._id,
-      name: "John Doe",
-      email: "john@example.com",
-      phone: "0771234567",
+      name: "Nadeesha Fernando",
+      email: "nadeesha@example.com",
+      phone: "+94770000002",
       inquiryType: "Product",
-      message: "What are the energy efficiency ratings for the Daikin models?",
+      message: "What are the energy efficiency ratings for the Airlux SplitCool models?",
       status: "Addressed",
       thread: [
         {
           sender: "Customer",
-          message: "What are the energy efficiency ratings for the Daikin models?"
+          message: "What are the energy efficiency ratings for the Airlux SplitCool models?"
         },
         {
           sender: "Support",
-          message: "Our Daikin models have 5-star energy ratings. They consume 30% less power compared to standard models."
-        },
-        {
-          sender: "Customer",
-          message: "That's great! Can I get more details about warranty coverage?"
-        },
-        {
-          sender: "Support",
-          message: "Warranty covers compressor failure, refrigerant leaks, and electrical malfunctions for 2 years. Extended warranty available for 3-5 years."
-        }
-      ]
-    },
-    {
-      customer: users[2]._id,
-      name: "Sarah Johnson",
-      email: "sarah@example.com",
-      phone: "0772345678",
-      inquiryType: "Installation",
-      message: "Do you provide installation service in Kandy area?",
-      status: "Ongoing",
-      thread: [
-        {
-          sender: "Customer",
-          message: "Do you provide installation service in Kandy area?"
-        },
-        {
-          sender: "Support",
-          message: "Yes, we provide installation services across Sri Lanka including Kandy. Average installation time is 2-3 hours."
-        }
-      ]
-    },
-    {
-      customer: users[3]._id,
-      name: "Michael Smith",
-      email: "michael@example.com",
-      phone: "0773456789",
-      inquiryType: "Warranty",
-      message: "How does the warranty claim process work?",
-      status: "Closed",
-      thread: [
-        {
-          sender: "Customer",
-          message: "How does the warranty claim process work?"
-        },
-        {
-          sender: "Support",
-          message: "1. Contact us with your invoice and issue details. 2. We'll schedule a free diagnosis. 3. If covered by warranty, we'll repair/replace at no cost."
-        },
-        {
-          sender: "Customer",
-          message: "Thank you, that's clear!"
-        },
-        {
-          sender: "Support",
-          message: "You're welcome! Feel free to reach out if you have any other questions."
-        }
-      ]
-    },
-    {
-      customer: users[1]._id,
-      name: "John Doe",
-      email: "john@example.com",
-      phone: "0771234567",
-      inquiryType: "AMC",
-      message: "What's included in the AMC package?",
-      status: "Ongoing",
-      thread: [
-        {
-          sender: "Customer",
-          message: "What's included in the AMC package?"
-        },
-        {
-          sender: "Support",
-          message: "AMC includes 2 free services per year, 24/7 breakdown support, and discounted parts replacement."
+          message: "Our Airlux SplitCool models have 5-star energy ratings and utilize R32 eco-friendly refrigerant."
         }
       ]
     }
@@ -367,57 +405,17 @@ async function seedInquiries(users) {
   return createdInquiries;
 }
 
-async function seedFeedback(users, orders, serviceRequests) {
+async function seedFeedback(users, orders, serviceTickets) {
   const feedback = [
     {
       customer: users[1]._id,
       feedbackFor: "Order",
-      referenceId: orders[0]._id,
-      referenceLabel: orders[0].orderRef,
+      referenceId: orders.createdBO._id,
+      referenceLabel: orders.createdBO.orderReference,
       productQuality: 5,
       technicianBehavior: 5,
       deliveryExperience: 4,
-      comment: "Excellent product! The AC is very quiet and cools perfectly. Delivery was on time.",
-      imageUrl: "https://via.placeholder.com/300x300?text=Review"
-    },
-    {
-      customer: users[1]._id,
-      feedbackFor: "Installation",
-      referenceId: orders[0]._id,
-      referenceLabel: orders[0].orderRef,
-      technicianBehavior: 5,
-      serviceQuality: 5,
-      comment: "Professional installation team. They were courteous and cleaned up after installation.",
-      imageUrl: "https://via.placeholder.com/300x300?text=Installation"
-    },
-    {
-      customer: users[1]._id,
-      feedbackFor: "Service",
-      referenceId: serviceRequests[0]._id,
-      referenceLabel: serviceRequests[0].serviceRequestRef,
-      serviceQuality: 4,
-      technicianBehavior: 4,
-      comment: "Good service. Technician identified the noise issue and fixed it quickly."
-    },
-    {
-      customer: users[2]._id,
-      feedbackFor: "Order",
-      referenceId: orders[2]._id,
-      referenceLabel: orders[2].orderRef,
-      productQuality: 4,
-      technicianBehavior: 5,
-      deliveryExperience: 5,
-      comment: "Great experience overall. Product is as described. Delivery and installation were smooth.",
-      imageUrl: "https://via.placeholder.com/300x300?text=Satisfied"
-    },
-    {
-      customer: users[3]._id,
-      feedbackFor: "AMC Service Visit",
-      referenceId: serviceRequests[3]._id,
-      referenceLabel: serviceRequests[3].serviceRequestRef,
-      serviceQuality: 5,
-      technicianBehavior: 5,
-      comment: "Very thorough preventive maintenance. The technician explained everything clearly."
+      comment: "Excellent buying experience. The SplitCool AC cools extremely fast."
     }
   ];
 
@@ -432,22 +430,21 @@ async function seedDatabase() {
     await clearCollections();
 
     const users = await seedUsers();
-    const orders = await seedOrders(users);
-    const serviceRequests = await seedServiceRequests(users, orders);
+    const products = await seedProducts();
+    const orders = await seedOrders(users, products);
+    const serviceTickets = await seedServiceTickets(users);
     const inquiries = await seedInquiries(users);
-    const feedback = await seedFeedback(users, orders, serviceRequests);
+    await seedFeedback(users, orders, serviceTickets);
 
     console.log("\n✓ Database seeded successfully!\n");
     console.log("═══════════════════════════════════════════════════════════");
     console.log("SUPER ADMIN CREDENTIALS:");
-    console.log("- Email: admin@example.com");
+    console.log("- Email: admin@airlux.lk");
     console.log("- Password: Test@123456");
     console.log("═══════════════════════════════════════════════════════════");
     console.log("\nCUSTOMER CREDENTIALS:");
-    console.log("- Email: john@example.com (Phone: 0771234567)");
-    console.log("- Email: sarah@example.com (Phone: 0772345678)");
-    console.log("- Email: michael@example.com (Phone: 0773456789)");
-    console.log("- Password: Test@123456 (all users)");
+    console.log("- Email: nadeesha@example.com");
+    console.log("- Password: Test@123456");
     console.log("═══════════════════════════════════════════════════════════");
     console.log("\nAll collections populated with sample data!");
 
