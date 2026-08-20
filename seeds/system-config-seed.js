@@ -5,25 +5,28 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
+const dns = require('dns');
 const SystemConfig = require('../src/models/SystemConfig');
 
 async function seedSystemConfig() {
   try {
+    // Configure DNS servers to fix querySrv issues for remote clusters
+    const dnsServers = (process.env.MONGO_DNS_SERVERS || '8.8.8.8,1.1.1.1').split(',');
+    dns.setServers(dnsServers);
+
     // Connect to the shared team database configured in the environment.
     const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/airlux';
-    await mongoose.connect(mongoUri);
-    console.log('Connected to MongoDB');
+    const mongoDbName = process.env.MONGO_DB_NAME || 'airlux';
+    
+    await mongoose.connect(mongoUri, { dbName: mongoDbName });
+    console.log('✓ Connected to MongoDB');
 
-    // Check if config already exists
-    let config = await SystemConfig.findOne();
-
-    if (config) {
-      console.log('SystemConfig already exists. Skipping seed.');
-      process.exit(0);
-    }
+    // Clear existing config to ensure clean reset
+    await SystemConfig.deleteMany({});
+    console.log('✓ Cleared existing SystemConfig');
 
     // Create default SystemConfig
-    config = await SystemConfig.create({
+    const config = await SystemConfig.create({
       businessRules: {
         quotationApprovalThreshold: 1000000,
         logRetentionDays: 30,
