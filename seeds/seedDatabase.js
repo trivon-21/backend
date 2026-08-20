@@ -46,7 +46,7 @@ async function clearCollections() {
 }
 
 async function seedUsers() {
-  const hashedPassword = await bcrypt.hash("Test@123456", 10);
+  const hashedPassword = await bcrypt.hash("Password123!", 10);
 
   const users = [
     {
@@ -440,11 +440,11 @@ async function seedDatabase() {
     console.log("═══════════════════════════════════════════════════════════");
     console.log("SUPER ADMIN CREDENTIALS:");
     console.log("- Email: admin@airlux.lk");
-    console.log("- Password: Test@123456");
+    console.log("- Password: Password123!");
     console.log("═══════════════════════════════════════════════════════════");
     console.log("\nCUSTOMER CREDENTIALS:");
     console.log("- Email: nadeesha@example.com");
-    console.log("- Password: Test@123456");
+    console.log("- Password: Password123!");
     console.log("═══════════════════════════════════════════════════════════");
     console.log("\nAll collections populated with sample data!");
 
