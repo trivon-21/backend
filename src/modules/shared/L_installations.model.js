@@ -16,10 +16,11 @@ const siteDetailsSchema = new mongoose.Schema({
 }, { _id: false });
 
 const lInstallationSchema = new mongoose.Schema({
-  orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order", default: null },
+  // FIXED: was ref: "Order" — team schema says this should reference InstallationOrder
+  orderId: { type: mongoose.Schema.Types.ObjectId, ref: "InstallationOrder", default: null },
   inspectionTicketId: { type: mongoose.Schema.Types.ObjectId, ref: "InspectionTicket", default: null },
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  assignedTeamId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  assignedTeamId: { type: mongoose.Schema.Types.ObjectId, ref: "TechTeam", default: null },
   assignedTeamName: { type: String, default: "" },
   productType: { type: String, default: "" },
   units: { type: Number, default: 1 },

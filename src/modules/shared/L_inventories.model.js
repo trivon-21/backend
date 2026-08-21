@@ -1,16 +1,31 @@
 const mongoose = require("mongoose");
 
-const lInventorySchema = new mongoose.Schema({
+const inventorySchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
-  category: {
+  sku: { type: String, required: true, unique: true },
+  category: { type: String, required: true },
+  itemClass: {
     type: String,
-    enum: ["Piping", "Electrical", "Mounting", "Drainage", "Safety", "Tools", "Consumables", "Other"],
-    default: "Other",
+    enum: ["AC Equipment", "Spare Parts", "Installation Materials", "Consumables", "Tools and Test Equipment", "Kits and Bundles", "Unclassified"],
+    default: "Unclassified",
   },
-  unit: { type: String, default: "unit" },
-  costPerUnit: { type: Number, required: true, min: 0 },
-  description: { type: String, default: "" },
-  inStock: { type: Boolean, default: true },
-}, { timestamps: true });
+  unit: { type: String, default: "units" },
+  unitCost: { type: Number, default: 0 },
+  available: { type: Number, default: 0 },
+  reserved: { type: Number, default: 0 },
+  supplierId: { type: mongoose.Schema.Types.ObjectId, ref: "Supplier" },
+  pricing: {
+    costPerUnit: Number,
+    profitMargin: { type: Number, default: 0.25 },
+    sellingPricePerUnit: Number,
+  },
+}, { timestamps: true, strict: false });
 
-module.exports = mongoose.model("L_Inventory", lInventorySchema);
+const Inventory = mongoose.models.Inventory
+  || mongoose.model("Inventory", inventorySchema, "inventory");
+
+if (!mongoose.models.L_Inventory) {
+  mongoose.model("L_Inventory", inventorySchema, "inventory");
+}
+
+module.exports = Inventory;
