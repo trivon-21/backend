@@ -1,11 +1,10 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const path = require('path');
-const dns = require('dns');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-dns.setServers((process.env.MONGO_DNS_SERVERS || '8.8.8.8,1.1.1.1').split(','));
 
+const connectDB = require('../src/config/db');
 const User = require('../src/models/User');
 const Supplier = require('../src/models/Supplier');
 const Inventory = require('../src/models/Inventory');
@@ -43,7 +42,7 @@ async function upsertUser({ email, fullName, lastName, role }) {
 }
 
 async function seedDemoData() {
-  await mongoose.connect(process.env.MONGO_URI);
+  await connectDB();
 
   const inventoryUser = await User.findOne({ email: 'priyantha@airlux.lk' });
   const managerUser = await User.findOne({ email: 'amal@airlux.lk' });

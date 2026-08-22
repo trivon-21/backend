@@ -1,12 +1,10 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const path = require("path");
-const dns = require("dns");
 require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
+const connectDB = require("../src/config/db");
 const User = require("../src/models/User");
-
-const MONGO_URI = process.env.MONGO_URI;
 
 async function seedManagerUser() {
   try {
@@ -14,15 +12,11 @@ async function seedManagerUser() {
     const password = process.env.SEED_MANAGER_PASSWORD;
     const role = "MANAGER";
 
-    if (!MONGO_URI || !email || !password) {
-      throw new Error("MONGO_URI, SEED_MANAGER_EMAIL and SEED_MANAGER_PASSWORD are required");
+    if (!email || !password) {
+      throw new Error("SEED_MANAGER_EMAIL and SEED_MANAGER_PASSWORD are required");
     }
 
-    const dnsServers = (process.env.MONGO_DNS_SERVERS || "8.8.8.8,1.1.1.1").split(",");
-    dns.setServers(dnsServers);
-
-    await mongoose.connect(MONGO_URI);
-    console.log("✓ Connected to MongoDB");
+    await connectDB();
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
