@@ -1,53 +1,31 @@
 # Dependencies
 node_modules/
 
-# Environment variables
+# Environment files (keep the documented template)
 .env
-.env.local
-.env.*.local
-.env.development
-.env.production
-.env.test
 .env.*
 !.env.example
 
-# Logs
+# Logs and runtime data
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Runtime data
+pnpm-debug.log*
 pids/
 *.pid
-*.seed
 *.pid.lock
+*.seed
 
-# Build output
+# Build and test output
 dist/
 build/
 out-tsc/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor directories and files
-.idea/
-.vscode/
-.history/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# Testing
 coverage/
 .nyc_output/
 
-# Local databases, dumps, and uploaded evidence
+# Local databases, dumps, and uploaded files
 *.db
 *.db-journal
 *.sqlite
@@ -58,25 +36,35 @@ dump/
 uploads/
 storage/
 
-# Private keys and local certificates
+# Local API client environments
+postman/*environment*.json
+postman/*.postman_environment.json
+
+# Private keys and certificates
 *.key
 *.pem
 *.p12
 *.pfx
 *.jks
 
-# Local API client environments (may contain tokens or credentials)
-postman/*environment*.json
-postman/*.postman_environment.json
-
-# Temporary and tool output
+# Caches and temporary files
 .cache/
+.npm/
 tmp/
 temp/
 *.tmp
 *.bak
-seeds/
 
-# Local project documentation (temporarily excluded)
-docs/
-AGENTS.md
+# Editors
+.idea/
+.vscode/
+.history/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating system files
+.DS_Store
+Thumbs.db

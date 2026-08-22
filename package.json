@@ -5,7 +5,6 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed:demo": "node seeds/seedDemoData.js",
     "migrate:inventory": "node scripts/migrate-inventory-classification.js",
     "migrate:inventory:apply": "node scripts/migrate-inventory-classification.js --apply",
     "migrate:purchasing": "node scripts/migrate-purchasing-workflow.js",

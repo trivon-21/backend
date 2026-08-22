@@ -9,7 +9,7 @@ Covers **all 31 endpoints** of the `/api/inventory` module with **50 test cases*
 - These tests **write real documents** to whatever database `backend/.env` (`MONGO_URI`) points at — currently the **shared Atlas cluster**. Nothing here deletes existing data, but creates are real.
 - Every document the tests create is prefixed **`PMTEST-`** (SKUs, tags, jobs, serials) or named `PMTEST …`, so teammates can identify and remove them in Atlas later.
 - There are **no delete endpoints** in this API, so cleanup is manual (Atlas UI → filter by `PMTEST`). The one exception: TC-23 deletes only the loan that TC-21 itself created.
-- Do **not** run any `seeds/` script to "prepare data" — most of them wipe entire collections (see `OVERENGINEERING_AUDIT.md` §8.1).
+- Seed scripts are intentionally not included. Prepare test access through the normal user-management flow and verify the target database before running these write operations.
 
 ## 1. Setup
 
@@ -21,7 +21,7 @@ Covers **all 31 endpoints** of the `/api/inventory` module with **50 test cases*
    ```
    Wait for `MongoDB connected...` and `Routes initialized` in the console.
 
-2. **Have a login user.** Set `SEED_INVENTORY_EMAIL` and `SEED_INVENTORY_PASSWORD` in your untracked `.env`, then run `node seeds/seedInventoryUser.js`. The script upserts only that user but still writes to the configured database. Set the same values in the Postman collection's `loginIdentifier` and `loginPassword` variables; do not save credentials into the collection file.
+2. **Have a login user.** Provision an Inventory Manager account through the normal user-management flow. Set its credentials in the Postman collection's `loginIdentifier` and `loginPassword` variables; do not save credentials into the collection file.
 
 3. **Import the collection** — Postman → *Import* → select `Airlux-InventoryManager.postman_collection.json`. The `baseUrl` variable is preset to `http://localhost:5000/api` (edit it in the collection's *Variables* tab if your port differs).
 
@@ -198,8 +198,8 @@ These two PATCH endpoints can only be meaningfully tested if the DB already cont
 
 | Symptom | Likely cause / fix |
 |---|---|
-| TC-01 fails 401 | Test user missing or wrong password → run `node seeds/seedInventoryUser.js` once |
-| TC-01 fails 423 | Account locked after repeated bad logins — wait for the lock to expire or reset via the seed script |
+| TC-01 fails 401 | Test user is missing or the configured credentials are incorrect |
+| TC-01 fails 423 | Account locked after repeated bad logins — wait for the lock to expire or use the normal account-recovery flow |
 | Everything 401 mid-run | JWT expired → re-run TC-01 |
 | `ECONNREFUSED` | Backend not running → `npm run dev` in `backend/` |
 | Backend logs `querySrv ECONNREFUSED` | Network blocks Atlas SRV DNS — see the hint `db.js` prints (set `MONGO_DNS_SERVERS`) |

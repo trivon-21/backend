@@ -9,6 +9,9 @@ const { authorize } = require("../../middleware/role.middleware");
 router.use(protect);
 router.use(authorize(["MANAGER", "SUPER_ADMIN"]));
 
+// Status endpoint
+router.get("/", controller.toString);
+
 // Manager dashboard data endpoint
 router.get("/dashboard", controller.getDashboard);
 
