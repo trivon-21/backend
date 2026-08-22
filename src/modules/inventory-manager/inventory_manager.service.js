@@ -64,7 +64,7 @@ function serviceError(message, statusCode, code) {
 }
 
 function assertRole(user, roles) {
-  if (!user || !roles.includes(user.role)) {
+  if (!user || (!roles.includes(user.role) && user.role !== 'SUPER_ADMIN')) {
     throw serviceError('You are not allowed to perform this workflow action', 403, 'FORBIDDEN_WORKFLOW_ACTION');
   }
 }

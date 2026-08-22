@@ -1,12 +1,10 @@
 const router = require("express").Router();
 const controller = require("./inventory_manager.controller");
-const { devAuthBypass } = require("../../middleware/devAuthBypass");
+const { protect } = require("../../middleware/protect");
+const { authorize } = require("../../middleware/role.middleware");
 
-router.use(devAuthBypass({
-  _id: "000000000000000000000001",
-  fullName: "Dev Inventory User",
-  role: "INVENTORY",
-}));
+router.use(protect);
+router.use(authorize(["INVENTORY", "SUPER_ADMIN"]));
 
 // Add routes here
 // Dashboard data

@@ -18,7 +18,7 @@ function ensureOnline() {
 }
 
 function assertManager(user) {
-  if (!user || user.role !== 'MANAGER') {
+  if (!user || !['MANAGER', 'SUPER_ADMIN'].includes(user.role)) {
     throw serviceError(403, 'Only a Manager can make operational approval decisions', 'MANAGER_REQUIRED');
   }
 }
