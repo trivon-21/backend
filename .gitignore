@@ -12,6 +12,10 @@ node_modules/
 
 # Build output
 dist/
+AGENTS.md
 
 # Logs
 logs/
+
+# Testings
+test/
