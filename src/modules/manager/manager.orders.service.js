@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const OrderRequest = require('../../models/OrderRequest');
+const PurchaseRequest = require('../../models/PurchaseRequest');
 const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const Activity = require('../../models/Activity');
 const { approvalMode, canonicalPurchaseStatus } = require('../../utils/purchase-workflow');
@@ -48,7 +48,7 @@ function summarize(orders) {
 exports.listOrders = async (filters = {}, user) => {
   ensureOnline();
   assertManager(user);
-  const allOrders = await OrderRequest.find({ status: { $ne: 'draft' } }).sort({ createdAt: -1 }).lean();
+  const allOrders = await PurchaseRequest.find({ status: { $ne: 'draft' } }).sort({ createdAt: -1 }).lean();
   const normalized = allOrders.map(order => ({ ...order, status: canonicalPurchaseStatus(order.status) }));
   const orders = filters.status && filters.status !== 'all'
     ? normalized.filter((order) => order.status === filters.status)
@@ -64,7 +64,7 @@ exports.decideOrder = async (id, input, user) => {
     throw serviceError(400, 'Decision must be approved or rejected', 'INVALID_DECISION');
   }
   const comment = requireComment(input.comment ?? input.reason);
-  const request = await OrderRequest.findById(id);
+  const request = await PurchaseRequest.findById(id);
   if (!request) throw serviceError(404, 'Purchase request not found', 'ORDER_NOT_FOUND');
   if (canonicalPurchaseStatus(request.status) !== 'pending-manager') {
     throw serviceError(409, 'This request is not awaiting Manager approval', 'INVALID_ORDER_TRANSITION');

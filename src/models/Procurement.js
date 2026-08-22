@@ -6,7 +6,7 @@ const ProcurementSchema = new mongoose.Schema({
   receiptMode: { type: String, enum: ['PO', 'NON_PO', 'LEGACY'], default: 'LEGACY' },
   invoiceNumber: { type: String, default: '' },
   poNumber: { type: String },
-  orderRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'OrderRequest' },
+  orderRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'PurchaseRequest' },
   orderLineId: { type: String, default: '' },
   receiptAuthorizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'ReceiptAuthorization' },
   nonPoReason: { type: String, enum: ['', ...NON_PO_REASONS], default: '' },

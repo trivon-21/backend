@@ -33,6 +33,11 @@ const InventorySchema = new mongoose.Schema({
   reorderLevel: { type: Number, default: 10, min: 0 },
   maxStockLevel: { type: Number, default: 100, min: 0 },
   unitCost: { type: Number, default: 0, min: 0 },
+  pricing: {
+    costPerUnit: { type: Number, min: 0 },
+    profitMargin: { type: Number, min: 0 },
+    sellingPricePerUnit: { type: Number, min: 0 },
+  },
   isSerialized: { type: Boolean, default: false },
   serialNumbers: [{ type: String, trim: true }],
   specsUrl: { type: String },
@@ -53,6 +58,8 @@ InventorySchema.pre('validate', function synchronizeInventoryCompatibility() {
   this.subcategory = this.subcategory || 'Unclassified';
   this.category = this.itemClass;
   this.status = legacyStockStatus(this.available, this.reorderLevel);
+  this.pricing = this.pricing || {};
+  this.pricing.costPerUnit = Number(this.unitCost || 0);
   const serials = (this.serialNumbers || []).map((serial) => String(serial).trim()).filter(Boolean);
   if (new Set(serials).size !== serials.length) {
     this.invalidate('serialNumbers', 'Serial numbers must be unique within an inventory item');

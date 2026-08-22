@@ -1,5 +1,9 @@
 const service = require("./manager.service");
 
+exports.getStatus = (_req, res) => {
+  res.json({ status: 'Operational' });
+};
+
 /**
  * Handles dashboard data retrieval for the Manager role.
  * Returns a fallback/offline state if the backend service fails.

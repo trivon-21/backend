@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const OrderRequest = require('../../models/OrderRequest');
+const PurchaseRequest = require('../../models/PurchaseRequest');
 const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const Procurement = require('../../models/Procurement');
 const Activity = require('../../models/Activity');
@@ -31,7 +31,7 @@ exports.listPurchaseRequests = async (user, filters = {}) => {
   assertFinance(user);
   const query = { status: filters.status || 'pending-finance' };
   if (filters.status === 'all') delete query.status;
-  return OrderRequest.find(query).sort({ createdAt: 1 }).lean();
+  return PurchaseRequest.find(query).sort({ createdAt: 1 }).lean();
 };
 
 exports.decidePurchaseRequest = async (id, input, user) => {
@@ -39,9 +39,8 @@ exports.decidePurchaseRequest = async (id, input, user) => {
   if (!mongoose.isValidObjectId(id)) throw serviceError(400, 'Invalid purchase request ID', 'INVALID_ID');
   if (!['approved', 'rejected'].includes(input.decision)) throw serviceError(400, 'Invalid decision', 'INVALID_DECISION');
   const comment = commentOf(input);
-  const request = await OrderRequest.findById(id);
+  const request = await PurchaseRequest.findById(id);
   if (!request) throw serviceError(404, 'Purchase request not found', 'ORDER_NOT_FOUND');
-  if (request.legacyReadOnly) throw serviceError(409, 'Imported Finance history is read-only', 'LEGACY_REQUEST_READ_ONLY');
   if (request.status !== 'pending-finance') throw serviceError(409, 'Request is not awaiting Finance', 'INVALID_ORDER_TRANSITION');
   if (String(request.requestedById || '') === String(user._id)) throw serviceError(403, 'Self-approval is not allowed', 'SELF_APPROVAL');
   assertVersion(request, input.statusVersion);

@@ -1,12 +1,12 @@
 const mongoose = require('mongoose');
 const Inventory = require('../../models/Inventory');
-const MaterialRequest = require('../../models/MaterialRequest');
-const OrderRequest = require('../../models/OrderRequest');
-const Ticket = require('../../models/Ticket');
+const WarehousePickRequest = require('../../models/WarehousePickRequest');
+const PurchaseRequest = require('../../models/PurchaseRequest');
 const Procurement = require('../../models/Procurement');
 const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const { isLowStock } = require('../../utils/inventory-domain');
 const { buildAnalytics } = require('../../utils/manager-metrics');
+const { loadManagerTickets } = require('./manager.ticket-read-model');
 
 exports.getAnalyticsData = async (_user, periodKey) => {
   if (mongoose.connection.readyState !== 1) {
@@ -17,10 +17,10 @@ exports.getAnalyticsData = async (_user, periodKey) => {
   }
 
   const [tickets, orders, inventory, pendingRequests, procurements, authorizations] = await Promise.all([
-    Ticket.find().populate('assignedTechnicianId', 'fullName role').lean(),
-    OrderRequest.find({ status: { $ne: 'draft' } }).lean(),
+    loadManagerTickets(),
+    PurchaseRequest.find({ status: { $ne: 'draft' } }).lean(),
     Inventory.find().lean(),
-    MaterialRequest.countDocuments({ status: 'pending' }),
+    WarehousePickRequest.countDocuments({ status: 'pending' }),
     Procurement.find().lean(),
     ReceiptAuthorization.find().lean(),
   ]);

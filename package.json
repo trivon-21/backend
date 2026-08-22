@@ -10,6 +10,9 @@
     "migrate:purchasing": "node scripts/migrate-purchasing-workflow.js",
     "migrate:purchasing:apply": "node scripts/migrate-purchasing-workflow.js --apply",
     "audit:manager-inventory-schema": "node scripts/audit-manager-inventory-schema.js",
+    "audit:shared-schema": "node scripts/audit-shared-database-compatibility.js",
+    "migrate:shared-schema": "node scripts/migrate-to-shared-collections.js",
+    "migrate:shared-schema:apply": "node scripts/migrate-to-shared-collections.js --apply",
     "migrate:schema-references": "node scripts/migrate-manager-inventory-references.js",
     "migrate:schema-references:apply": "node scripts/migrate-manager-inventory-references.js --apply",
     "test": "node --test"

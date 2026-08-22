@@ -1,18 +1,18 @@
 const Inventory = require('../../models/Inventory');
 const Activity = require('../../models/Activity');
-const Logistics = require('../../models/Logistics');
 const Supplier = require('../../models/Supplier');
 const Procurement = require('../../models/Procurement');
-const Order = require('../../models/Order');
-const MaterialRequest = require('../../models/MaterialRequest');
+const DispatchOrder = require('../../models/DispatchOrder');
+const WarehousePickRequest = require('../../models/WarehousePickRequest');
 const AssetLoan = require('../../models/AssetLoan');
-const AssetReturnLog = require('../../models/AssetReturnLog');
-const OrderRequest = require('../../models/OrderRequest');
+const PurchaseRequest = require('../../models/PurchaseRequest');
 const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const LeftoverReturn = require('../../models/LeftoverReturn');
 const RmaCase = require('../../models/RmaCase');
 const QuarantineItem = require('../../models/QuarantineItem');
-const Ticket = require('../../models/Ticket');
+const ServiceTicket = require('../../models/ServiceTicket');
+const InspectionTicket = require('../../models/InspectionTicket');
+const Installation = require('../../models/Installation');
 const User = require('../../models/User');
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
@@ -97,6 +97,22 @@ function authorizationLookup(id) {
   return mongoose.isValidObjectId(id) ? { _id: id } : { authorizationNumber: id };
 }
 
+async function affectedWorkExists(type, id) {
+  if (!mongoose.isValidObjectId(id)) return false;
+  if (type === 'INSPECTION') return Boolean(await InspectionTicket.exists({ _id: id }));
+  if (type === 'INSTALLATION') return Boolean(await Installation.exists({ _id: id }));
+  if (['REPAIR', 'MAINTENANCE'].includes(type)) return Boolean(await ServiceTicket.exists({ _id: id }));
+  if (type === 'TICKET') {
+    const results = await Promise.all([
+      ServiceTicket.exists({ _id: id }),
+      InspectionTicket.exists({ _id: id }),
+      Installation.exists({ _id: id }),
+    ]);
+    return results.some(Boolean);
+  }
+  return true;
+}
+
 function controllerSafeOrderFields(data) {
   return Object.fromEntries([
     'items', 'supplierId', 'supplierName', 'priority', 'notes', 'source',
@@ -153,16 +169,15 @@ function synchronizeStatusForResponse(item) {
  * Retrieves aggregated dashboard data including inventory stats, recent activity, and logistics status.
  */
 exports.getDashboardData = async (user) => {
-  const [inventory, activities, logistics, orders, loans, materialRequests, orderRequests, authorizations] = await Promise.all([
+  const [inventory, activities, orders, loans, materialRequests, orderRequests, authorizations] = await Promise.all([
   Inventory.find(),
   Activity.find({
     type: { $in: ['return', 'dispatch', 'request', 'grn', 'alert'] }
   }).sort({ timestamp: -1 }).limit(10),
-  Logistics.find(),
-  Order.find(),
-  AssetLoan.find(),
-  MaterialRequest.find(),
-  OrderRequest.find().lean(),
+  DispatchOrder.find(),
+  AssetLoan.find({ status: { $ne: 'returned' } }),
+  WarehousePickRequest.find(),
+  PurchaseRequest.find().lean(),
   ReceiptAuthorization.find().lean(),
   ]);
 
@@ -189,7 +204,7 @@ exports.getDashboardData = async (user) => {
       total: loans.length,
       subStats: [
         { label: 'Tools in Field', value: loans.length },
-        { label: 'Overdue Returns', value: loans.filter(l => new Date(l.dueDate) < new Date() && !l.returnDate).length }
+        { label: 'Overdue Returns', value: loans.filter(l => new Date(l.dueDate) < new Date()).length }
       ]
     },
     stockAlerts: {
@@ -248,13 +263,7 @@ exports.getDashboardData = async (user) => {
       awaitingManager: normalAwaitingManager + emergencyAwaitingManager,
       awaitingReceipt: normalAwaitingReceipt + emergencyAwaitingReceipt,
       awaitingFinance: normalAwaitingFinance + emergencyAwaitingFinance,
-    },
-    logistics: logistics.map(l => ({
-      label: l.label,
-      current: l.current,
-      total: l.total,
-      subLabel: l.subLabel
-    }))
+    }
   };
 };
 
@@ -341,13 +350,9 @@ exports.createReceiptAuthorization = async (data, user) => {
   if (affectedWorkType !== 'NONE' && !data.affectedWorkId && !String(data.affectedWorkReference || '').trim()) {
     throw serviceError('An affected job ID or reference is required', 400, 'AFFECTED_WORK_REQUIRED');
   }
-  if (affectedWorkType === 'TICKET') {
-    const candidates = [];
-    if (data.affectedWorkId && mongoose.isValidObjectId(data.affectedWorkId)) candidates.push({ _id: data.affectedWorkId });
-    if (data.affectedWorkReference) candidates.push({ ticketId: String(data.affectedWorkReference).trim() });
-    if (!candidates.length || !(await Ticket.exists({ $or: candidates }))) {
-      throw serviceError('Affected ticket not found', 404, 'AFFECTED_WORK_NOT_FOUND');
-    }
+  if (!['NONE', 'OTHER'].includes(affectedWorkType)
+    && !(await affectedWorkExists(affectedWorkType, data.affectedWorkId))) {
+    throw serviceError('Affected work record not found; use its shared database ID', 404, 'AFFECTED_WORK_NOT_FOUND');
   }
   if (!mongoose.isValidObjectId(data.supplierId)) {
     throw serviceError('Supplier not found', 404, 'SUPPLIER_NOT_FOUND');
@@ -460,7 +465,7 @@ exports.receiveInventory = async (data, user) => {
         if (!data.orderRequestId || !data.orderLineId) {
           throw serviceError('An issued PO and order line are required', 400, 'PO_REFERENCE_REQUIRED');
         }
-        order = await OrderRequest.findOne(orderLookup(data.orderRequestId)).session(session);
+        order = await PurchaseRequest.findOne(orderLookup(data.orderRequestId)).session(session);
         if (!order) throw serviceError('Purchase order not found', 404, 'ORDER_NOT_FOUND');
         if (!['ordered', 'partially-received'].includes(canonicalPurchaseStatus(order.status))) {
           throw serviceError('Only issued purchase orders can be received', 409, 'PO_NOT_ISSUED');
@@ -649,7 +654,7 @@ exports.createSupplier = async (name) => {
  * Retrieves all orders sorted by creation date.
  */
 exports.getOrders = async () => {
-  return await Order.find().sort({ createdAt: -1 });
+  return await DispatchOrder.find().sort({ createdAt: -1 });
 };
 
 /**
@@ -660,14 +665,14 @@ exports.updateOrder = async (id, data) => {
   const update = safe.lastMovedAt === null
     ? { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: pickFields(safe, ORDER_UPDATE_FIELDS.filter((field) => !['lastMovedAt', 'completedAt'].includes(field))) }
     : { $set: safe };
-  return Order.findOneAndUpdate({ orderId: id }, update, { new: true, runValidators: true });
+  return DispatchOrder.findOneAndUpdate({ orderId: id }, update, { new: true, runValidators: true });
 };
 
 /**
  * Fetches all material requests sorted by creation date.
  */
 exports.getMaterialRequests = async () => {
-  return await MaterialRequest.find().sort({ createdAt: -1 });
+  return await WarehousePickRequest.find().sort({ createdAt: -1 });
 };
 
 /**
@@ -678,11 +683,11 @@ exports.updateMaterialRequest = async (id, data) => {
   const update = safe.lastMovedAt === null
     ? { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: pickFields(safe, MATERIAL_REQUEST_UPDATE_FIELDS.filter((field) => !['lastMovedAt', 'completedAt'].includes(field))) }
     : { $set: safe };
-  return MaterialRequest.findOneAndUpdate({ requestId: id }, update, { new: true, runValidators: true });
+  return WarehousePickRequest.findOneAndUpdate({ requestId: id }, update, { new: true, runValidators: true });
 };
 
 /**
- * Retrieves technician members from the primary Dassana database.
+ * Retrieves technician members from the configured shared database.
  */
 exports.getTechnicians = async () => {
   const technicians = await User.find({ role: { $in: TECHNICIAN_ROLES } })
@@ -701,7 +706,7 @@ exports.getTechnicians = async () => {
  * Fetches all active asset loans.
  */
 exports.getAssetLoans = async () => {
-  return await AssetLoan.find().sort({ checkedOutAt: -1 });
+  return await AssetLoan.find({ status: { $ne: 'returned' } }).sort({ checkedOutAt: -1 });
 };
 
 /**
@@ -711,7 +716,7 @@ exports.getAvailableTools = async () => {
   const [tools, activeLoans] = await Promise.all([
     Inventory.find({ itemClass: 'Tools and Test Equipment', isSerialized: true })
       .select('name sku itemClass subcategory brand serialNumbers location binLocation'),
-    AssetLoan.find().select('assetTag')
+    AssetLoan.find({ status: { $ne: 'returned' } }).select('assetTag')
   ]);
   const loanedTags = new Set(activeLoans.map((loan) => loan.assetTag));
   return tools
@@ -745,17 +750,24 @@ exports.checkOutTool = async (data, user) => {
     serialNumbers: data.assetTag
   });
   if (!tool) throw serviceError('Serialized tool or asset tag not found', 404, 'TOOL_NOT_FOUND');
-  const existingLoan = await AssetLoan.findOne({ assetTag: data.assetTag });
-  if (existingLoan) throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
+  const assetTag = String(data.assetTag).trim();
+  const existingLoan = await AssetLoan.findOne({ assetTag });
+  if (existingLoan && existingLoan.status !== 'returned') {
+    throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
+  }
 
-  const newLoan = new AssetLoan({
+  const newLoan = existingLoan || new AssetLoan({ assetTag });
+  Object.assign(newLoan, {
     toolId: tool._id,
     toolName: tool.name,
-    assetTag: String(data.assetTag).trim(),
     technicianId: String(technician._id),
     technicianUserId: technician._id,
     technicianName: technician.fullName,
+    checkedOutAt: new Date(),
     dueDate,
+    status: 'on-loan',
+    returnedAt: undefined,
+    condition: 'good',
   });
   let savedLoan;
   try {
@@ -779,21 +791,20 @@ exports.checkOutTool = async (data, user) => {
 /**
  * Processes a tool return, archiving the loan and logging the return event.
  */
-exports.returnTool = async (loanId, user) => {
+exports.returnTool = async (loanId, user, input = {}) => {
   assertRole(user, ['INVENTORY']);
   assertObjectId(loanId, 'Loan reference is invalid', 'INVALID_LOAN_ID');
   const loan = await AssetLoan.findById(loanId);
   if (!loan) throw serviceError('Loan not found', 404, 'LOAN_NOT_FOUND');
-
-  const returnLog = new AssetReturnLog({
-    toolName: loan.toolName,
-    assetTag: loan.assetTag,
-    technicianName: loan.technicianName,
-    checkedOutAt: loan.checkedOutAt,
-    returnedAt: new Date()
-  });
-
-  await returnLog.save();
+  if (loan.status === 'returned') throw serviceError('This loan has already been returned', 409, 'ASSET_ALREADY_RETURNED');
+  const condition = input.condition || 'good';
+  if (!['good', 'damaged', 'incomplete'].includes(condition)) {
+    throw serviceError('Return condition must be good, damaged, or incomplete', 400, 'INVALID_RETURN_CONDITION');
+  }
+  loan.status = 'returned';
+  loan.returnedAt = new Date();
+  loan.condition = condition;
+  await loan.save();
 
   const activity = new Activity({
     type: 'return',
@@ -803,14 +814,14 @@ exports.returnTool = async (loanId, user) => {
   });
   await activity.save();
 
-  return await AssetLoan.findByIdAndDelete(loanId);
+  return loan;
 };
 
 /**
  * Retrieves all historical asset return logs.
  */
 exports.getAssetReturnLogs = async () => {
-  return await AssetReturnLog.find().sort({ returnedAt: -1 });
+  return await AssetLoan.find({ status: 'returned' }).sort({ returnedAt: -1 });
 };
 
 // ── Order Creation Methods ──
@@ -820,7 +831,7 @@ exports.getAssetReturnLogs = async () => {
  */
 exports.getOrderRequests = async (user) => {
   assertRole(user, ['INVENTORY']);
-  return await OrderRequest.find().populate('items.supplierId', 'name').sort({ createdAt: -1 });
+  return await PurchaseRequest.find().populate('items.supplierId', 'name').sort({ createdAt: -1 });
 };
 
 /**
@@ -879,7 +890,7 @@ exports.createOrderRequest = async (data, user) => {
     throw serviceError('Supplier is required', 400, 'SUPPLIER_REQUIRED');
   }
 
-  const newRequest = new OrderRequest({
+  const newRequest = new PurchaseRequest({
     requestId,
     items,
     supplierId,
@@ -911,7 +922,7 @@ exports.createOrderRequest = async (data, user) => {
  */
 exports.updateOrderRequest = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
-  const request = await OrderRequest.findOne({ requestId: id });
+  const request = await PurchaseRequest.findOne({ requestId: id });
   if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
   if (!['draft', 'rejected'].includes(canonicalPurchaseStatus(request.status))) {
     throw serviceError('Only draft or rejected requests can be edited', 409, 'ORDER_LOCKED');
@@ -983,7 +994,7 @@ exports.updateOrderRequest = async (id, data, user) => {
 
 exports.submitOrderRequest = async (id, user) => {
   assertRole(user, ['INVENTORY']);
-  const request = await OrderRequest.findOne(orderLookup(id));
+  const request = await PurchaseRequest.findOne(orderLookup(id));
   if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
   if (String(request.requestedById || '') !== String(user._id)) {
     throw serviceError('Only the requester can submit this purchase request', 403, 'NOT_REQUEST_OWNER');
@@ -1016,13 +1027,10 @@ exports.submitOrderRequest = async (id, user) => {
 
 exports.issuePurchaseOrder = async (id, user) => {
   assertRole(user, ['INVENTORY']);
-  const request = await OrderRequest.findOne(orderLookup(id));
+  const request = await PurchaseRequest.findOne(orderLookup(id));
   if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
   if (canonicalPurchaseStatus(request.status) !== 'approved') {
     throw serviceError('Only fully approved requests can be issued as purchase orders', 409, 'ORDER_NOT_APPROVED');
-  }
-  if (request.legacyReadOnly) {
-    throw serviceError('Imported Finance history cannot be issued as a PO; recreate it as a catalog-linked request', 409, 'LEGACY_REQUEST_READ_ONLY');
   }
   request.poNumber = request.poNumber || generateReference('PO');
   request.orderedAt = new Date();
@@ -1060,7 +1068,7 @@ exports.getSuggestedOrders = async () => {
     .populate('supplierId', 'name')
     .sort({ available: 1 })
     .select('name sku available reserved reorderLevel maxStockLevel unitCost unit status category itemClass subcategory brand manufacturerPartNumber compatibleModels supplierId'),
-  OrderRequest.find({ status: { $in: [...ACTIVE_INCOMING_STATUSES, 'pending-approval'] } }).lean()]);
+  PurchaseRequest.find({ status: { $in: [...ACTIVE_INCOMING_STATUSES, 'pending-approval'] } }).lean()]);
   const incomingByInventory = new Map();
   for (const order of incomingOrders) {
     for (const line of order.items || []) {

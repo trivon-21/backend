@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
 const Inventory = require('../../models/Inventory');
-const MaterialRequest = require('../../models/MaterialRequest');
-const OrderRequest = require('../../models/OrderRequest');
-const Ticket = require('../../models/Ticket');
+const WarehousePickRequest = require('../../models/WarehousePickRequest');
+const PurchaseRequest = require('../../models/PurchaseRequest');
 const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const { isLowStock } = require('../../utils/inventory-domain');
+const { loadManagerTickets } = require('./manager.ticket-read-model');
 
 function serviceError(message) {
   const error = new Error(message);
@@ -31,10 +31,10 @@ exports.getDashboardData = async (user) => {
   }
 
   const [tickets, orders, inventory, materialRequests, authorizations] = await Promise.all([
-    Ticket.find().sort({ updatedAt: -1 }).lean(),
-    OrderRequest.find({ status: { $ne: 'draft' } }).sort({ updatedAt: -1 }).lean(),
+    loadManagerTickets(),
+    PurchaseRequest.find({ status: { $ne: 'draft' } }).sort({ updatedAt: -1 }).lean(),
     Inventory.find().sort({ updatedAt: -1 }).lean(),
-    MaterialRequest.find({ status: 'pending' }).lean(),
+    WarehousePickRequest.find({ status: 'pending' }).lean(),
     ReceiptAuthorization.find().sort({ updatedAt: -1 }).lean(),
   ]);
 

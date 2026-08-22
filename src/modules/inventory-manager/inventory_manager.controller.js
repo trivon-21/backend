@@ -237,7 +237,7 @@ exports.checkOutTool = async (req, res) => {
  */
 exports.returnTool = async (req, res) => {
   try {
-    const data = await service.returnTool(req.params.id, req.user);
+    const data = await service.returnTool(req.params.id, req.user, req.body);
     res.json(data);
   } catch (error) {
     res.status(error.statusCode || 500).json({ message: error.message || "Failed to return tool", code: error.code });

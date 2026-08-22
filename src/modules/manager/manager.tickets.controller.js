@@ -48,3 +48,32 @@ exports.listTechnicians = async (req, res) => {
     res.status(error.statusCode || 503).json({ technicians: [], message: error.message });
   }
 };
+
+exports.listWorkItems = async (req, res) => {
+  try {
+    res.json(await service.listWorkItems(req.query));
+  } catch (error) {
+    res.status(error.statusCode || 503).json({ message: error.message, code: error.code });
+  }
+};
+
+exports.updateWorkItemControl = async (req, res) => {
+  try {
+    res.json(await service.updateWorkItemControl(req.params.sourceType, req.params.sourceId, req.body || {}));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
+  }
+};
+
+exports.runWorkItemAction = async (req, res) => {
+  try {
+    res.json(await service.runWorkItemAction(
+      req.params.sourceType,
+      req.params.sourceId,
+      req.params.action,
+      req.body || {},
+    ));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
+  }
+};

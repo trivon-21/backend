@@ -2,17 +2,17 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 const AssetLoan = require('../src/models/AssetLoan');
-const MaterialRequest = require('../src/models/MaterialRequest');
-const Order = require('../src/models/Order');
-const Ticket = require('../src/models/Ticket');
-const OrderRequest = require('../src/models/OrderRequest');
+const WarehousePickRequest = require('../src/models/WarehousePickRequest');
+const DispatchOrder = require('../src/models/DispatchOrder');
+const ServiceTicket = require('../src/models/ServiceTicket');
+const PurchaseRequest = require('../src/models/PurchaseRequest');
 const Procurement = require('../src/models/Procurement');
 const ReceiptAuthorization = require('../src/models/ReceiptAuthorization');
 
 const objectId = () => new mongoose.Types.ObjectId();
 
 test('purchase lines reject fractional and over-received quantities', async () => {
-  const request = new OrderRequest({
+  const request = new PurchaseRequest({
     requestId: 'REQ-SCHEMA-1', supplierName: 'Supplier', requestedBy: 'Inventory Manager',
     items: [{ name: 'Capacitor', sku: 'CAP-1', quantity: 2, orderedQuantity: 2, receivedQuantity: 3 }],
   });
@@ -62,11 +62,11 @@ test('tool loans retain a legacy technician ID while validating the canonical Us
 });
 
 test('dispatch and material request item quantities are positive whole numbers', () => {
-  const dispatch = new Order({
+  const dispatch = new DispatchOrder({
     orderId: 'ORD-SCHEMA-1', customer: 'Customer', date: '2026-08-15', type: 'Delivery',
     items: [{ name: 'Filter', sku: 'FILTER-1', qty: 0 }],
   });
-  const material = new MaterialRequest({
+  const material = new WarehousePickRequest({
     requestId: 'MAT-SCHEMA-1', requester: 'Technician', date: '2026-08-15', location: 'Job',
     items: [{ name: 'Filter', sku: 'FILTER-1', qty: 1.5 }],
   });
@@ -75,8 +75,8 @@ test('dispatch and material request item quantities are positive whole numbers',
 });
 
 test('ticket resolution timestamps follow the ticket status', async () => {
-  const ticket = new Ticket({
-    ticketId: 'T-1', subject: 'No cooling', customer: 'Customer', status: 'resolved',
+  const ticket = new ServiceTicket({
+    customerId: objectId(), requestType: 'Repair', description: 'No cooling', status: 'resolved',
   });
   await ticket.validate();
   assert.ok(ticket.resolvedAt instanceof Date);
@@ -84,4 +84,11 @@ test('ticket resolution timestamps follow the ticket status', async () => {
   ticket.status = 'open';
   await ticket.validate();
   assert.equal(ticket.resolvedAt, undefined);
+});
+
+test('adapted models use the shared collection names', () => {
+  assert.equal(DispatchOrder.collection.collectionName, 'dispatch_orders');
+  assert.equal(WarehousePickRequest.collection.collectionName, 'warehouse_pick_requests');
+  assert.equal(PurchaseRequest.collection.collectionName, 'purchase_requests');
+  assert.equal(ServiceTicket.collection.collectionName, 'service_tickets');
 });

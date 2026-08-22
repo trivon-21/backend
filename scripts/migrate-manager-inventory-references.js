@@ -25,9 +25,9 @@ async function migrate() {
   const db = mongoose.connection.db;
   const [inventory, users, orders, loans] = await Promise.all([
     db.collection('inventory').find({}).project({ _id: 1, sku: 1 }).toArray(),
-    db.collection('user').find({ role: { $in: ['MAIN_TECH', 'SERVICE_TEAM', 'INSPECTION'] } })
+    db.collection('users').find({ role: { $in: ['MAIN_TECH', 'SERVICE_TEAM', 'INSPECTION'] } })
       .project({ _id: 1, fullName: 1 }).toArray(),
-    db.collection('order_requests').find({}).toArray(),
+    db.collection('purchase_requests').find({}).toArray(),
     db.collection('asset_loans').find({}).toArray(),
   ]);
 
@@ -79,7 +79,7 @@ async function migrate() {
   console.log(`${apply ? 'APPLY' : 'DRY RUN'} Manager/Inventory reference migration`);
   console.table(summary);
   if (apply) {
-    if (orderOperations.length) await db.collection('order_requests').bulkWrite(orderOperations);
+    if (orderOperations.length) await db.collection('purchase_requests').bulkWrite(orderOperations);
     if (loanOperations.length) await db.collection('asset_loans').bulkWrite(loanOperations);
   } else {
     console.log('No data was changed. Re-run the apply script after reviewing this summary.');
