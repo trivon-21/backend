@@ -54,6 +54,7 @@ tmp/
 temp/
 *.tmp
 *.bak
+AGENTS.md
 
 # Editors
 .idea/
