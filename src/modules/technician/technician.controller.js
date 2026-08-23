@@ -164,11 +164,13 @@ const mapServiceReportForReview = (report, sourceRecord) => {
   return {
     id: String(report._id),
     fullName: cleanName,
+    customerName: cleanName,
     phoneNumber: customer.phone || '-',
     emailAddress: customer.email || '-',
     address: cleanAddress,
     customerInfo: {
       fullName: cleanName,
+      name: cleanName,
       phone: customer.phone || '-',
       email: customer.email || '-',
       address: cleanAddress,
@@ -202,10 +204,12 @@ const mapServiceReportForList = (report, sourceRecord, resolvedCustomer) => {
     _id: String(report._id),
     ticketId: String(report.ticketId || report._id),
     fullName: cleanName,
+    customerName: cleanName,
     phoneNumber: customer.phone || '-',
     address: cleanAddress,
     customer: {
       fullName: cleanName,
+      name: cleanName,
       phone: customer.phone || '-',
       address: cleanAddress,
     },

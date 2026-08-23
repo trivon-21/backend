@@ -45,7 +45,7 @@ router.get('/', async (req, res) => {
         const serviceRequests = await ServiceRequest.find({
             status: { $in: materialWorkflowStatusRegex }
         })
-            .populate('customerId', 'name email contactNo address')
+            .populate('customerId', 'fullName email phoneNumber address')
             .sort({ createdAt: -1 })
             .lean();
 
@@ -64,13 +64,13 @@ router.get('/', async (req, res) => {
         const maintenances = await Maintenance.find({
             status: { $in: materialMaintenanceStatusRegex }
         })
-            .populate('customerId', 'name email contactNo address')
+            .populate('customerId', 'fullName email phoneNumber address')
             .sort({ createdAt: -1 })
             .lean();
 
         // 2. Get NewRequests (Status: New) and calculate warranty
         const newRequests = await NewRequest.find()
-            .populate('customerId', 'name email contactNo address')
+            .populate('customerId', 'fullName email phoneNumber address')
             .lean();
 
         // Build a reliable customer map for cases where customerId is present but not fully populated.
@@ -95,10 +95,10 @@ router.get('/', async (req, res) => {
                 return {
                     ...item,
                     ticketId: item._id,
-                    customerName: customer?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
-                    customerEmail: customer?.email || '-',
-                    customerContactNo: customer?.contactNo || '-',
-                    location: customer?.address || item.location || '-',
+                    customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
+                    customerEmail: customer?.email || item.customerEmail || '-',
+                    customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
+                    location: customer?.address || item.location || item.customerAddress || '-',
                     requestType: item.serviceType || 'Repair'
                 };
             });
@@ -112,10 +112,10 @@ router.get('/', async (req, res) => {
                 return {
                     ...item,
                     ticketId: item._id,
-                    customerName: customer?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
-                    customerEmail: customer?.email || '-',
-                    customerContactNo: customer?.contactNo || '-',
-                    location: customer?.address || item.location || '-',
+                    customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
+                    customerEmail: customer?.email || item.customerEmail || '-',
+                    customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
+                    location: customer?.address || item.location || item.customerAddress || '-',
                     requestType: REQUEST_TYPES.INSTALLATION
                 };
             });
@@ -132,10 +132,10 @@ router.get('/', async (req, res) => {
             return {
                 ...req,
                 ticketId: req._id,
-                customerName: customer?.name || DEFAULTS.UNKNOWN_CUSTOMER,
-                customerEmail: customer?.email || '-',
-                customerContactNo: customer?.contactNo || '-',
-                location: customer?.address || req.location || '-',
+                customerName: customer?.fullName || req.customerName || req.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
+                customerEmail: customer?.email || req.customerEmail || '-',
+                customerContactNo: customer?.phoneNumber || req.customerContactNo || req.customerPhone || '-',
+                location: customer?.address || req.location || req.customerAddress || '-',
                     status: WORKFLOW_STATUS.NEW,
                     serviceType: req.serviceType || req.requestType || req.request_type || 'Repair',
                     requestType: req.serviceType === 'Maintenance' ? 'Maintenance' : 'Repair',
@@ -153,10 +153,10 @@ router.get('/', async (req, res) => {
                 return {
                     ...item,
                     ticketId: item._id,
-                    customerName: customer?.name || item.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
-                    customerEmail: customer?.email || '-',
-                    customerContactNo: customer?.contactNo || '-',
-                    location: customer?.address || item.location || '-',
+                    customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
+                    customerEmail: customer?.email || item.customerEmail || '-',
+                    customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
+                    location: customer?.address || item.location || item.customerAddress || '-',
                     requestType: 'Maintenance',
                     serviceType: 'Maintenance',
                     materials: item.materialList || []

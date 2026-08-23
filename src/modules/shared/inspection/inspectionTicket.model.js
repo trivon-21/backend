@@ -22,7 +22,7 @@ const inspectionTicketSchema = new Schema(
     inspectedAt: Date,
     reminderSent: { type: Boolean, default: false },
   },
-  { timestamps: true, collection: 'inspectiontickets' }
+  { timestamps: true, collection: 'inspection_tickets' }
 );
 
 module.exports = mongoose.models.InspectionTicket || mongoose.model('InspectionTicket', inspectionTicketSchema);
