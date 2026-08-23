@@ -19,3 +19,5 @@ logs/
 
 # Testings
 test/
+postman/
+seed/
