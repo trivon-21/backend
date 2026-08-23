@@ -1,33 +1,33 @@
 const mongoose = require('mongoose');
 const dns = require('dns');
 
+function useDatabaseName(uri, dbName) {
+  const optionsStart = uri.indexOf('?');
+  const connection = optionsStart === -1 ? uri : uri.slice(0, optionsStart);
+  const options = optionsStart === -1 ? '' : uri.slice(optionsStart);
+  const authorityStart = connection.indexOf('://');
+  const pathStart = connection.indexOf('/', authorityStart + 3);
+  const authority = pathStart === -1
+    ? connection
+    : connection.slice(0, pathStart);
+
+  return `${authority}/${dbName}${options}`;
+}
+
 function normalizeMongoUri() {
   const explicitUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  const configuredDbName = process.env.MONGO_DB_NAME?.trim();
+  const dbName = configuredDbName || 'airlux';
 
   if (explicitUri && explicitUri.trim()) {
-    try {
-      const parsed = new URL(explicitUri.trim());
-      const dbName = process.env.MONGO_DB_NAME || 'airlux';
-      if (!parsed.pathname || parsed.pathname === '/') {
-        parsed.pathname = '/' + dbName;
-      }
-      return parsed.toString();
-    } catch (err) {
-      // Ignore URL parse failures for plain local connection strings.
-    }
-
-    const dbName = process.env.MONGO_DB_NAME || 'airlux';
-    return explicitUri.trim().endsWith('/')
-      ? `${explicitUri.trim()}${dbName}`
-      : `${explicitUri.trim()}/${dbName}`;
+    return useDatabaseName(explicitUri.trim(), dbName);
   }
 
   const host = process.env.MONGO_HOST || 'localhost';
   const port = process.env.MONGO_PORT || '27017';
-  const dbName = process.env.MONGO_DB_NAME || 'airlux';
 
   if (host.includes('mongodb://') || host.includes('mongodb+srv://')) {
-    return host.endsWith('/') ? `${host}${dbName}` : `${host}/${dbName}`;
+    return useDatabaseName(host, dbName);
   }
 
   return `mongodb://${host}:${port}/${dbName}`;
