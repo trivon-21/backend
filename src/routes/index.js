@@ -17,7 +17,7 @@ const serviceReportRoutes = require('../modules/technician/technician.routes');
 const maintenanceRoutes = require('../modules/shared/maintenance/maintenance.routes');
 
 // origin/dev Modules
-const authMockRoutes = require('./auth.routes');
+const authRoutes = require('../modules/auth/auth.routes');
 const productRoutes = require('./product.routes');
 const cartRoutes = require('./cart.routes');
 const orderRoutes = require('./order.routes');
@@ -65,7 +65,7 @@ router.get(API_SEGMENTS.TEAM_DETAILS, serviceTeamMemberController.getTeamDetails
 router.get(API_SEGMENTS.SERVICE_HISTORY, serviceHistoryController.getCustomerHistory);
 
 // Mount origin/dev routes
-router.use('/auth', authMockRoutes);
+router.use('/auth', authRoutes);
 router.use('/products', productRoutes);
 router.use('/scenarios', cartScenarioRoutes);
 router.use('/cart', cartRoutes);

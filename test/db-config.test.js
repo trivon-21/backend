@@ -55,14 +55,25 @@ test('database module preserves its default and named compatibility exports', ()
   assert.equal(typeof connectDB.normalizeMongoUri, 'function');
 });
 
-test('normalizeMongoUri preserves an explicit URI database path', async () => {
+test('normalizeMongoUri replaces an explicit URI database path', async () => {
   await withConnectionStubs(async () => {
     process.env.MONGO_URI = 'mongodb://localhost:27017/existing-database';
-    process.env.MONGO_DB_NAME = 'ignored-database';
+    process.env.MONGO_DB_NAME = 'configured-database';
 
     assert.equal(
       connectDB.normalizeMongoUri(),
-      'mongodb://localhost:27017/existing-database',
+      'mongodb://localhost:27017/configured-database',
+    );
+  });
+});
+
+test('normalizeMongoUri replaces test with the default database and preserves options', async () => {
+  await withConnectionStubs(async () => {
+    process.env.MONGO_URI = 'mongodb+srv://cluster.example/test?retryWrites=true&w=majority';
+
+    assert.equal(
+      connectDB.normalizeMongoUri(),
+      'mongodb+srv://cluster.example/airlux?retryWrites=true&w=majority',
     );
   });
 });
@@ -92,9 +103,22 @@ test('normalizeMongoUri supports MONGODB_URI and local host fallbacks', async ()
   });
 });
 
+test('normalizeMongoUri replaces a database path supplied through MONGO_HOST', async () => {
+  await withConnectionStubs(async () => {
+    process.env.MONGO_HOST = 'mongodb://database-host:27017/test?replicaSet=local';
+    process.env.MONGO_DB_NAME = 'host-database';
+
+    assert.equal(
+      connectDB.normalizeMongoUri(),
+      'mongodb://database-host:27017/host-database?replicaSet=local',
+    );
+  });
+});
+
 test('connectDB forwards normalized URI, DNS servers, and timeouts', async () => {
   await withConnectionStubs(async (calls) => {
     process.env.MONGO_URI = 'mongodb://localhost:27017/configured-database';
+    process.env.MONGO_DB_NAME = 'configured-database';
     process.env.MONGO_DNS_SERVERS = '9.9.9.9,149.112.112.112';
 
     await connectDB();
