@@ -35,7 +35,7 @@ function unresolved(ticket) {
 }
 
 function ticketRoute(status) {
-  return { route: '/manager/tickets', queryParams: status ? { status } : {} };
+  return { route: '/manager/work-items', queryParams: status ? { status } : {} };
 }
 
 exports.getDashboardData = async (user) => {
@@ -206,7 +206,7 @@ exports.getDashboardData = async (user) => {
       description: `${item.available || 0} available · reorder at ${item.reorderLevel || 0}`,
       priority: Number(item.available || 0) === 0 ? 'high' : 'medium',
       createdAt: item.updatedAt,
-      route: '/manager/analytics',
+      route: '/manager/analytics/inventory-exception-control',
       queryParams: {},
     })),
   ].sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority)
