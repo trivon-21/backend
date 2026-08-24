@@ -5,17 +5,24 @@ const PDFDocument = require("pdfkit");
 const { createLog } = require("./auditLog.controller");
 
 // Lazy model loaders 
+
 const getOrderModel = () => {
-  try { return mongoose.model("Order"); }
-  catch {
-    const s = new mongoose.Schema({
-      orderRef: String,
-      customer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      itemName: String, quantity: Number, amount: Number, orderType: String,
-    }, { strict: false, timestamps: true });
-    return mongoose.model("Order", s);
-  }
+  const s = new mongoose.Schema({
+    orderReference: String,
+    userId:   mongoose.Schema.Types.ObjectId,
+    items: Array,
+    subtotal: Number, total: Number,
+    inspectionFee: Number,
+    status: String,
+    consultationCompleted: Boolean,
+  }, { strict: false, timestamps: true });
+
+  // Force a unique model name to avoid any registry conflict with an
+  // existing "InstallationOrder"/"Order" model bound to the wrong collection
+  const modelName = "InstallationOrderInvoiceLookup";
+  return mongoose.models[modelName] || mongoose.model(modelName, s, "installation_orders");
 };
+
 
 const getUserModel = () => {
   try { return mongoose.model("User"); }
@@ -24,14 +31,25 @@ const getUserModel = () => {
       fullName: String, lastName: String, email: String,
       phoneNumber: String, role: String, address: String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("User", s);
+    return mongoose.model("User", s, "users");
   }
 };
 
 const getReportModel = () => {
   try { return mongoose.model("InspectionReport"); }
-  catch { return null; }
+  catch {
+    const s = new mongoose.Schema({
+      ticketId: mongoose.Schema.Types.ObjectId,
+      orderId: mongoose.Schema.Types.ObjectId,
+      inspectorId: mongoose.Schema.Types.ObjectId,
+      inspectorName: String,
+      status: String,
+      submittedAt: Date,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("InspectionReport", s, "inspection_reports");
+  }
 };
+
 
 const getTicketModel = () => {
   try { return mongoose.model("InspectionTicket"); }
@@ -40,7 +58,7 @@ const getTicketModel = () => {
       customerId: mongoose.Schema.Types.ObjectId,
       orderId: mongoose.Schema.Types.ObjectId,
     }, { strict: false, timestamps: true });
-    return mongoose.model("InspectionTicket", s);
+    return mongoose.model("InspectionTicket", s, "inspection_tickets");
   }
 };
 
@@ -54,7 +72,7 @@ const getLInstallationModel = () => {
       materials: [{ item: String, quantity: mongoose.Schema.Types.Mixed }],
       status: String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("L_Installation", s);
+    return mongoose.model("L_Installation", s, "installations");
   }
 };
 
@@ -95,7 +113,7 @@ const getLChargeModel = () => {
     const s = new mongoose.Schema({
       name: String, amount: Number, type: String, description: String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("L_Charge", s);
+    return mongoose.model("L_Charge", s, "charges");
   }
 };
 
@@ -441,7 +459,7 @@ exports.getPendingInvoices = async (req, res) => {
       status: "DRAFT",
       invoiceType: { $ne: "REPAIR" }
     }).sort({ createdAt: -1 });
-    res.json(invoices);
+    res.json(await attachOrderRef(invoices));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
   }
@@ -655,7 +673,7 @@ exports.getAcceptedInvoices = async (req, res) => {
       status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] },
       invoiceType: { $ne: "REPAIR" }
     }).sort({ acceptedAt: -1 });
-    res.json(invoices);
+    res.json(await attachOrderRef(invoices));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
   }
@@ -668,7 +686,7 @@ exports.getRejectedInvoices = async (req, res) => {
       status: "REJECTED",
       invoiceType: { $ne: "REPAIR" }
     }).sort({ rejectedAt: -1 });
-    res.json(invoices);
+    res.json(await attachOrderRef(invoices));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
   }
@@ -688,7 +706,7 @@ exports.getPaidInvoices = async (req, res) => {
       return obj;
     });
 
-    res.json(result);
+    res.json(await attachOrderRef(result));
   } catch (error) {
     res.status(500).json({ message: "Failed", error: error.message });
   }
@@ -720,6 +738,28 @@ exports.markAsPaid = async (req, res) => {
     res.status(500).json({ message: "Failed", error: error.message });
   }
 };
+
+// ── Helper: resolve real order reference for display ──────────────────────────
+async function resolveOrderRef(orderId) {
+  if (!orderId) return null;
+  try {
+    const Order = getOrderModel();
+    const order = await Order.findById(orderId);
+    return order?.orderReference || order?.orderRef || null;
+  } catch {
+    return null;
+  }
+}
+
+async function attachOrderRef(invoices) {
+  const list = Array.isArray(invoices) ? invoices : [invoices];
+  const enriched = await Promise.all(list.map(async (inv) => {
+    const obj = inv.toObject ? inv.toObject() : inv;
+    obj.orderRef = await resolveOrderRef(obj.orderId);
+    return obj;
+  }));
+  return Array.isArray(invoices) ? enriched : enriched[0];
+}
 
 // ── AUTO CANCEL HELPER ────────────────────────────────────────────────────────
 async function processAutoCancelJobs() {
@@ -756,7 +796,7 @@ exports.getAutoCancelledInvoices = async (req, res) => {
       status: "AUTO_CANCELLED",
       invoiceType: { $ne: "REPAIR" }
     }).sort({ cancelledAt: -1 });
-    res.json(invoices);
+    res.json(await attachOrderRef(invoices));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
   }
@@ -772,7 +812,7 @@ exports.getDashboardStats = async (req, res) => {
       Invoice.countDocuments({ status: { $in: ["REJECTED", "AUTO_CANCELLED"] }, invoiceType: { $ne: "REPAIR" } }),
     ]);
     const recent = await Invoice.find({ invoiceType: { $ne: "REPAIR" } }).sort({ updatedAt: -1 }).limit(20);
-    res.json({ accepted, pending, paid, rejected, tableData: recent });
+    res.json({ accepted, pending, paid, rejected, tableData: await attachOrderRef(recent) });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch stats", error: error.message });
   }
@@ -917,7 +957,7 @@ const getLRepairModel = () => {
       location:        String,
       status:          String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("L_Repair", s);
+    return mongoose.model("L_Repair", s, "repairs");
   }
 };
 
