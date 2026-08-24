@@ -81,8 +81,10 @@ exports.reuploadPayment = async (req, res) => {
       return res.status(400).json({ message: "Payment re-upload is only allowed when payment was rejected" });
     }
 
-    const { paymentSlipUrl } = req.body;
-    order.paymentSlipUrl = paymentSlipUrl || "";
+    const { paymentSlipUrl, paymentSlip, slip } = req.body;
+    const slipData = paymentSlipUrl || paymentSlip || slip || "";
+    order.paymentSlipUrl = slipData;
+    order.paymentSlip = slipData;
     order.paymentStatus = "Under Review";
     order.orderStatus = "Payment Uploaded";
     await order.save();
@@ -122,19 +124,8 @@ const InstallationOrder = require('../models/installationOrder.model');
 const Cart = require('../models/cart.model');
 const Counter = require('../models/counter.model');
 
-// ── Multer setup ─────────────────────────────────────────────────────────────
-// Updated to uploads/slips as requested
-const uploadDir = path.join(__dirname, '../../uploads/slips');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) => {
-    const ts = Date.now();
-    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-    cb(null, `${ts}_${safe}`);
-  }
-});
+// ── Multer setup (In-Memory for MongoDB Base64 storage) ───────────────────────
+const storage = multer.memoryStorage();
 
 const fileFilter = (_req, file, cb) => {
   const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
@@ -250,11 +241,8 @@ exports.createBuyAndInstallOrder = (req, res) => performInitialization(req, res,
 
 // ── Step 2: Submit Payment & Shipping ─────────────────────────────────────────
 exports.submitPayment = async (req, res) => {
-  let uploadedFilePath = req.file ? req.file.path : null;
-  let finalFilePath = null;
-
   try {
-    const { orderReference, firstName, lastName, email, phone, address, city, postalCode } = req.body;
+    const { orderReference, firstName, lastName, email, phone, address, city, postalCode, paymentSlipUrl, slip } = req.body;
 
     if (!orderReference) throw new Error('Order Reference is required');
 
@@ -268,23 +256,21 @@ exports.submitPayment = async (req, res) => {
     // For Buy Only, slip is always required. For Buy & Install, it is optional.
     const isBuyOnly = isBO;
 
-    if (isBuyOnly && !req.file) {
+    let slipData = null;
+    if (req.file) {
+      slipData = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    } else if (paymentSlipUrl || slip) {
+      slipData = paymentSlipUrl || slip;
+    }
+
+    if (isBuyOnly && !slipData) {
       throw new Error('Payment slip is required for Buy Only orders');
     }
 
-    if (req.file) {
-      // 1. Rename File to unique format: ALX-BO-XXXX-slip.ext
-      const ext = path.extname(req.file.originalname);
-      const newFileName = `${orderReference}-slip${ext}`;
-      finalFilePath = path.join(uploadDir, newFileName);
-
-      if (fs.existsSync(finalFilePath)) {
-        fs.unlinkSync(finalFilePath);
-      }
-
-      fs.renameSync(uploadedFilePath, finalFilePath);
-      uploadedFilePath = finalFilePath;
-      order.paymentSlip = `/uploads/slips/${newFileName}`;
+    if (slipData) {
+      order.paymentSlip = slipData;
+      order.paymentSlipUrl = slipData;
+      order.paymentStatus = 'Under Review';
       order.status = 'Under Review (Finance)';
     } else {
       // No file provided (allowed for Buy & Install)
@@ -302,20 +288,13 @@ exports.submitPayment = async (req, res) => {
       postalCode
     };
 
-    // 3. Update Payment Slip URL (Relative Path) - Only for Buy Only
-    if (isBO && req.file) {
-      const ext = path.extname(req.file.originalname);
-      order.paymentSlipUrl = `uploads/slips/${orderReference}-slip${ext}`;
-      order.paymentStatus = 'Under Review';
-    }
-
-    // 4. Update Status
+    // 3. Update Status
     order.status = isBO ? 'Under Review (Finance)' : 'Pending Review';
     if (isBO) order.orderType = 'Buy Only';
 
     await order.save();
 
-    // 5. Clear items from Cart
+    // 4. Clear items from Cart
     const cart = await Cart.findOne({ userId: order.userId });
     if (cart) {
       const orderProductIds = order.items.map(i => i.productId);
@@ -332,12 +311,6 @@ exports.submitPayment = async (req, res) => {
 
   } catch (err) {
     console.error('[Order] submitPayment error:', err);
-
-    // ATOMIC CLEANUP: If anything fails, delete the uploaded file
-    if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
-      try { fs.unlinkSync(uploadedFilePath); } catch (e) { console.error('Cleanup failed:', e); }
-    }
-
     res.status(400).json({ success: false, message: err.message });
   }
 };
