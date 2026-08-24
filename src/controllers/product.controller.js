@@ -9,6 +9,7 @@ const getAllProducts = async (req, res) => {
             capacity,
             minPrice,
             maxPrice,
+            search,
             page = 1,
             limit = 9
         } = req.query;
@@ -22,6 +23,16 @@ const getAllProducts = async (req, res) => {
 
         // Build query filter
         const filter = {};
+
+        if (search && search.trim()) {
+            const searchRegex = new RegExp(search.trim(), 'i');
+            filter.$or = [
+                { name: searchRegex },
+                { brand: searchRegex },
+                { category: searchRegex },
+                { description: searchRegex }
+            ];
+        }
 
         if (category) {
             filter.category = category;

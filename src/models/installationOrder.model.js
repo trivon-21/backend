@@ -44,6 +44,9 @@ const InstallationOrderSchema = new mongoose.Schema({
     default: 'Pending Review'
   },
   inspectionFee: { type: Number, default: 0 },
+  paymentSlip: { type: String, default: '' },
+  paymentSlipUrl: { type: String, default: '' },
+  paymentStatus: { type: String, default: 'Pending' },
   consultationCompleted: {
     type: Boolean,
     default: false

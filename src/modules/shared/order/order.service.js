@@ -91,7 +91,7 @@ exports.reuploadPayment = async (orderId, userId, paymentSlipUrl) => {
 
     const updated = await Order.findByIdAndUpdate(
       orderId,
-      { paymentSlipUrl, paymentStatus: 'Pending', orderStatus: 'Payment Uploaded' },
+      { paymentSlipUrl, paymentSlip: paymentSlipUrl, paymentStatus: 'Pending', orderStatus: 'Payment Uploaded' },
       { new: true }
     );
 
