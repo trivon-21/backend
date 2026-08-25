@@ -4,11 +4,18 @@ const InspectionReport = require("./InspectionReport.model");
 const { sendArrivalEmail, sendReportToTechnician } = require("../shared/notification/email.service");
 
 const getOrderModel = () => {
-  try { return mongoose.model("Order"); }
-  catch {
-    const s = new mongoose.Schema({ orderRef: String, customer: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, itemName: String, quantity: Number, amount: Number, orderType: String }, { strict: false, timestamps: true });
-    return mongoose.model("Order", s);
-  }
+  const s = new mongoose.Schema({
+    orderReference: String,
+    userId:   mongoose.Schema.Types.ObjectId,
+    items: Array,
+    subtotal: Number, total: Number,
+    inspectionFee: Number,
+    status: String,
+    consultationCompleted: Boolean,
+  }, { strict: false, timestamps: true });
+
+  const modelName = "InstallationOrderInspectionTeamLookup";
+  return mongoose.models[modelName] || mongoose.model(modelName, s, "installation_orders");
 };
 
 const getUserModel = () => {
@@ -30,7 +37,7 @@ exports.getScheduledInspections = async (req, res) => {
       const user = await User.findById(t.customerId);
       return {
         _id: t._id,
-        orderId: order?.orderRef || t.orderId,
+        orderId: order?.orderReference || order?.orderRef || t.orderId,
         ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
         customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
         customerEmail: user?.email || "",
@@ -72,7 +79,7 @@ exports.startInspection = async (req, res) => {
       await sendArrivalEmail(
         user.email,
         user.fullName || "Customer",
-        order?.orderRef || ticket.orderId.toString(),
+        order?.orderReference || order?.orderRef || ticket.orderId.toString(),
         ticket.scheduledDate,
         arrivalTime
       );
@@ -97,7 +104,7 @@ exports.getOngoingInspections = async (req, res) => {
       const report = await InspectionReport.findOne({ ticketId: t._id });
       return {
         _id: t._id,
-        orderId: order?.orderRef || t.orderId,
+        orderId: order?.orderReference || order?.orderRef || t.orderId,
         ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
         customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
         customerEmail: user?.email || "",
@@ -189,7 +196,7 @@ exports.getCompletedInspections = async (req, res) => {
       const report = await InspectionReport.findOne({ ticketId: t._id });
       return {
         _id: t._id,
-        orderId: order?.orderRef || t.orderId,
+        orderId: order?.orderReference || order?.orderRef || t.orderId,
         ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
         customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
         inspectionDate: t.scheduledDate,
@@ -279,7 +286,7 @@ exports.getDashboardStats = async (req, res) => {
       const user = await User.findById(t.customerId);
       return {
         _id: t._id,
-        orderId: order?.orderRef || t.orderId,
+        orderId: order?.orderReference || order?.orderRef || t.orderId,
         ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
         customer: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
         date: t.scheduledDate || t.updatedAt,

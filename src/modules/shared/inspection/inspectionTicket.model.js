@@ -3,6 +3,7 @@ const { Schema } = mongoose;
 
 const inspectionTicketSchema = new Schema(
   {
+    ticketRef: { type: String, unique: true, sparse: true },
     orderId: { type: Schema.Types.ObjectId, ref: 'InstallationOrder', required: true }, // ref target is catalog's InstallationOrder/Order
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: {
@@ -24,5 +25,21 @@ const inspectionTicketSchema = new Schema(
   },
   { timestamps: true, collection: 'inspection_tickets' }
 );
+
+inspectionTicketSchema.pre("save", async function () {
+  if (!this.ticketRef) {
+    const Model = mongoose.model("InspectionTicket");
+    let attempt = 0;
+    let candidate;
+    let exists = true;
+    while (exists && attempt < 20) {
+      const count = await Model.countDocuments();
+      candidate = `INS-${String(count + 1 + attempt).padStart(5, "0")}`;
+      exists = await Model.exists({ ticketRef: candidate });
+      attempt++;
+    }
+    this.ticketRef = candidate;
+  }
+});
 
 module.exports = mongoose.models.InspectionTicket || mongoose.model('InspectionTicket', inspectionTicketSchema);

@@ -17,6 +17,7 @@ const getTicketModel = () => {
   try { return mongoose.model("InspectionTicket"); }
   catch {
     const s = new mongoose.Schema({
+      ticketRef:      String,
       orderId:        mongoose.Schema.Types.ObjectId,
       customerId:     mongoose.Schema.Types.ObjectId,
       status:         String,
@@ -46,18 +47,18 @@ const getUserModel = () => {
 };
 
 const getOrderModel = () => {
-  try { return mongoose.model("Order"); }
-  catch {
-    const s = new mongoose.Schema({
-      orderRef: String, orderReference: String,
-      customer: mongoose.Schema.Types.ObjectId,
-      userId:   mongoose.Schema.Types.ObjectId,
-      itemName: String, quantity: Number,
-      amount: Number, total: Number, subtotal: Number,
-      orderType: String, paymentStatus: String,
-    }, { strict: false, timestamps: true });
-    return mongoose.model("Order", s, "orders");
-  }
+  const s = new mongoose.Schema({
+    orderReference: String,
+    userId:   mongoose.Schema.Types.ObjectId,
+    items: Array,
+    subtotal: Number, total: Number,
+    inspectionFee: Number,
+    status: String,
+    consultationCompleted: Boolean,
+  }, { strict: false, timestamps: true });
+
+  const modelName = "InstallationOrderInspectionLookup";
+  return mongoose.models[modelName] || mongoose.model(modelName, s, "installation_orders");
 };
 
 const holidayCache = new Map();
@@ -74,6 +75,20 @@ async function loadPublicHolidays(year) {
     .filter(Boolean);
   holidayCache.set(year, dates);
   return dates;
+}
+
+// ── Helper: get a readable ticket reference, with legacy fallback ─────────────
+function getTicketDisplayRef(ticket) {
+  return ticket.ticketRef || `I-Tic-${ticket._id.toString().slice(-5).toUpperCase()}`;
+}
+async function resolveOrderRefForTicket(ticket, Order) {
+  if (!ticket.orderId) return null;
+  try {
+    const order = await Order.findById(ticket.orderId);
+    return order?.orderReference || order?.orderRef || null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Charge helper — handles team's full charge names ──────────────────────────
@@ -135,6 +150,7 @@ exports.getOrCreateTicket = async (req, res) => {
     const User = getUserModel();
 
     const order = await Order.findById(orderId);
+
     if (!order) return res.status(404).json({ message: "Order not found" });
 
     const customerId = order.customer || order.userId;
@@ -197,7 +213,7 @@ exports.uploadSlip = async (req, res) => {
     await createLog({
       eventType:  "PAYMENT_SUBMITTED",
       paymentType:"INSPECTION",
-      ticketId:   ticket._id.toString(),
+      ticketId:   getTicketDisplayRef(ticket),
       customerId: ticket.customerId,
       amount:     ticket.inspectionFee || 0,
       slipUrl,
@@ -215,6 +231,7 @@ exports.getPendingVerification = async (req, res) => {
   try {
     const InspectionTicket = getTicketModel();
     const User = getUserModel();
+    const Order = getOrderModel();
 
     const tickets = await InspectionTicket.find({
       status: "PAYMENT_UNDER_REVIEW"
@@ -222,7 +239,8 @@ exports.getPendingVerification = async (req, res) => {
 
     const enriched = await Promise.all(tickets.map(async (t) => {
       const obj = t.toObject();
-      obj.ticketId = `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`;
+      obj.ticketId = getTicketDisplayRef(t);
+      obj.orderRef = await resolveOrderRefForTicket(t, Order);
       if (t.customerId) {
         const user = await User.findById(t.customerId);
         if (user) obj.customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
@@ -261,7 +279,7 @@ exports.approvePayment = async (req, res) => {
     await createLog({
       eventType:     "PAYMENT_APPROVED",
       paymentType:   "INSPECTION",
-      ticketId:      ticket._id.toString(),
+      ticketId:      getTicketDisplayRef(ticket),
       customerId:    ticket.customerId,
       customerName,
       customerEmail,
@@ -307,7 +325,7 @@ exports.rejectPayment = async (req, res) => {
     await createLog({
       eventType:      "PAYMENT_REJECTED",
       paymentType:    "INSPECTION",
-      ticketId:       ticket._id.toString(),
+      ticketId:       getTicketDisplayRef(ticket),
       customerId:     ticket.customerId,
       customerName,
       customerEmail,
@@ -328,13 +346,11 @@ exports.rejectPayment = async (req, res) => {
 };
 
 // ── GET verified payments ──────────────────────────────────────────────────────
-// FIX: match by exclusion instead of an exact whitelist — a ticket that has been
-// approved (has approvedAt) and is NOT pending/rejected should always show here,
-// regardless of what status it moves to afterward (scheduled, inspected, etc.)
 exports.getVerifiedPayments = async (req, res) => {
   try {
     const InspectionTicket = getTicketModel();
     const User = getUserModel();
+    const Order = getOrderModel();
 
     const tickets = await InspectionTicket.find({
       status: { $nin: ["PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "PAYMENT_REJECTED"] },
@@ -343,7 +359,8 @@ exports.getVerifiedPayments = async (req, res) => {
 
     const enriched = await Promise.all(tickets.map(async (t) => {
       const obj = t.toObject();
-      obj.ticketId = `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`;
+      obj.ticketId = getTicketDisplayRef(t);
+      obj.orderRef = await resolveOrderRefForTicket(t, Order);
       if (t.customerId) {
         const user = await User.findById(t.customerId);
         if (user) obj.customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
@@ -363,6 +380,7 @@ exports.getRejectedPayments = async (req, res) => {
   try {
     const InspectionTicket = getTicketModel();
     const User = getUserModel();
+    const Order = getOrderModel();
 
     const tickets = await InspectionTicket.find({
       status: "PAYMENT_REJECTED"
@@ -370,7 +388,8 @@ exports.getRejectedPayments = async (req, res) => {
 
     const enriched = await Promise.all(tickets.map(async (t) => {
       const obj = t.toObject();
-      obj.ticketId = `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`;
+      obj.ticketId = getTicketDisplayRef(t);
+      obj.orderRef = await resolveOrderRefForTicket(t, Order);
       if (t.customerId) {
         const user = await User.findById(t.customerId);
         if (user) obj.customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
@@ -444,7 +463,7 @@ exports.getAvailableDates = async (req, res) => {
         date: dateStr,
         status,
         slotsLeft,
-        isWeekend: false, // both Saturday and Sunday now available
+        isWeekend: false,
         isHoliday,
         isFullyBooked,
       });
@@ -460,7 +479,7 @@ exports.getAvailableDates = async (req, res) => {
 // ── CONFIRM scheduling ────────────────────────────────────────────────────────
 exports.confirmScheduling = async (req, res) => {
   try {
-    const { selectedDate } = req.body; // frontend sends "selectedDate"
+    const { selectedDate } = req.body;
     if (!selectedDate) return res.status(400).json({ message: "Date required" });
 
     const InspectionTicket = getTicketModel();
@@ -472,7 +491,6 @@ exports.confirmScheduling = async (req, res) => {
     if (!["PAYMENT_CONFIRMED"].includes(ticket.status))
       return res.status(400).json({ message: "Ticket not in schedulable state" });
 
-    // Check slots
     const bookings = await InspectionTicket.countDocuments({
       scheduledDate: {
         $gte: new Date(selectedDate + "T00:00:00.000Z"),
@@ -509,7 +527,7 @@ exports.confirmScheduling = async (req, res) => {
 // ── RESCHEDULE ────────────────────────────────────────────────────────────────
 exports.rescheduleInspection = async (req, res) => {
   try {
-    const { newDate } = req.body; // frontend sends "newDate"
+    const { newDate } = req.body;
     if (!newDate) return res.status(400).json({ message: "Date required" });
 
     const InspectionTicket = getTicketModel();
@@ -519,14 +537,12 @@ exports.rescheduleInspection = async (req, res) => {
     const ticket = await InspectionTicket.findById(req.params.ticketId);
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
-    // 24-hour cutoff check
     if (ticket.scheduledDate) {
       const hoursUntil = (new Date(ticket.scheduledDate) - new Date()) / (1000 * 60 * 60);
       if (hoursUntil < 24)
         return res.status(400).json({ message: "Cannot reschedule within 24 hours", hoursUntil: Math.round(hoursUntil) });
     }
 
-    // Check slots
     const bookings = await InspectionTicket.countDocuments({
       scheduledDate: {
         $gte: new Date(newDate + "T00:00:00.000Z"),
