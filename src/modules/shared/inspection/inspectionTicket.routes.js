@@ -2,6 +2,13 @@ const express = require("express");
 const router = express.Router();
 const controller = require("./inspectionTicket.controller");
 
+// Main dashboard routes
+router.get("/", controller.getAllInspections);
+
+// Detail routes for technician
+router.get("/:id", controller.getInspectionById);
+router.patch("/:id/status", controller.updateInspectionStatus);
+
 // Customer routes
 router.get("/order/:orderId", controller.getOrCreateTicket);
 router.put("/upload-slip/:ticketId", controller.uploadSlip);
@@ -15,5 +22,7 @@ router.put("/approve/:id", controller.approvePayment);
 router.put("/reject/:id", controller.rejectPayment);
 router.get("/verified", controller.getVerifiedPayments);
 router.get("/rejected", controller.getRejectedPayments);
+
+
 
 module.exports = router;
