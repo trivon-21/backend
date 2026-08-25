@@ -8,7 +8,7 @@ const maintenanceSchema = new Schema(
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     isUnderWarranty: { type: Boolean, default: true },
     date: { type: Date, required: true },
-    status: { type: String, enum: ['New', 'Finance Approved', 'Scheduled', 'In Progress', 'Completed'], default: 'New' },
+    status: { type: String, enum: ['New', 'Finance Approved', 'Scheduled', 'In Progress', 'Completed', 'On Hold'], default: 'New' },
     materialList: [{ item: String, quantity: Number, estimatedCost: Number }],
     assignedTeamId: { type: Schema.Types.ObjectId, ref: 'TechTeam' },
     serviceReport: { technicianNotes: String, submittedAt: Date, photos: [String] },
