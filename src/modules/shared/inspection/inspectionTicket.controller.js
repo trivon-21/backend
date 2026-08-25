@@ -126,6 +126,93 @@ const getBankDetails = async () => {
   };
 };
 
+// ── GET all inspection tickets for technicians/dashboard ──────────
+exports.getAllInspections = async (req, res) => {
+  try {
+    const InspectionTicket = getTicketModel();
+    const tickets = await InspectionTicket.find({})
+      .populate("customerId", "name fullName email address phoneNumber")
+      .populate("orderId", "itemName productType location")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const data = tickets.map((t) => ({
+      _id: t._id,
+      ticketId: t.ticketRef || t._id,
+      customerName: t.customerId?.fullName || t.customerId?.name || "Unknown Customer",
+      productType: t.orderId?.itemName || t.orderId?.productType || "N/A",
+      location: t.customerId?.address || t.location || "-",
+      date: t.scheduledDate || t.createdAt,
+      status: t.status,
+      assignedTeam: "Inspection Team A"
+    }));
+
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error("Error in getAllInspections:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ── GET inspection by ID ─────────────────────────────────────────────────────
+exports.getInspectionById = async (req, res) => {
+  try {
+    const InspectionTicket = getTicketModel();
+    const ticket = await InspectionTicket.findById(req.params.id)
+      .populate("customerId", "name fullName email address phoneNumber")
+      .populate("orderId", "itemName productType location")
+      .lean();
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: "Inspection not found" });
+    }
+
+    const data = {
+      _id: ticket._id,
+      ticketId: ticket.ticketRef || ticket._id,
+      customerName: ticket.customerId?.fullName || ticket.customerId?.name || "Unknown Customer",
+      customerId: ticket.customerId,
+      productType: ticket.orderId?.itemName || ticket.orderId?.productType || "N/A",
+      location: ticket.customerId?.address || ticket.location || "-",
+      date: ticket.scheduledDate || ticket.createdAt,
+      status: ticket.status,
+      assignedTeam: "Inspection Team A",
+      raw: ticket
+    };
+
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error("Error in getInspectionById:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ── PATCH update inspection status ───────────────────────────────────────────
+exports.updateInspectionStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ success: false, message: "Status is required" });
+    }
+
+    const InspectionTicket = getTicketModel();
+    const updated = await InspectionTicket.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Inspection not found" });
+    }
+
+    return res.status(200).json({ success: true, data: updated, message: "Status updated successfully" });
+  } catch (error) {
+    console.error("Error in updateInspectionStatus:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 // ── GET or CREATE inspection ticket ──────────────────────────────────────────
 exports.getOrCreateTicket = async (req, res) => {
   try {
