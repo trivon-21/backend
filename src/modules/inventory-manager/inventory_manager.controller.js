@@ -22,7 +22,12 @@ exports.getDashboard = async (req, res) => {
       },
       recentActivity: [],
       reorderList: [],
-      logistics: []
+      logistics: [],
+      procurementWorkflow: {
+        awaitingManager: 0,
+        awaitingReceipt: 0,
+        awaitingFinance: 0
+      }
     });
   }
 };
