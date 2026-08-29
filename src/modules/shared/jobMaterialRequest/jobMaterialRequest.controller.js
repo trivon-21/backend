@@ -11,6 +11,86 @@ const {
   REQUEST_TYPES,
   DEFAULTS,
 } = require('../../../constants/enums');
+const materialWorkflow = require('./jobMaterialRequest.service');
+
+function sendWorkflowError(res, error) {
+  const duplicate = error?.code === 11000;
+  res.status(duplicate ? 409 : (error.statusCode || (error.name === 'ValidationError' ? 400 : 500))).json({
+    success: false,
+    message: duplicate ? 'This job already has an active material request' : (error.message || 'Material workflow operation failed'),
+    code: duplicate ? 'ACTIVE_MATERIAL_REQUEST_EXISTS' : (error.code || 'MATERIAL_WORKFLOW_FAILED'),
+    details: error.details,
+  });
+}
+
+exports.listCanonicalRequests = async (req, res) => {
+  try {
+    res.json({ success: true, data: await materialWorkflow.listRequests(req.query) });
+  } catch (error) {
+    sendWorkflowError(res, error);
+  }
+};
+
+exports.getMaterialCatalog = async (_req, res) => {
+  try {
+    res.json({ success: true, data: await materialWorkflow.getCatalog() });
+  } catch (error) {
+    sendWorkflowError(res, error);
+  }
+};
+
+exports.listEligibleJobs = async (_req, res) => {
+  try {
+    res.json({ success: true, data: await materialWorkflow.listEligibleJobs() });
+  } catch (error) {
+    sendWorkflowError(res, error);
+  }
+};
+
+exports.submitCanonicalRequest = async (req, res) => {
+  try {
+    const data = await materialWorkflow.submit(req.body, req.user);
+    res.status(201).json({ success: true, message: 'Material request submitted to Finance', data });
+  } catch (error) {
+    sendWorkflowError(res, error);
+  }
+};
+
+exports.approveCanonicalRequest = async (req, res) => {
+  try {
+    const data = await materialWorkflow.decide(req.params.id, 'APPROVED', '', req.user, req.body.statusVersion);
+    res.json({ success: true, message: 'Material request approved by Finance', data });
+  } catch (error) {
+    sendWorkflowError(res, error);
+  }
+};
+
+exports.rejectCanonicalRequest = async (req, res) => {
+  try {
+    const data = await materialWorkflow.decide(req.params.id, 'REJECTED', req.body.reason, req.user, req.body.statusVersion);
+    res.json({ success: true, message: 'Material request rejected by Finance', data });
+  } catch (error) {
+    sendWorkflowError(res, error);
+  }
+};
+
+exports.sendCanonicalRequestToInventory = async (req, res) => {
+  try {
+    const data = await materialWorkflow.sendToInventory(req.params.id, req.body.statusVersion);
+    res.json({ success: true, message: 'Material request sent to Inventory Manager', data });
+  } catch (error) {
+    sendWorkflowError(res, error);
+  }
+};
+
+exports.cancelCanonicalRequest = async (req, res) => {
+  try {
+    const data = await materialWorkflow.cancel(req.params.id, req.body.reason, req.body.statusVersion);
+    res.json({ success: true, message: 'Material request cancelled', data });
+  } catch (error) {
+    sendWorkflowError(res, error);
+  }
+};
 
 exports.getNewServiceTickets = async (req, res) => {
   try {
