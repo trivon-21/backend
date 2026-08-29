@@ -24,7 +24,7 @@ const inspectionReportSchema = new Schema(
     submittedAt: Date,
     recordedAt: Date,
   },
-  { timestamps: true, collection: 'inspectionreports' }
+  { timestamps: true, collection: 'inspection_reports' }
 );
 
 module.exports = mongoose.models.InspectionReport || mongoose.model('InspectionReport', inspectionReportSchema);

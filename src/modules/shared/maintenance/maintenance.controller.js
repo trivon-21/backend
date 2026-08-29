@@ -34,17 +34,43 @@ exports.getAllSchedules = async (req, res) => {
 
     if (status && status !== 'All') query.status = status;
 
+    const schedules = await MaintenanceSchedule.find(query)
+      .populate('customerId', 'fullName email phoneNumber address')
+      .populate('installationId', 'productType location serviceDate createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    let mappedSchedules = schedules.map(sched => {
+      const customer = sched.customerId || {};
+      const installation = sched.installationId || {};
+      
+      const mapped = {
+        ...sched,
+        customerName: customer.fullName || 'Unknown Customer',
+        customerEmail: customer.email || '-',
+        customerPhone: customer.phoneNumber || '-',
+        location: installation.location || customer.address || '-',
+        productType: installation.productType || 'AC System',
+        installationDate: installation.serviceDate || installation.createdAt || null,
+        services: (sched.services || []).map((srv, idx) => ({
+          ...srv,
+          underWarranty: idx < 4
+        }))
+      };
+      
+      return mapped;
+    });
+
     if (search) {
-      const searchRegex = new RegExp(search.trim(), 'i');
-      query.$or = [
-        { ticketId: searchRegex },
-        { fullName: searchRegex },
-        { location: searchRegex }
-      ];
+      const searchNormalized = search.trim().toLowerCase();
+      mappedSchedules = mappedSchedules.filter(sched => 
+        (sched.ticketId && sched.ticketId.toLowerCase().includes(searchNormalized)) ||
+        (sched.customerName && sched.customerName.toLowerCase().includes(searchNormalized)) ||
+        (sched.location && sched.location.toLowerCase().includes(searchNormalized))
+      );
     }
 
-    const schedules = await MaintenanceSchedule.find(query).sort({ createdAt: -1 }).lean();
-    res.json({ success: true, count: schedules.length, data: schedules });
+    res.json({ success: true, count: mappedSchedules.length, data: mappedSchedules });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

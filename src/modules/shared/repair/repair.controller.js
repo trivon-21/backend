@@ -28,6 +28,7 @@ exports.getAllServiceRequests = async (req, res) => {
     const data = serviceRequests.map((item) => ({
       ...item,
       fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
+      customerName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
       location: item.customerId?.address || item.location || '-',
       assignedTeam: item.assignedTeamName || DEFAULTS.UNASSIGNED
     }));
@@ -49,8 +50,17 @@ exports.getServiceRequestById = async (req, res) => {
     const overallProgress = service.progress?.totalTasks > 0
       ? Math.round((service.progress.completedTasks / service.progress.totalTasks) * 100)
       : 0;
+      
+    const mappedService = {
+      ...service,
+      customerName: service.customerId?.fullName || service.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
+    };
+    if (mappedService.customerId) {
+        mappedService.customerId.name = mappedService.customerId.fullName || mappedService.customerId.name;
+        mappedService.customerId.contactNo = mappedService.customerId.phoneNumber || mappedService.customerId.contactNo;
+    }
 
-    res.json({ success: true, data: { ...service, overallProgress } });
+    res.json({ success: true, data: { ...mappedService, overallProgress } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

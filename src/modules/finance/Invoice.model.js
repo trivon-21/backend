@@ -71,9 +71,18 @@ repairId:    { type: mongoose.Schema.Types.ObjectId, ref: "L_Repair" },
 // Auto generate invoice number
 invoiceSchema.pre("save", async function () {
   if (!this.invoiceNumber) {
-    const count = await mongoose.model("Invoice").countDocuments();
-    this.invoiceNumber = `INV-${String(count + 1).padStart(5, "0")}`;
+    const Invoice = mongoose.model("Invoice");
+    let attempt = 0;
+    let candidateNumber;
+    let exists = true;
+    while (exists && attempt < 20) {
+      const count = await Invoice.countDocuments();
+      candidateNumber = `INV-${String(count + 1 + attempt).padStart(5, "0")}`;
+      exists = await Invoice.exists({ invoiceNumber: candidateNumber });
+      attempt++;
+    }
+    this.invoiceNumber = candidateNumber;
   }
 });
 
-module.exports = mongoose.model("Invoice", invoiceSchema);
+module.exports = mongoose.model("Invoice", invoiceSchema, "invoices");
