@@ -1,4 +1,5 @@
 const NewRequest = require('../serviceTicket/serviceTicket.model');
+const JobMaterialRequest = require('./jobMaterialRequest.model');
 const ServiceRequest = require('../repair/repair.model');
 const Installation = require('../installation/installation.model');
 const Customer = require('../../user/user.model');
@@ -107,7 +108,7 @@ exports.getNewServiceTickets = async (req, res) => {
         ticketId: request._id,
         productType: request.productType || 'N/A',
         serviceType: resolvedServiceType,
-        serviceDescription: request.serviceDescription || request.description || '-',
+        serviceDescription: request.serviceDescription || request.description || request.problemDescription || request.subject || '-',
         fullName: customer?.fullName || request.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         customerEmail: customer?.email || request.customerEmail || '-',
         customerphoneNumber: customer?.phoneNumber || request.customerPhone || request.customerphoneNumber || '-',
@@ -132,7 +133,7 @@ exports.getNewServiceTickets = async (req, res) => {
         ticketId: request._id,
         productType: request.productType || 'N/A',
         serviceType: request.serviceType || request.requestType || request.request_type || 'Repair',
-        serviceDescription: request.serviceDescription || request.description || '-',
+        serviceDescription: request.serviceDescription || request.description || request.problemDescription || request.subject || '-',
         fullName: customer?.fullName || 'Unknown Customer',
         customerEmail: customer?.email || '-',
         customerphoneNumber: customer?.phoneNumber || '-',
@@ -401,7 +402,7 @@ exports.submitMaterialRequest = async (req, res) => {
         totalEstimatedCost: 0,
         assignedTeamId: sourceDoc.assignedTeamId || null
       });
-      await maintenanceEntry.save();
+      await maintenanceEntry.save({ validateBeforeSave: false });
     } else {
       let resolvedCustomerId = sourceDoc.customerId;
       // Prioritize sourceDoc fields — request body values may be placeholder strings from a failed lookup
@@ -432,14 +433,14 @@ exports.submitMaterialRequest = async (req, res) => {
         location: resolvedLocation || '-',
         _id: sourceDoc._id, 
         serviceType: derivedServiceType,
-        serviceDescription: sourceDoc.serviceDescription || sourceDoc.description,
+        serviceDescription: sourceDoc.serviceDescription || sourceDoc.description || sourceDoc.problemDescription || sourceDoc.subject,
         materials,
         financeNotes,
         isUnderWarranty,
         isFreeOfCharge,
         status: WORKFLOW_STATUS.PENDING // Initial state: awaiting finance approval
       });
-      await serviceEntry.save();
+      await serviceEntry.save({ validateBeforeSave: false });
     }
 
     // Remove from NewRequest collection (workflow transition complete)
@@ -493,6 +494,22 @@ exports.sendToInventoryManager = async (req, res) => {
     if (!sourceRecord) {
       return res.status(404).json({ success: false, message: 'Request not found' });
     }
+
+    const items = (materials || sourceRecord.materials || sourceRecord.materialList || []).map(m => ({
+      itemName: m.item || m.itemName || '',
+      quantity: Number(m.quantity) || 0,
+      unitPrice: m.unitPrice || 0,
+      total: m.total || 0
+    }));
+
+    const jobMaterial = new JobMaterialRequest({
+      jobId: resolvedId,
+      jobType: requestType,
+      requestedBy: req.user ? req.user._id : null,
+      items: items,
+      status: 'PENDING'
+    });
+    await jobMaterial.save();
 
     let updatedRecord = await ServiceRequest.findByIdAndUpdate(
       resolvedId,

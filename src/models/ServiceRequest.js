@@ -8,7 +8,7 @@ const serviceRequestSchema = new mongoose.Schema(
       unique: true,
       default: () => "SRQ-" + uuidv4().split("-")[0].toUpperCase()
     },
-    customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
     // AC Unit details
     acUnitModel: { type: String, trim: true, default: "" },
@@ -48,7 +48,7 @@ const serviceRequestSchema = new mongoose.Schema(
       default: "Pending"
     }
   },
-  { timestamps: true }
+  { timestamps: true, collection: "service_tickets" }
 );
 
 module.exports = mongoose.models.ServiceRequest || mongoose.model("ServiceRequest", serviceRequestSchema);

@@ -10,7 +10,8 @@ const repairSchema = new Schema(
     materials: [{ item: String, quantity: Number }],
     location: String,
     notes: String,
-    status: { type: String, enum: ['PENDING', 'MATERIALS_READY', 'INVOICED', 'In Progress', 'On Hold', 'Completed'], default: 'PENDING' },
+    paymentStatus: { type: String, enum: ['NEW','PENDING_PAYMENT', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'] },
+    status: { type: String, enum: ['PENDING', 'Approved','Sent to IM','MATERIALS_READY', 'INVOICED', 'In Progress', 'On Hold', 'Completed'], default: 'PENDING' },
   },
   { timestamps: true, collection: 'repairs' }
 );

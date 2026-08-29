@@ -17,7 +17,7 @@ const {
 } = require('../../../constants/enums');
 
 router.get('/dropdown-tickets', materialController.getNewServiceTickets);
-router.post('/submit-to-finance', materialController.sendToFinance);
+
 router.patch('/:id/send-to-im', materialController.sendToInventoryManager);
 router.patch('/:id/approve-finance', materialController.approveFinance);
 router.patch('/:id/reject-finance', materialController.rejectFinance);
@@ -28,8 +28,7 @@ router.get('/', async (req, res) => {
         const materialWorkflowStatusRegex = [
             new RegExp(`^\\s*${WORKFLOW_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${WORKFLOW_STATUS.SENT_TO_IM}\\s*$`, 'i')
+            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
         ];
         const toCustomerId = (value) => {
             if (!value) return null;
@@ -58,8 +57,7 @@ router.get('/', async (req, res) => {
         const materialMaintenanceStatusRegex = [
             new RegExp(`^\\s*${MAINTENANCE_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${MAINTENANCE_STATUS.SENT_TO_IM}\\s*$`, 'i')
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
         ];
         const maintenances = await Maintenance.find({
             status: { $in: materialMaintenanceStatusRegex }
