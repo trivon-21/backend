@@ -61,7 +61,9 @@ const PurchaseRequestSchema = new mongoose.Schema({
   poNumber: { type: String },
   orderedAt: { type: Date },
   statusVersion: { type: Number, default: 0, min: 0 },
-  source: { type: String, enum: ['manual', 'low-stock'], default: 'manual' },
+  source: { type: String, enum: ['manual', 'low-stock', 'material-request'], default: 'manual' },
+  sourceMaterialRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'JobMaterialRequest' },
+  activeShortageKey: { type: String },
 }, {
   timestamps: true,
   collection: 'purchase_requests',
@@ -78,6 +80,18 @@ PurchaseRequestSchema.pre('validate', function normalizeLines() {
       item.invalidate('receivedQuantity', 'Received quantity cannot exceed ordered quantity');
     }
   }
+  const inactiveStatuses = ['rejected', 'received', 'cancelled'];
+  if (this.source === 'material-request' && this.sourceMaterialRequestId && this.supplierId
+    && !inactiveStatuses.includes(this.status)) {
+    this.activeShortageKey = `${this.sourceMaterialRequestId}:${this.supplierId}`;
+  } else {
+    this.activeShortageKey = undefined;
+  }
+});
+
+PurchaseRequestSchema.index({ activeShortageKey: 1 }, {
+  unique: true,
+  partialFilterExpression: { activeShortageKey: { $type: 'string' } },
 });
 
 module.exports = mongoose.models.ManagerInventoryPurchaseRequest

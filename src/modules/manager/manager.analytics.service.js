@@ -25,6 +25,10 @@ exports.getAnalyticsData = async (_user, periodKey) => {
     ReceiptAuthorization.find().lean(),
   ]);
   const generatedAt = new Date();
+  const inventoryById = new Map(inventory.map(item => [String(item._id), item]));
+  const blockedRequests = await WarehousePickRequest.find({ status: 'pending' }).lean();
+  const blockedMaterialRequests = blockedRequests.filter(request => (request.items || []).some(line =>
+    Number(inventoryById.get(String(line.inventoryId))?.available || 0) < Number(line.qty || 0))).length;
   const analytics = buildAnalytics(
     tickets,
     orders,
@@ -45,6 +49,7 @@ exports.getAnalyticsData = async (_user, periodKey) => {
       outOfStockAlerts: analytics.inventoryRisk.outOfStockItems.value,
       reservedItems: inventory.reduce((sum, item) => sum + Number(item.reserved || 0), 0),
       pendingRequests,
+      blockedMaterialRequests,
     },
   };
 };

@@ -9,7 +9,8 @@
     "seed:config": "node seeds/system-config-seed.js",
     "test": "npm run test:legacy && npm run test:domain",
     "test:legacy": "mocha tests/unit/*.test.js",
-    "test:domain": "node --test test/*.test.js"
+    "test:domain": "node --test test/*.test.js",
+    "workflow:reset-materials": "node scripts/reset-material-workflow.js"
   },
   "keywords": [],
   "author": "",

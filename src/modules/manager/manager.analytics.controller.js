@@ -7,7 +7,13 @@ function emptyAnalytics(period) {
     ...buildAnalytics([], [], period, generatedAt),
     status: 'Offline',
     generatedAt,
-    inventorySignals: { lowStockAlerts: 0, outOfStockAlerts: 0, reservedItems: 0, pendingRequests: 0 },
+    inventorySignals: {
+      lowStockAlerts: 0,
+      outOfStockAlerts: 0,
+      reservedItems: 0,
+      pendingRequests: 0,
+      blockedMaterialRequests: 0,
+    },
   };
 }
 

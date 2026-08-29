@@ -39,6 +39,7 @@ const InventorySchema = new mongoose.Schema({
     sellingPricePerUnit: { type: Number, min: 0 },
   },
   isSerialized: { type: Boolean, default: false },
+  isActive: { type: Boolean, default: true },
   serialNumbers: [{ type: String, trim: true }],
   specsUrl: { type: String },
   status: { type: String, enum: ['critical', 'warning', 'normal'], default: 'normal' },

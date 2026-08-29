@@ -192,6 +192,38 @@ exports.updateMaterialRequest = async (req, res) => {
   }
 };
 
+exports.confirmMaterialItem = async (req, res) => {
+  try {
+    res.json(await service.confirmMaterialItem(req.params.id, req.params.lineId, req.body, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code, details: error.details });
+  }
+};
+
+exports.reserveMaterialRequest = async (req, res) => {
+  try {
+    res.json(await service.reserveMaterialRequest(req.params.id, req.body, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code, details: error.details });
+  }
+};
+
+exports.releaseMaterialRequest = async (req, res) => {
+  try {
+    res.json(await service.releaseMaterialRequest(req.params.id, req.body, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code, details: error.details });
+  }
+};
+
+exports.handoverMaterialRequest = async (req, res) => {
+  try {
+    res.json(await service.handoverMaterialRequest(req.params.id, req.body, req.user));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code, details: error.details });
+  }
+};
+
 /**
  * Retrieves a list of available technicians.
  */
@@ -284,7 +316,11 @@ exports.createOrderRequest = async (req, res) => {
     res.status(201).json(data);
   } catch (error) {
     console.error('Order request creation error:', error);
-    res.status(error.statusCode || 500).json({ message: error.message || "Failed to create order request", code: error.code });
+    const duplicateShortage = error?.code === 11000 && error?.keyPattern?.activeShortageKey;
+    res.status(duplicateShortage ? 409 : (error.statusCode || 500)).json({
+      message: duplicateShortage ? 'An active shortage order already exists for this supplier' : (error.message || 'Failed to create order request'),
+      code: duplicateShortage ? 'DUPLICATE_SHORTAGE_ORDER' : error.code,
+    });
   }
 };
 

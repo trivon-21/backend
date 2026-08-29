@@ -33,7 +33,10 @@ router.patch("/orders/:id", controller.updateOrder);
 
 // Material Requests
 router.get("/material-requests", controller.getMaterialRequests);
-router.patch("/material-requests/:id", controller.updateMaterialRequest);
+router.patch("/material-requests/:id/items/:lineId", controller.confirmMaterialItem);
+router.post("/material-requests/:id/reserve", controller.reserveMaterialRequest);
+router.post("/material-requests/:id/release", controller.releaseMaterialRequest);
+router.post("/material-requests/:id/handover", controller.handoverMaterialRequest);
 
 // Asset Management
 router.get("/technicians", controller.getTechnicians);

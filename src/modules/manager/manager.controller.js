@@ -27,7 +27,8 @@ exports.getDashboard = async (req, res) => {
       inventoryKpis: {
         reservedItems: { label: 'Reserved Items', value: 0, icon: 'clipboard-check' },
         lowStockAlerts: { label: 'Low Stock Alerts', value: 0, icon: 'triangle-alert' },
-        pendingMaterialRequests: { label: 'Pending Material Requests', value: 0, icon: 'package' }
+        pendingMaterialRequests: { label: 'Pending Material Requests', value: 0, icon: 'package' },
+        blockedMaterialRequests: { label: 'Blocked Material Requests', value: 0, icon: 'triangle-alert' }
       },
       recentActivity: [],
       pendingActions: [],

@@ -4,6 +4,7 @@ const Supplier = require('../../models/Supplier');
 const Procurement = require('../../models/Procurement');
 const DispatchOrder = require('../../models/DispatchOrder');
 const WarehousePickRequest = require('../../models/WarehousePickRequest');
+const JobMaterialRequest = require('../../models/JobMaterialRequest');
 const AssetLoan = require('../../models/AssetLoan');
 const PurchaseRequest = require('../../models/PurchaseRequest');
 const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
@@ -14,6 +15,8 @@ const ServiceTicket = require('../../models/ServiceTicket');
 const InspectionTicket = require('../../models/InspectionTicket');
 const Installation = require('../../models/Installation');
 const User = require('../../models/User');
+const TechTeam = require('../shared/tech-teams/techTeam.model');
+const materialWorkflow = require('../shared/jobMaterialRequest/jobMaterialRequest.service');
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 const {
@@ -56,10 +59,11 @@ function normalizeInventoryData(data, applyDefaults = true) {
   return normalized;
 }
 
-function serviceError(message, statusCode, code) {
+function serviceError(message, statusCode, code, details) {
   const error = new Error(message);
   error.statusCode = statusCode;
   error.code = code;
+  error.details = details;
   return error;
 }
 
@@ -115,7 +119,7 @@ async function affectedWorkExists(type, id) {
 
 function controllerSafeOrderFields(data) {
   return Object.fromEntries([
-    'items', 'supplierId', 'supplierName', 'priority', 'notes', 'source',
+    'items', 'supplierId', 'supplierName', 'priority', 'notes', 'source', 'sourceMaterialRequestId',
   ].filter((key) => data[key] !== undefined).map((key) => [key, data[key]]));
 }
 
@@ -672,7 +676,38 @@ exports.updateOrder = async (id, data) => {
  * Fetches all material requests sorted by creation date.
  */
 exports.getMaterialRequests = async () => {
-  return await WarehousePickRequest.find().sort({ createdAt: -1 });
+  const requests = await WarehousePickRequest.find({ status: { $ne: 'cancelled' } }).sort({ createdAt: -1 }).lean();
+  const inventoryIds = [...new Set(requests.flatMap(request => request.items || [])
+    .map(item => String(item.inventoryId || ''))
+    .filter(id => mongoose.isValidObjectId(id)))];
+  const inventory = inventoryIds.length
+    ? await Inventory.find({ _id: { $in: inventoryIds } })
+      .select('name sku available reserved unit unitCost itemClass subcategory supplierId manufacturerPartNumber')
+      .populate('supplierId', 'name')
+      .lean()
+    : [];
+  const byId = new Map(inventory.map(item => [String(item._id), item]));
+  return requests.map(request => {
+    const items = (request.items || []).map(item => {
+      const stock = byId.get(String(item.inventoryId));
+      const available = Number(stock?.available || 0);
+      const shortage = request.status === 'pending' ? Math.max(0, Number(item.qty) - available) : 0;
+      return {
+        ...item,
+        available,
+        reservedStock: Number(stock?.reserved || 0),
+        unit: stock?.unit || 'units',
+        unitCost: Number(stock?.unitCost || 0),
+        itemClass: stock?.itemClass || 'Unclassified',
+        subcategory: stock?.subcategory || 'Unclassified',
+        manufacturerPartNumber: stock?.manufacturerPartNumber || '',
+        supplierId: stock?.supplierId?._id || stock?.supplierId,
+        supplierName: stock?.supplierId?.name || '',
+        shortage,
+      };
+    });
+    return { ...request, items, hasShortage: items.some(item => item.shortage > 0) };
+  });
 };
 
 /**
@@ -684,6 +719,186 @@ exports.updateMaterialRequest = async (id, data) => {
     ? { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: pickFields(safe, MATERIAL_REQUEST_UPDATE_FIELDS.filter((field) => !['lastMovedAt', 'completedAt'].includes(field))) }
     : { $set: safe };
   return WarehousePickRequest.findOneAndUpdate({ requestId: id }, update, { new: true, runValidators: true });
+};
+
+function assertRequestVersion(request, version) {
+  if (version !== undefined && Number(version) !== Number(request.statusVersion)) {
+    throw serviceError('The material request changed; reload before trying again', 409, 'STALE_MATERIAL_REQUEST');
+  }
+}
+
+async function materialRequestByReference(id, session) {
+  const request = await WarehousePickRequest.findOne({ requestId: id }).session(session || null);
+  if (!request) throw serviceError('Material request not found', 404, 'MATERIAL_REQUEST_NOT_FOUND');
+  return request;
+}
+
+exports.confirmMaterialItem = async (id, lineId, data, user) => {
+  assertRole(user, ['INVENTORY']);
+  const request = await materialRequestByReference(id);
+  assertRequestVersion(request, data.statusVersion);
+  if (request.status !== 'pending') {
+    throw serviceError('Only pending requests can be checked', 409, 'INVALID_MATERIAL_TRANSITION');
+  }
+  const item = request.items.find(line => line.lineId === lineId);
+  if (!item) throw serviceError('Material line not found', 404, 'MATERIAL_LINE_NOT_FOUND');
+  const updated = await WarehousePickRequest.findOneAndUpdate({
+    _id: request._id,
+    status: 'pending',
+    statusVersion: request.statusVersion,
+  }, {
+    $set: { 'items.$[materialLine].confirmed': Boolean(data.confirmed) },
+    $inc: { statusVersion: 1 },
+  }, {
+    arrayFilters: [{ 'materialLine.lineId': lineId }],
+    new: true,
+    runValidators: true,
+  });
+  if (!updated) throw serviceError('The material request changed; reload before trying again', 409, 'STALE_MATERIAL_REQUEST');
+  return updated;
+};
+
+exports.reserveMaterialRequest = async (id, data, user) => {
+  assertRole(user, ['INVENTORY']);
+  return mongoose.connection.transaction(async session => {
+    const request = await materialRequestByReference(id, session);
+    assertRequestVersion(request, data.statusVersion);
+    if (request.status !== 'pending') {
+      throw serviceError('Only pending requests can be reserved', 409, 'INVALID_MATERIAL_TRANSITION');
+    }
+    if (!request.items.length || request.items.some(item => !item.confirmed)) {
+      throw serviceError('Confirm every material line before reserving the kit', 409, 'UNCONFIRMED_MATERIAL_LINES');
+    }
+    const shortages = [];
+    for (const line of request.items) {
+      const stock = await Inventory.findById(line.inventoryId).session(session);
+      if (!stock || Number(stock.available) < Number(line.qty)) {
+        shortages.push({ lineId: line.lineId, sku: line.sku, required: line.qty, available: Number(stock?.available || 0) });
+      }
+    }
+    if (shortages.length) {
+      throw serviceError('The complete kit is not available', 409, 'INSUFFICIENT_STOCK', shortages);
+    }
+    for (const line of request.items) {
+      const stock = await Inventory.findOneAndUpdate(
+        { _id: line.inventoryId, available: { $gte: line.qty } },
+        { $inc: { available: -line.qty, reserved: line.qty } },
+        { new: true, runValidators: true, session },
+      );
+      if (!stock) throw serviceError('Stock changed while reserving; reload and retry', 409, 'INSUFFICIENT_STOCK');
+      stock.status = legacyStockStatus(stock.available, stock.reorderLevel);
+      await stock.save({ session });
+    }
+    request.status = 'reserved';
+    request.lastMovedAt = new Date();
+    request.statusVersion += 1;
+    await request.save({ session });
+    await JobMaterialRequest.updateOne(
+      { _id: request.sourceMaterialRequestId },
+      { $set: { fulfillmentStatus: 'RESERVED' }, $inc: { statusVersion: 1 } },
+      { session },
+    );
+    await materialWorkflow.setJobState(request.jobType, request.jobId, 'Materials Ready', null, session);
+    await Activity.create([{
+      type: 'request',
+      title: 'Material Kit Reserved',
+      description: `${request.requestId} reserved by ${actorName(user, 'Inventory Manager')}`,
+      actionLabel: 'View Request',
+    }], { session });
+    return request;
+  });
+};
+
+exports.releaseMaterialRequest = async (id, data, user) => {
+  assertRole(user, ['INVENTORY']);
+  return mongoose.connection.transaction(async session => {
+    const request = await materialRequestByReference(id, session);
+    assertRequestVersion(request, data.statusVersion);
+    if (request.status !== 'reserved') {
+      throw serviceError('Only reserved requests can be released', 409, 'INVALID_MATERIAL_TRANSITION');
+    }
+    for (const line of request.items) {
+      const stock = await Inventory.findOneAndUpdate(
+        { _id: line.inventoryId, reserved: { $gte: line.qty } },
+        { $inc: { available: line.qty, reserved: -line.qty } },
+        { new: true, runValidators: true, session },
+      );
+      if (!stock) throw serviceError('Reserved stock is inconsistent', 409, 'RESERVED_STOCK_MISMATCH');
+      stock.status = legacyStockStatus(stock.available, stock.reorderLevel);
+      await stock.save({ session });
+    }
+    if (request.assignedTeamId) {
+      await TechTeam.updateOne(
+        { _id: request.assignedTeamId },
+        [
+          {
+            $set: {
+              activeJobsCount: { $max: [0, { $subtract: [{ $ifNull: ['$activeJobsCount', 0] }, 1] }] },
+            },
+          },
+          { $set: { status: { $cond: [{ $gt: ['$activeJobsCount', 0] }, 'On Job', 'Available'] } } },
+        ],
+        { session },
+      );
+    }
+    request.status = 'pending';
+    request.lastMovedAt = undefined;
+    request.assignedTeamId = undefined;
+    request.assignedTeamName = undefined;
+    request.statusVersion += 1;
+    request.items.forEach(item => { item.confirmed = false; });
+    await request.save({ session });
+    await JobMaterialRequest.updateOne(
+      { _id: request.sourceMaterialRequestId },
+      { $set: { fulfillmentStatus: 'PENDING' }, $inc: { statusVersion: 1 } },
+      { session },
+    );
+    const Model = materialWorkflow.modelForJobType(request.jobType);
+    await Model.updateOne({ _id: request.jobId }, {
+      $set: { status: 'Sent to IM' },
+      $unset: { assignedTeam: 1, assignedTeamRef: 1, assignedTeamId: 1, assignedTeamName: 1 },
+    }, { session, runValidators: true });
+    return request;
+  });
+};
+
+exports.handoverMaterialRequest = async (id, data, user) => {
+  assertRole(user, ['INVENTORY']);
+  return mongoose.connection.transaction(async session => {
+    const request = await materialRequestByReference(id, session);
+    assertRequestVersion(request, data.statusVersion);
+    if (request.status !== 'reserved') {
+      throw serviceError('Only reserved requests can be handed over', 409, 'INVALID_MATERIAL_TRANSITION');
+    }
+    if (!request.assignedTeamId) {
+      throw serviceError('The Main Technician must assign a service team first', 409, 'TEAM_ASSIGNMENT_REQUIRED');
+    }
+    for (const line of request.items) {
+      const stock = await Inventory.findOneAndUpdate(
+        { _id: line.inventoryId, reserved: { $gte: line.qty } },
+        { $inc: { reserved: -line.qty } },
+        { new: true, runValidators: true, session },
+      );
+      if (!stock) throw serviceError('Reserved stock is inconsistent', 409, 'RESERVED_STOCK_MISMATCH');
+    }
+    request.status = 'completed';
+    request.completedAt = new Date().toISOString();
+    request.lastMovedAt = new Date();
+    request.statusVersion += 1;
+    await request.save({ session });
+    await JobMaterialRequest.updateOne(
+      { _id: request.sourceMaterialRequestId },
+      { $set: { fulfillmentStatus: 'HANDED_OVER' }, $inc: { statusVersion: 1 } },
+      { session },
+    );
+    await Activity.create([{
+      type: 'request',
+      title: 'Material Kit Handed Over',
+      description: `${request.requestId} handed to ${request.assignedTeamName}`,
+      actionLabel: 'View Request',
+    }], { session });
+    return request;
+  });
 };
 
 /**
@@ -889,6 +1104,24 @@ exports.createOrderRequest = async (data, user) => {
   if (!String(safe.supplierName || '').trim()) {
     throw serviceError('Supplier is required', 400, 'SUPPLIER_REQUIRED');
   }
+  if (safe.source === 'material-request') {
+    assertObjectId(safe.sourceMaterialRequestId, 'Material request reference is invalid', 'INVALID_MATERIAL_REQUEST_ID');
+    const materialRequest = await WarehousePickRequest.findOne({
+      $or: [{ _id: safe.sourceMaterialRequestId }, { sourceMaterialRequestId: safe.sourceMaterialRequestId }],
+      status: 'pending',
+    });
+    if (!materialRequest) {
+      throw serviceError('A pending warehouse request is required for a shortage order', 409, 'MATERIAL_REQUEST_NOT_PENDING');
+    }
+    const duplicate = await PurchaseRequest.exists({
+      source: 'material-request',
+      sourceMaterialRequestId: materialRequest.sourceMaterialRequestId,
+      supplierId: supplierId || null,
+      status: { $nin: ['rejected', 'received'] },
+    });
+    if (duplicate) throw serviceError('An active shortage order already exists for this supplier', 409, 'DUPLICATE_SHORTAGE_ORDER');
+    safe.sourceMaterialRequestId = materialRequest.sourceMaterialRequestId;
+  }
 
   const newRequest = new PurchaseRequest({
     requestId,
@@ -902,6 +1135,7 @@ exports.createOrderRequest = async (data, user) => {
     priority: safe.priority || 'normal',
     notes: safe.notes || '',
     source: safe.source || 'manual',
+    sourceMaterialRequestId: safe.sourceMaterialRequestId,
   });
 
   const saved = await newRequest.save();
@@ -1128,8 +1362,6 @@ exports.getLeftoverReturns = async () => {
  */
 exports.createLeftoverReturn = async (data, user) => {
   assertRole(user, ['INVENTORY']);
-  const returnId = generateId('LR');
-  const returnedBy = user?.fullName || 'Inventory Manager';
   const quantityReturned = Number(data.quantityReturned);
   if (!Number.isInteger(quantityReturned) || quantityReturned <= 0) {
     throw serviceError('Returned quantity must be a positive whole number', 400, 'INVALID_RETURN_QUANTITY');
@@ -1140,68 +1372,101 @@ exports.createLeftoverReturn = async (data, user) => {
   if (!['good', 'damaged', 'scrap'].includes(data.condition)) {
     throw serviceError('Return condition must be good, damaged or scrap', 400, 'INVALID_RETURN_CONDITION');
   }
-  let inventoryItem;
-  if (data.itemId) {
-    assertObjectId(data.itemId, 'Inventory item reference is invalid', 'INVALID_ITEM_ID');
-    inventoryItem = await Inventory.findById(data.itemId);
-    if (!inventoryItem) throw serviceError('Inventory item not found', 404, 'ITEM_NOT_FOUND');
+  if (!String(data.warehousePickRequestId || '').trim() || !String(data.warehouseLineId || '').trim()) {
+    throw serviceError('Completed warehouse request and line references are required', 400, 'HANDOVER_REFERENCE_REQUIRED');
   }
-  if (data.condition === 'good' && !inventoryItem) {
-    throw serviceError('Good returns require a catalog inventory item', 400, 'ITEM_REQUIRED_FOR_RESTOCK');
-  }
-
-  const leftoverReturn = new LeftoverReturn({
-    returnId,
-    jobId: data.jobId,
-    itemId: data.itemId || null,
-    itemName: data.itemName,
-    itemSku: data.itemSku || '',
-    quantityReturned,
-    condition: data.condition,
-    returnedBy,
-    notes: data.notes || '',
-    restoredToStock: false,
-    movedToQuarantine: false,
-  });
-
-  // Business logic: update stock or quarantine based on condition
-  if (data.condition === 'good') {
-    // Restore to inventory
-    inventoryItem.available = Number(inventoryItem.available || 0) + quantityReturned;
-    inventoryItem.status = legacyStockStatus(inventoryItem.available, inventoryItem.reorderLevel);
-    await inventoryItem.save();
-    leftoverReturn.restoredToStock = true;
-  } else {
-    // Damaged or scrap → move to quarantine
-    const quarantineId = generateId('QZ');
-    const quarantineItem = new QuarantineItem({
-      quarantineId,
-      itemName: data.itemName,
-      quantity: quantityReturned,
-      unit: data.unit || 'units',
-      reason: data.condition === 'scrap'
-        ? `Scrap from job ${data.jobId}: ${data.notes || 'No details'}`
-        : `Damaged from job ${data.jobId}: ${data.notes || 'No details'}`,
-      location: data.location || '',
-      source: 'leftover-return',
-      sourceRefId: returnId,
+  return mongoose.connection.transaction(async session => {
+    const reference = String(data.warehousePickRequestId).trim();
+    const warehouseClauses = [{ requestId: reference }];
+    if (mongoose.isValidObjectId(reference)) warehouseClauses.push({ _id: reference });
+    const warehouse = await WarehousePickRequest.findOne({ $or: warehouseClauses }).session(session);
+    if (!warehouse || warehouse.status !== 'completed') {
+      throw serviceError('Returns require a completed material handover', 409, 'HANDOVER_NOT_COMPLETED');
+    }
+    assertRequestVersion(warehouse, data.statusVersion);
+    const line = warehouse.items.find(item => item.lineId === data.warehouseLineId);
+    if (!line) throw serviceError('Warehouse material line not found', 404, 'MATERIAL_LINE_NOT_FOUND');
+    const alreadyReturned = await LeftoverReturn.aggregate([
+      { $match: { warehousePickRequestId: warehouse._id, warehouseLineId: line.lineId } },
+      { $group: { _id: null, quantity: { $sum: '$quantityReturned' } } },
+    ]).session(session);
+    if (Number(alreadyReturned[0]?.quantity || 0) + quantityReturned > Number(line.qty)) {
+      throw serviceError('Return quantity exceeds the handed-over quantity', 409, 'RETURN_EXCEEDS_HANDOVER');
+    }
+    const returnReservation = await WarehousePickRequest.updateOne({
+      _id: warehouse._id,
+      status: 'completed',
+      statusVersion: warehouse.statusVersion,
+      $expr: {
+        $anyElementTrue: {
+          $map: {
+            input: '$items',
+            as: 'materialLine',
+            in: {
+              $and: [
+                { $eq: ['$$materialLine.lineId', line.lineId] },
+                {
+                  $lte: [
+                    { $add: [{ $ifNull: ['$$materialLine.returnedQty', 0] }, quantityReturned] },
+                    '$$materialLine.qty',
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    }, {
+      $inc: { 'items.$[materialLine].returnedQty': quantityReturned, statusVersion: 1 },
+    }, {
+      arrayFilters: [{ 'materialLine.lineId': line.lineId }],
+      session,
     });
-    await quarantineItem.save();
-    leftoverReturn.movedToQuarantine = true;
-  }
-
-  const saved = await leftoverReturn.save();
-
-  // Log activity
-  const activity = new Activity({
-    type: 'return',
-    title: 'Leftover Material Returned',
-    description: `${quantityReturned} ${data.unit || 'units'} of ${data.itemName} returned from job ${data.jobId} (${data.condition})`,
-    actionLabel: 'View Returns',
+    if (returnReservation.modifiedCount !== 1) {
+      throw serviceError('Return quantity exceeds the handover or the request changed', 409, 'RETURN_EXCEEDS_HANDOVER');
+    }
+    const inventoryItem = await Inventory.findById(line.inventoryId).session(session);
+    if (!inventoryItem) throw serviceError('Inventory item not found', 404, 'ITEM_NOT_FOUND');
+    const returnId = generateId('LR');
+    const [leftoverReturn] = await LeftoverReturn.create([{
+      returnId,
+      jobId: String(warehouse.jobId),
+      warehousePickRequestId: warehouse._id,
+      warehouseLineId: line.lineId,
+      itemId: inventoryItem._id,
+      itemName: line.name,
+      itemSku: line.sku,
+      quantityReturned,
+      condition: data.condition,
+      returnedBy: user?.fullName || 'Inventory Manager',
+      notes: data.notes || '',
+      restoredToStock: data.condition === 'good',
+      movedToQuarantine: data.condition !== 'good',
+    }], { session });
+    if (data.condition === 'good') {
+      inventoryItem.available = Number(inventoryItem.available || 0) + quantityReturned;
+      inventoryItem.status = legacyStockStatus(inventoryItem.available, inventoryItem.reorderLevel);
+      await inventoryItem.save({ session });
+    } else {
+      await QuarantineItem.create([{
+        quarantineId: generateId('QZ'),
+        itemName: line.name,
+        quantity: quantityReturned,
+        unit: data.unit || inventoryItem.unit || 'units',
+        reason: `${data.condition === 'scrap' ? 'Scrap' : 'Damaged'} from job ${warehouse.jobId}: ${data.notes || 'No details'}`,
+        location: data.location || '',
+        source: 'leftover-return',
+        sourceRefId: returnId,
+      }], { session });
+    }
+    await Activity.create([{
+      type: 'return',
+      title: 'Leftover Material Returned',
+      description: `${quantityReturned} ${data.unit || inventoryItem.unit || 'units'} of ${line.name} returned from job ${warehouse.jobId} (${data.condition})`,
+      actionLabel: 'View Returns',
+    }], { session });
+    return leftoverReturn;
   });
-  await activity.save();
-
-  return saved;
 };
 
 /**

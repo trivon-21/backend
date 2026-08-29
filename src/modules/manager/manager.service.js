@@ -67,6 +67,12 @@ exports.getDashboardData = async (user) => {
   const awaitingFinance = authorizations.filter((authorization) => authorization.receivedQuantity > 0 && authorization.financeReviewStatus === 'pending');
   const lowStock = inventory.filter(isLowStock);
   const reservedItems = inventory.reduce((sum, item) => sum + Number(item.reserved || 0), 0);
+  const inventoryById = new Map(inventory.map(item => [String(item._id), item]));
+  const blockedMaterialRequests = materialRequests.filter(request => (request.items || []).some(line =>
+    Number(inventoryById.get(String(line.inventoryId))?.available || 0) < Number(line.qty || 0)));
+  const shortageOrderByMaterialRequest = new Map(orders
+    .filter(order => order.source === 'material-request' && order.sourceMaterialRequestId)
+    .map(order => [String(order.sourceMaterialRequestId), order]));
 
   const stats = {
     openTickets: {
@@ -143,6 +149,23 @@ exports.getDashboardData = async (user) => {
       route: '/manager/orders',
       queryParams: { type: 'non-po', status: 'pending' },
     })),
+    ...blockedMaterialRequests.map((request) => {
+      const linkedOrder = shortageOrderByMaterialRequest.get(String(request.sourceMaterialRequestId));
+      return {
+        id: `material-shortage-${request._id}`,
+        type: 'inventory',
+        title: `Material shortage: ${request.requestId}`,
+        description: linkedOrder
+          ? `${linkedOrder.requestId} · ${linkedOrder.supplierName}`
+          : `${request.requester} · ${request.location}`,
+        priority: 'high',
+        createdAt: request.createdAt,
+        route: linkedOrder ? '/manager/orders' : '/manager/analytics/inventory-exception-control',
+        queryParams: linkedOrder
+          ? { type: 'purchase', status: linkedOrder.status }
+          : { materialRequest: request.requestId },
+      };
+    }),
     ...awaitingReceipt.map((authorization) => ({
       id: `receive-${authorization._id}`,
       type: 'authorization',
@@ -222,6 +245,7 @@ exports.getDashboardData = async (user) => {
       reservedItems: { label: 'Reserved Items', value: reservedItems, icon: 'clipboard-check' },
       lowStockAlerts: { label: 'Low Stock Alerts', value: lowStock.length, icon: 'triangle-alert' },
       pendingMaterialRequests: { label: 'Pending Material Requests', value: materialRequests.length, icon: 'package-clock' },
+      blockedMaterialRequests: { label: 'Blocked Material Requests', value: blockedMaterialRequests.length, icon: 'triangle-alert' },
     },
     recentActivity,
     pendingActions,

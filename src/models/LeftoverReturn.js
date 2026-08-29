@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const LeftoverReturnSchema = new mongoose.Schema({
   returnId: { type: String, required: true, unique: true },
   jobId: { type: String, required: true },
+  warehousePickRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'WarehousePickRequest' },
+  warehouseLineId: { type: String },
   itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'ManagerInventoryItem' },
   itemName: { type: String, required: true },
   itemSku: { type: String },
