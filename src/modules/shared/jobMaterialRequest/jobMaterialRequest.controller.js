@@ -910,7 +910,7 @@ exports.getNewRequests = async (req, res) => {
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
-});
+};
         
 const { body, validationResult } = require('express-validator');
 

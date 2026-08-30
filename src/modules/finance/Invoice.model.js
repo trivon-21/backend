@@ -15,8 +15,8 @@ const invoiceSchema = new mongoose.Schema(
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     ticketId: { type: mongoose.Schema.Types.ObjectId, ref: "InspectionTicket" },
     reportId: { type: mongoose.Schema.Types.ObjectId, ref: "InspectionReport" },
-invoiceType: { type: String, enum: ["INSTALLATION", "REPAIR"], default: "INSTALLATION" },
-repairId:    { type: mongoose.Schema.Types.ObjectId, ref: "L_Repair" },
+    invoiceType: { type: String, enum: ["INSTALLATION", "REPAIR"], default: "INSTALLATION" },
+    repairId: { type: mongoose.Schema.Types.ObjectId, ref: "L_Repair" },
     // Invoice details
     invoiceNumber: { type: String, unique: true },
     invoiceDate: { type: Date, default: Date.now },
@@ -39,6 +39,7 @@ repairId:    { type: mongoose.Schema.Types.ObjectId, ref: "L_Repair" },
         "DRAFT",           // Finance officer created, not sent yet
         "SENT",            // Sent to customer
         "ACCEPTED",        // Customer accepted
+        "PAYMENT_UNDER_REVIEW",
         "REJECTED",        // Customer rejected
         "REJECTION_CANCELLED", // Customer cancelled rejection within 30 days
         "PAID",            // Payment verified
@@ -60,6 +61,9 @@ repairId:    { type: mongoose.Schema.Types.ObjectId, ref: "L_Repair" },
 
     // Payment deadline (14 days from acceptedAt)
     paymentDeadline: Date,
+    paymentSlipUrl: { type: String, default: null },
+    paymentSlipUploadedAt: { type: Date, default: null },
+    paymentRejectionReason: { type: String, default: null },
 
     // Reminders sent flags
     rejectionReminderSent: { type: Boolean, default: false },

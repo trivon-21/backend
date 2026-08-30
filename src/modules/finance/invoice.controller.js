@@ -1156,6 +1156,159 @@ exports.getRepairDashboardStats = async (req, res) => {
     res.json({ accepted, pending, paid, rejected, tableData });
   } catch (e) { res.status(500).json({ message: e.message }); }
 };
+// ── UPLOAD payment slip (customer) ────────────────────────────────────────────
+exports.uploadPaymentSlip = async (req, res) => {
+  try {
+    const { slipUrl } = req.body;
+    if (!slipUrl) return res.status(400).json({ message: "Slip URL required" });
+
+    const invoice = await Invoice.findById(req.params.invoiceId);
+    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+    if (invoice.status !== "ACCEPTED")
+      return res.status(400).json({ message: "Invoice is not awaiting payment" });
+
+    invoice.paymentSlipUrl = slipUrl;
+    invoice.paymentSlipUploadedAt = new Date();
+    invoice.status = "PAYMENT_UNDER_REVIEW";
+    invoice.paymentRejectionReason = null;
+    await invoice.save();
+
+    await createLog({
+      eventType:  "PAYMENT_SUBMITTED",
+      paymentType:"INVOICE",
+      orderId:    invoice.orderId?.toString() || "",
+      invoiceId:  invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      slipUrl,
+      performedBy: "Customer",
+    });
+
+    res.json({ message: "Payment slip uploaded successfully", invoice });
+  } catch (error) {
+    console.error("uploadPaymentSlip error:", error);
+    res.status(500).json({ message: "Failed to upload slip", error: error.message });
+  }
+};
+
+// ── GET invoices pending payment verification (installation) ──────────────────
+exports.getPaymentVerificationQueue = async (req, res) => {
+  try {
+    const invoices = await Invoice.find({
+      status: "PAYMENT_UNDER_REVIEW",
+      invoiceType: { $ne: "REPAIR" }
+    }).sort({ paymentSlipUploadedAt: 1 });
+    res.json(await attachOrderRef(invoices));
+  } catch (error) {
+    res.status(500).json({ message: "Failed", error: error.message });
+  }
+};
+
+// ── GET repair invoices pending payment verification ───────────────────────────
+exports.getRepairPaymentVerificationQueue = async (req, res) => {
+  try {
+    const invoices = await Invoice.find({
+      status: "PAYMENT_UNDER_REVIEW",
+      invoiceType: "REPAIR"
+    }).sort({ paymentSlipUploadedAt: 1 });
+    res.json(invoices);
+  } catch (error) {
+    res.status(500).json({ message: "Failed", error: error.message });
+  }
+};
+
+// ── APPROVE payment (finance) — moves invoice to PAID ──────────────────────────
+exports.approveInvoicePayment = async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+    if (invoice.status !== "PAYMENT_UNDER_REVIEW")
+      return res.status(400).json({ message: "Invoice not pending payment verification" });
+
+    invoice.status = "PAID";
+    invoice.paidAt = new Date();
+    await invoice.save();
+
+    await createLog({
+      eventType: "INVOICE_PAID",
+      paymentType: "INVOICE",
+      orderId: invoice.orderId?.toString() || "",
+      invoiceId: invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      performedBy: "Finance Officer",
+    });
+
+    // No dedicated "payment approved" email exists yet — this is a genuinely new
+    // notification type your team hasn't built before. Log it clearly for now;
+    // a real email function needs to be added to invoiceEmail.service.js.
+if (invoice.customerEmail) {
+  const { sendPaymentApprovedEmail } = require("../shared/notification/invoiceEmail.service");
+  await sendPaymentApprovedEmail(
+    invoice.customerEmail,
+    invoice.customerName,
+    invoice.invoiceNumber,
+    invoice.grandTotal
+  );
+}
+
+    res.json({ message: "Payment approved", invoice });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to approve", error: error.message });
+  }
+};
+
+// ── REJECT payment slip (finance) — back to ACCEPTED, customer re-uploads ─────
+exports.rejectInvoicePayment = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    if (!reason) return res.status(400).json({ message: "Rejection reason required" });
+
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+    if (invoice.status !== "PAYMENT_UNDER_REVIEW")
+      return res.status(400).json({ message: "Invoice not pending payment verification" });
+
+    invoice.status = "ACCEPTED";
+    invoice.paymentRejectionReason = reason;
+    invoice.paymentSlipUrl = null;
+    await invoice.save();
+
+    await createLog({
+      eventType: "PAYMENT_REJECTED",
+      paymentType: "INVOICE",
+      orderId: invoice.orderId?.toString() || "",
+      invoiceId: invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      rejectionReason: reason,
+      performedBy: "Finance Officer",
+    });
+
+    // Reuse sendInvoiceAcceptedEmail's pattern — same re-upload link, same style
+    if (invoice.customerEmail) {
+      const { sendPaymentSlipRejectedEmail } = require("../shared/notification/invoiceEmail.service");
+      const reuploadLink = `${process.env.FRONTEND_URL || "http://localhost:4200"}/invoice/upload-payment?invoiceId=${invoice._id}`;
+      await sendPaymentSlipRejectedEmail(
+        invoice.customerEmail,
+        invoice.customerName,
+        invoice.invoiceNumber,
+        reason,
+        reuploadLink
+      );
+    }
+
+    res.json({ message: "Payment rejected", invoice });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to reject", error: error.message });
+  }
+};
 
 // ── CRON JOBS ─────────────────────────────────────────────────────────────────
 cron.schedule("0 9 * * *", async () => {
