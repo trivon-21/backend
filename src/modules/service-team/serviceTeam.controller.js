@@ -275,17 +275,17 @@ exports.getAllTeamsWithMembers = async (req, res) => {
 exports.getPendingAssignments = async (req, res) => {
   try {
     const [serviceRequests, installations, inspections, maintenances] = await Promise.all([
-      ServiceRequest.find({ status: WORKFLOW_STATUS.MATERIALS_READY })
+      ServiceRequest.find({ status: { $in: [WORKFLOW_STATUS.MATERIALS_READY, WORKFLOW_STATUS.SENT_TO_IM] } })
         .populate('customerId', 'fullName name address')
         .lean(),
-      Installation.find({ status: WORKFLOW_STATUS.MATERIALS_READY })
+      Installation.find({ status: { $in: [WORKFLOW_STATUS.MATERIALS_READY, WORKFLOW_STATUS.SENT_TO_IM] } })
         .populate('customerId', 'fullName name address')
         .lean(),
       // Include inspections that have been approved by Finance and are pending assignment
       Inspection.find({ status: WORKFLOW_STATUS.FINANCE_APPROVED })
         .populate('customerId', 'fullName name address')
         .lean(),
-      Maintenance.find({ status: MAINTENANCE_STATUS.MATERIALS_READY })
+      Maintenance.find({ status: { $in: [MAINTENANCE_STATUS.MATERIALS_READY, MAINTENANCE_STATUS.SENT_TO_IM] } })
         .populate('customerId', 'fullName name address')
         .lean()
     ]);
@@ -298,23 +298,23 @@ exports.getPendingAssignments = async (req, res) => {
     const warehouseByJob = new Map(reservedRequests.map(request => [String(request.jobId), request]));
 
     const data = [
-      ...serviceRequests.filter(item => warehouseByJob.has(String(item._id))).map((item) => ({
+      ...serviceRequests.filter(item => item.status === WORKFLOW_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.SERVICE,
         productType: item.productType || '-',
-        warehouseStatusVersion: warehouseByJob.get(String(item._id)).statusVersion,
+        warehouseStatusVersion: warehouseByJob.has(String(item._id)) ? warehouseByJob.get(String(item._id)).statusVersion : 0,
       })),
-      ...installations.filter(item => warehouseByJob.has(String(item._id))).map((item) => ({
+      ...installations.filter(item => item.status === WORKFLOW_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.INSTALLATION,
         productType: item.productType || '-',
-        warehouseStatusVersion: warehouseByJob.get(String(item._id)).statusVersion,
+        warehouseStatusVersion: warehouseByJob.has(String(item._id)) ? warehouseByJob.get(String(item._id)).statusVersion : 0,
       })),
       // Treat inspections as a pending job type so they appear in the assign modal
       ...inspections.map((item) => ({
@@ -325,14 +325,14 @@ exports.getPendingAssignments = async (req, res) => {
         requestType: REQUEST_TYPES.INSPECTION,
         productType: item.productType || '-'
       })),
-      ...maintenances.filter(item => warehouseByJob.has(String(item._id))).map((item) => ({
+      ...maintenances.filter(item => item.status === MAINTENANCE_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: 'Maintenance',
         productType: item.productType || 'Customer Initiated',
-        warehouseStatusVersion: warehouseByJob.get(String(item._id)).statusVersion,
+        warehouseStatusVersion: warehouseByJob.has(String(item._id)) ? warehouseByJob.get(String(item._id)).statusVersion : 0,
       }))
     ];
 
@@ -412,14 +412,17 @@ exports.assignServiceRequestToTeam = async (req, res) => {
       jobType: warehouseJobType,
       status: 'reserved',
     });
-    if (!isInspection && !warehouseRequest) {
+    
+    const isSentToIM = existingDoc.status === WORKFLOW_STATUS.SENT_TO_IM || existingDoc.status === MAINTENANCE_STATUS.SENT_TO_IM || existingDoc.status === 'Sent to IM';
+    
+    if (!isInspection && !isSentToIM && !warehouseRequest) {
       return res.status(409).json({
         success: false,
         code: 'MATERIALS_NOT_RESERVED',
-        error: 'The complete material kit must be reserved before assigning a service team.',
+        error: 'The complete material kit must be reserved before assigning a service team (unless status is Sent to IM).',
       });
     }
-    if (warehouseRequest && warehouseStatusVersion !== undefined
+    if (!isSentToIM && warehouseRequest && warehouseStatusVersion !== undefined
       && Number(warehouseStatusVersion) !== Number(warehouseRequest.statusVersion)) {
       return res.status(409).json({
         success: false,
@@ -436,10 +439,18 @@ exports.assignServiceRequestToTeam = async (req, res) => {
       // Use the raw collection update to avoid Mongoose casting errors when
       // document schemas expect ObjectId but the environment stores numeric
       // team IDs. This performs a direct MongoDB update.
-      const filter = { _id: mongoose.Types.ObjectId(resolvedServiceRequestId) };
+      const filter = { _id: new mongoose.Types.ObjectId(resolvedServiceRequestId) };
       await mongoose.connection.transaction(async session => {
-        const currentStatus = isInspection ? WORKFLOW_STATUS.FINANCE_APPROVED : WORKFLOW_STATUS.MATERIALS_READY;
-        const resUpdate = await Model.collection.updateOne({ ...filter, status: currentStatus }, { $set: updatePayload }, { session });
+        let allowedStatuses = [];
+        if (isInspection) {
+            allowedStatuses = [WORKFLOW_STATUS.FINANCE_APPROVED];
+        } else if (isInstallation || !isMaintenance) {
+            allowedStatuses = [WORKFLOW_STATUS.MATERIALS_READY, WORKFLOW_STATUS.SENT_TO_IM];
+        } else {
+            allowedStatuses = [MAINTENANCE_STATUS.MATERIALS_READY, MAINTENANCE_STATUS.SENT_TO_IM];
+        }
+        
+        const resUpdate = await Model.collection.updateOne({ ...filter, status: { $in: allowedStatuses } }, { $set: updatePayload }, { session });
         if (resUpdate.matchedCount === 0) {
           const error = new Error('The job is no longer ready for team assignment.');
           error.statusCode = 409;

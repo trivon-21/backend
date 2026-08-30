@@ -54,6 +54,8 @@ exports.getServiceRequestById = async (req, res) => {
     const mappedService = {
       ...service,
       customerName: service.customerId?.fullName || service.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
+      productType: service.productType || service.acUnitModel || service.category || service.repairType || '-',
+      serviceDescription: service.description || service.serviceDescription || service.notes || service.subject || '-',
     };
     if (mappedService.customerId) {
         mappedService.customerId.name = mappedService.customerId.fullName || mappedService.customerId.name;

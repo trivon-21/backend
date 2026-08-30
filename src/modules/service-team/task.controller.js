@@ -16,22 +16,23 @@ const {
 
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
-const toCustomer = (customerDoc, fallbackAddress = '-') => ({
-  fullName: customerDoc?.fullName || customerDoc?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
-  address: customerDoc?.address || fallbackAddress,
-  phone: customerDoc?.phone || null,
-  email: customerDoc?.email || null,
+const toCustomer = (customerDoc, job, fallbackAddress = '-') => ({
+  name: customerDoc?.fullName || customerDoc?.name || job?.fullName || job?.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+  fullName: customerDoc?.fullName || customerDoc?.name || job?.fullName || job?.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+  address: customerDoc?.address || job?.address || job?.location || fallbackAddress,
+  phone: customerDoc?.phoneNumber || customerDoc?.phone || job?.phoneNumber || job?.contactNo || job?.phone || null,
+  email: customerDoc?.email || job?.email || null,
 });
 
 const formatTask = (job, source) => {
   const customerDoc = job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
-  const customer = toCustomer(customerDoc, job.location || '-');
+  const customer = toCustomer(customerDoc, job, job.location || '-');
   const ticketId = job.ticketId != null && job.ticketId !== '' ? String(job.ticketId) : String(job._id);
   const serviceType = source === REQUEST_TYPES.INSTALLATION.toLowerCase()
-    ? `${job.productType || 'Installation'}${job.units ? ` - ${job.units} Units` : ''}`
+    ? `${job.productType || job.acUnitModel || 'Installation'}${job.units ? ` - ${job.units} Units` : ''}`
     : source === 'maintenance'
       ? String(job.scheduledServiceType || 'Maintenance')
-      : String(job.productType || job.serviceDescription || 'Service Request');
+      : String(job.productType || job.acUnitModel || job.category || job.repairType || 'Service Request');
 
   return {
     id: ticketId,
@@ -42,8 +43,8 @@ const formatTask = (job, source) => {
     serviceType,
     status: job.status || WORKFLOW_STATUS.PENDING,
     scheduledDate: job.serviceDate || job.date || job.createdAt || null,
-    detailedProductType: job.productType || '',
-    description: job.serviceDescription || job.scheduledServiceType || '',
+    detailedProductType: job.productType || job.acUnitModel || job.category || job.repairType || '',
+    description: job.description || job.serviceDescription || job.scheduledServiceType || '',
     notesFromTechnician: job.notesFromTechnician || job.reviewNotes || '',
     materials: Array.isArray(job.materials) ? job.materials : Array.isArray(job.materialList) ? job.materialList : []
   };
@@ -51,9 +52,9 @@ const formatTask = (job, source) => {
 
 const loadTaskCandidates = async () => {
   const [installations, requests, maintenances] = await Promise.all([
-    Installation.find({}).populate('customerId', 'fullName fullName address phone email').lean(),
-    ServiceRequest.find({}).populate('customerId', 'fullName fullName address phone email').lean(),
-    Maintenance.find({}).populate('customerId', 'fullName fullName address phone email').lean()
+    Installation.find({}).populate('customerId', 'fullName address phoneNumber email').lean(),
+    ServiceRequest.find({}).populate('customerId', 'fullName address phoneNumber email').lean(),
+    Maintenance.find({}).populate('customerId', 'fullName address phoneNumber email').lean()
   ]);
 
   return { installations, requests, maintenances };
@@ -78,9 +79,9 @@ const findTaskRecord = async (id) => {
   const query = { $or: queryParts };
 
   const [installation, request, maintenance] = await Promise.all([
-    Installation.findOne(query).populate('customerId', 'fullName fullName address phone email').lean(),
-    ServiceRequest.findOne(query).populate('customerId', 'fullName fullName address phone email').lean(),
-    Maintenance.findOne(query).populate('customerId', 'fullName fullName address phone email').lean(),
+    Installation.findOne(query).populate('customerId', 'fullName address phoneNumber email').lean(),
+    ServiceRequest.findOne(query).populate('customerId', 'fullName address phoneNumber email').lean(),
+    Maintenance.findOne(query).populate('customerId', 'fullName address phoneNumber email').lean(),
   ]);
 
   if (installation) {
@@ -100,7 +101,7 @@ const findTaskRecord = async (id) => {
     if (report) {
       const linkedModel = report.onModel === 'Installation' ? Installation : ServiceRequest;
       const linkedRecord = await linkedModel.findById(report.serviceRequestId)
-        .populate('customerId', 'fullName fullName address phone email')
+        .populate('customerId', 'fullName address phoneNumber email')
         .lean();
 
       if (linkedRecord) {
