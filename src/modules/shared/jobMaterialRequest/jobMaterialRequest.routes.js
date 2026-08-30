@@ -134,7 +134,7 @@ router.get('/', async (req, res) => {
                 customerEmail: customer?.email || req.customerEmail || '-',
                 customerContactNo: customer?.phoneNumber || req.customerContactNo || req.customerPhone || '-',
                 location: customer?.address || req.location || req.customerAddress || '-',
-                    status: WORKFLOW_STATUS.NEW,
+                    status: req.status || WORKFLOW_STATUS.NEW,
                     serviceType: req.serviceType || req.requestType || req.request_type || 'Repair',
                     requestType: req.serviceType === 'Maintenance' ? 'Maintenance' : 'Repair',
                 isUnderWarranty,

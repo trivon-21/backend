@@ -44,8 +44,8 @@ const serviceRequestSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["Pending", "Assigned", "In Progress", "Completed", "Cancelled"],
-      default: "Pending"
+      enum: ["New", "Pending", "Assigned", "In Progress", "Completed", "Cancelled"],
+      default: "New"
     }
   },
   { timestamps: true, collection: "service_tickets" }

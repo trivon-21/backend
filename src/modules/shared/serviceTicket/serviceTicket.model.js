@@ -28,7 +28,7 @@ const serviceTicketSchema = new Schema(
     slaDueAt: Date,
     resolvedAt: Date,
   },
-  { timestamps: true, collection: 'service_tickets' }
+  { timestamps: true, collection: 'service_tickets', strict: false }
 );
 
 // Auto-clear resolvedAt if ticket leaves the resolved state (mirrors Dassana's original hook)
@@ -38,6 +38,40 @@ serviceTicketSchema.pre('save', function (next) {
     if (this.status !== 'resolved') this.resolvedAt = undefined;
   }
   next();
+});
+
+serviceTicketSchema.post('findOneAndUpdate', async function(doc) {
+  if (!doc) return;
+  
+  if (doc.paymentStatus === 'APPROVED' && doc.status !== 'Finance Approved') {
+    const ServiceRequest = require('../repair/repair.model');
+    const Maintenance = require('../maintenance/maintenance.model');
+    const Installation = require('../installation/installation.model');
+    
+    const requestType = (doc.requestType || doc.serviceType || 'Repair').toLowerCase();
+    const docObj = doc.toObject();
+    
+    // Set status to Finance Approved
+    docObj.status = 'Finance Approved';
+    
+    if (requestType === 'maintenance') {
+      const maintenanceEntry = new Maintenance({
+        ...docObj,
+        materialList: doc.materials || [],
+        totalEstimatedCost: 0
+      });
+      await maintenanceEntry.save({ validateBeforeSave: false });
+    } else if (requestType === 'installation') {
+      const installationEntry = new Installation(docObj);
+      await installationEntry.save({ validateBeforeSave: false });
+    } else {
+      const serviceEntry = new ServiceRequest(docObj);
+      await serviceEntry.save({ validateBeforeSave: false });
+    }
+    
+    // Delete from service_tickets now that it has been moved
+    await this.model.findByIdAndDelete(doc._id);
+  }
 });
 
 module.exports = mongoose.models.ServiceTicket || mongoose.model('ServiceTicket', serviceTicketSchema);

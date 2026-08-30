@@ -22,7 +22,7 @@ const {
 const activeStatuses = STATUS_GROUPS.ACTIVE_WORKLOAD;
 const inProgressStatus = EXECUTION_STATUS.IN_PROGRESS;
 
-const { calculateAvailableSlots } = require('../../utils/availability.utils');
+const { calculateAvailableTimeSlots, calculateAvailableSlots } = require('../../utils/availability.utils');
 
 const toCustomerId = (value) => {
   if (!value) return null;
@@ -47,7 +47,7 @@ const normalizeTicketId = (value) => {
 };
 
 const mapTeamMembers = (members) => members.map((member) => ({
-  fullName: member.fullName || 'Unknown Member',
+  name: member.name || member.fullName || 'Unknown Member',
   role: member.role || 'Technician'
 }));
 
@@ -123,7 +123,7 @@ exports.getAllTeamsWithMembers = async (req, res) => {
         accumulator.set(key, []);
       }
       accumulator.get(key).push({
-        fullName: member.fullName || 'Unknown Member',
+        name: member.name || member.fullName || 'Unknown Member',
         role: member.role || 'Technician'
       });
       return accumulator;
@@ -242,22 +242,20 @@ exports.getAllTeamsWithMembers = async (req, res) => {
     const data = teams.map((team) => {
       const teamMembers = membersByTeamId.get(String(team._id)) || [];
       const activeJobs = jobsByTeamId.get(String(team._id)) || [];
-      const teamWorkload = team.teamType === 'Inspection Team'
+      const teamWorkload = (team.teamType === 'Inspection Team' || team.teamName?.toLowerCase().includes('inspection'))
         ? (inspectionWorkloadByTeamId.get(String(team._id)) || [])
         : (serviceInstallWorkloadByTeamId.get(String(team._id)) || []);
-      const availableSlots = (team.teamType === 'Service Team' || team.teamType === 'Inspection Team')
-        ? calculateAvailableSlots(teamWorkload, { maxSlots: 4, includeToday: false })
-        : [];
+      const availableSlots = calculateAvailableTimeSlots(teamWorkload, { maxSlots: 4, includeToday: false });
       const inProgressCount = activeJobs.length;
       const derivedStatus = inProgressCount > 0 ? TEAM_STATUS.BUSY : TEAM_STATUS.AVAILABLE;
 
       return {
         _id: team._id,
         teamName: team.teamName,
-        teamType: team.teamType,
+        teamType: team.teamType || (team.specialization === 'Installations' ? 'Service Team' : 'Service Team'),
         status: derivedStatus,
         activeJobsCount: inProgressCount,
-        availableSlots: availableSlots.map((slot) => slot.toISOString()),
+        availableSlots: availableSlots,
         members: teamMembers,
         activeJobs
       };
@@ -376,13 +374,21 @@ exports.assignServiceRequestToTeam = async (req, res) => {
     // should be set. Only set `assignedTeam` when the provided `teamId` is a
     // 24-character hex string (typical Mongo ObjectId). This avoids trying to
     // write numeric IDs into ObjectId fields (which causes BSON cast errors).
+    const existingDoc = await Model.findById(resolvedServiceRequestId).lean();
+    if (!existingDoc) {
+      const notFoundType = isInstallation ? 'Installation' : isMaintenance ? 'Maintenance' : isInspection ? 'Inspection' : 'Service request';
+      return res.status(404).json({ success: false, error: `${notFoundType} not found.` });
+    }
+
     const isObjectIdHex = /^[a-fA-F0-9]{24}$/.test(String(resolvedTeamIdStr));
     const assignedTeamFieldName = isInstallation ? 'assignedTeamRef' : 'assignedTeam';
     const updatePayload = {
-      ...(isObjectIdHex ? { [assignedTeamFieldName]: mongoose.Types.ObjectId(String(resolvedTeamIdStr)) } : {}),
+      ...(isObjectIdHex ? { [assignedTeamFieldName]: new mongoose.Types.ObjectId(String(resolvedTeamIdStr)) } : {}),
       assignedTeamId: team._id,
       assignedTeamName: team.teamName,
-      status: targetStatus
+      status: targetStatus,
+      serviceDate: existingDoc.preferredDate || new Date(),
+      timeSlot: existingDoc.preferredTimeSlot || "9:00 AM - 11:00 AM"
     };
 
     logger.debug('assignServiceRequestToTeam: isObjectIdHex', { isObjectIdHex, resolvedTeamIdStr });
@@ -393,7 +399,7 @@ exports.assignServiceRequestToTeam = async (req, res) => {
       // Use the raw collection update to avoid Mongoose casting errors when
       // document schemas expect ObjectId but the environment stores numeric
       // team IDs. This performs a direct MongoDB update.
-      const filter = { _id: mongoose.Types.ObjectId(resolvedServiceRequestId) };
+      const filter = { _id: new mongoose.Types.ObjectId(resolvedServiceRequestId) };
       const resUpdate = await Model.collection.updateOne(filter, { $set: updatePayload });
       logger.debug('Raw update result', { result: resUpdate && resUpdate.result ? resUpdate.result : resUpdate });
       // Fetch the updated document via the model for consistent return shape

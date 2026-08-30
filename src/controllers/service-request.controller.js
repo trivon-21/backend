@@ -78,7 +78,7 @@ exports.createServiceRequest = async (req, res) => {
       estimatedCharges: estimatedCharges || 0,
       paymentRequired: paymentRequired || false,
       subject,
-      status: "Pending"
+      status: "New"
     });
 
     return res.status(201).json({ message: "Service request submitted successfully", serviceRequest: sr });

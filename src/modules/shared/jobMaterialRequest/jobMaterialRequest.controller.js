@@ -364,15 +364,12 @@ exports.submitMaterialRequest = async (req, res) => {
     // NEW SUBMISSION: Create new ServiceRequest or Maintenance from NewRequest
     const derivedServiceType = sourceDoc.serviceType || sourceDoc.requestType || sourceDoc.request_type || 'Repair';
 
-    if (derivedServiceType === 'Maintenance') {
       let resolvedCustomerId = sourceDoc.customerId;
-      // Prioritize sourceDoc fields — request body values may be placeholder strings from a failed lookup
       let resolvedfullName = sourceDoc.fullName || (fullName !== DEFAULTS.UNKNOWN_CUSTOMER ? fullName : null);
       let resolvedCustomerEmail = sourceDoc.customerEmail || (customerEmail !== '-' ? customerEmail : null);
       let resolvedCustomerPhone = sourceDoc.customerPhone || sourceDoc.customerphoneNumber || (customerphoneNumber !== '-' ? customerphoneNumber : null);
       let resolvedLocation = sourceDoc.location || sourceDoc.customerAddress || (customerAddress !== '-' ? customerAddress : null);
 
-      // If we have customerId but some fields are still missing, try querying Customer collection as fallback
       if (resolvedCustomerId && (!resolvedfullName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
         const Customer = require('../../user/user.model');
         const cust = await Customer.findById(resolvedCustomerId).lean();
@@ -384,67 +381,21 @@ exports.submitMaterialRequest = async (req, res) => {
         }
       }
 
-      const maintenanceEntry = new Maintenance({
-        _id: sourceDoc._id,
-        ticketId: sourceDoc.ticketId || `MN-${Date.now().toString().slice(-4)}`,
-        customerId: resolvedCustomerId || null,
-        fullName: resolvedfullName || 'Unknown Customer',
-        customerEmail: resolvedCustomerEmail || '-',
-        customerPhone: resolvedCustomerPhone || '-',
-        productType: sourceDoc.productType || 'Unknown',
-        location: resolvedLocation || '-',
-        date: sourceDoc.preferredServiceDate || sourceDoc.createdAt || new Date(),
-        scheduledServiceType: sourceDoc.serviceDescription || sourceDoc.description || 'Customer Initiated',
-        maintenanceType: 'Customer Initiated',
-        isCustomerInitiated: true,
-        status: MAINTENANCE_STATUS.PENDING,
-        materialList: materials,
-        totalEstimatedCost: 0,
-        assignedTeamId: sourceDoc.assignedTeamId || null
-      });
-      await maintenanceEntry.save({ validateBeforeSave: false });
-    } else {
-      let resolvedCustomerId = sourceDoc.customerId;
-      // Prioritize sourceDoc fields — request body values may be placeholder strings from a failed lookup
-      let resolvedfullName = sourceDoc.fullName || (fullName !== DEFAULTS.UNKNOWN_CUSTOMER ? fullName : null);
-      let resolvedCustomerEmail = sourceDoc.customerEmail || (customerEmail !== '-' ? customerEmail : null);
-      let resolvedCustomerPhone = sourceDoc.customerPhone || sourceDoc.customerphoneNumber || (customerphoneNumber !== '-' ? customerphoneNumber : null);
-      let resolvedLocation = sourceDoc.location || sourceDoc.customerAddress || (customerAddress !== '-' ? customerAddress : null);
-
-      // Try querying Customer collection as fallback
-      if (resolvedCustomerId && (!resolvedfullName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
-        const Customer = require('../../user/user.model');
-        const cust = await Customer.findById(resolvedCustomerId).lean();
-        if (cust) {
-          if (!resolvedfullName) resolvedfullName = cust.fullName;
-          if (!resolvedCustomerEmail) resolvedCustomerEmail = cust.email;
-          if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.phoneNumber;
-          if (!resolvedLocation) resolvedLocation = cust.address;
+      await NewRequest.findByIdAndUpdate(resolvedId, {
+        $set: {
+          fullName: resolvedfullName,
+          customerEmail: resolvedCustomerEmail,
+          customerPhone: resolvedCustomerPhone,
+          location: resolvedLocation,
+          materials,
+          financeNotes,
+          isUnderWarranty,
+          isFreeOfCharge,
+          status: 'Pending',
+          pendingServiceType: derivedServiceType,
+          serviceDescription: sourceDoc.serviceDescription || sourceDoc.description || sourceDoc.problemDescription || sourceDoc.subject
         }
-      }
-
-      // Create ServiceRequest with warranty status and customer details
-      const serviceEntry = new ServiceRequest({
-        ...sourceDoc,
-        customerId: resolvedCustomerId || null,
-        fullName: resolvedfullName || 'Unknown Customer',
-        customerEmail: resolvedCustomerEmail || '-',
-        customerPhone: resolvedCustomerPhone || '-',
-        location: resolvedLocation || '-',
-        _id: sourceDoc._id, 
-        serviceType: derivedServiceType,
-        serviceDescription: sourceDoc.serviceDescription || sourceDoc.description || sourceDoc.problemDescription || sourceDoc.subject,
-        materials,
-        financeNotes,
-        isUnderWarranty,
-        isFreeOfCharge,
-        status: WORKFLOW_STATUS.PENDING // Initial state: awaiting finance approval
-      });
-      await serviceEntry.save({ validateBeforeSave: false });
-    }
-
-    // Remove from NewRequest collection (workflow transition complete)
-    await NewRequest.findByIdAndDelete(resolvedId);
+      });    
 
     res.json({ 
       success: true, 
@@ -489,6 +440,30 @@ exports.sendToInventoryManager = async (req, res) => {
     if (!sourceRecord) {
       sourceRecord = await Maintenance.findById(resolvedId).lean();
       requestType = 'Maintenance';
+    }
+
+    if (!sourceRecord) {
+      const newReq = await NewRequest.findById(resolvedId).lean();
+      if (newReq) {
+        sourceRecord = newReq;
+        requestType = (newReq.requestType || newReq.serviceType || 'Repair').toLowerCase() === 'maintenance' 
+          ? 'Maintenance' : (newReq.requestType || newReq.serviceType || 'Repair').toLowerCase() === 'installation' 
+          ? REQUEST_TYPES.INSTALLATION : REQUEST_TYPES.SERVICE;
+        
+        // Migrate it to the appropriate collection now that we are sending to IM
+        let newEntry;
+        const docObj = { ...newReq, status: WORKFLOW_STATUS.SENT_TO_IM };
+        if (requestType === 'Maintenance') {
+          newEntry = new Maintenance({ ...docObj, materialList: newReq.materials || [], totalEstimatedCost: 0 });
+        } else if (requestType === REQUEST_TYPES.INSTALLATION) {
+          newEntry = new Installation(docObj);
+        } else {
+          newEntry = new ServiceRequest(docObj);
+        }
+        await newEntry.save({ validateBeforeSave: false });
+        await NewRequest.findByIdAndDelete(resolvedId);
+        sourceRecord = docObj; // Use the migrated object moving forward
+      }
     }
 
     if (!sourceRecord) {

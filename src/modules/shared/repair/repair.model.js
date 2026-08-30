@@ -16,4 +16,4 @@ const repairSchema = new Schema(
   { timestamps: true, collection: 'repairs' }
 );
 
-module.exports = mongoose.models.ServiceRequest || mongoose.models.Repair || mongoose.model('Repair', repairSchema);
+module.exports = mongoose.models.Repair || mongoose.model('Repair', repairSchema);

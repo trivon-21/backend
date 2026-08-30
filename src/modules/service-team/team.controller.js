@@ -5,7 +5,7 @@ const Maintenance = require('../shared/maintenance/maintenance.model');
 const TechTeam = require('../shared/tech-teams/techTeam.model');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
 const { isTeamBJob } = require('../../utils/team.utils');
-const { calculateAvailableSlots } = require('../../utils/availability.utils');
+const { calculateAvailableTimeSlots, calculateAvailableSlots } = require('../../utils/availability.utils');
 const {
   EXECUTION_STATUS,
   TEAM_STATUS,
@@ -43,7 +43,7 @@ const toObjectId = (v) => {
  */
 const toMember = (doc = {}) => ({
   id: String(doc._id || ''),
-  fullName: String(doc.fullName || doc.memberName || doc.fullName || '').trim(),
+  fullName: String(doc.fullName || doc.name || doc.memberName || '').trim(),
   role: String(doc.role || doc.designation || 'Member').trim(),
   phone: doc.phone || doc.mobile || null,
   email: doc.email || null
@@ -137,7 +137,7 @@ exports.getTeamDetails = async (req, res) => {
 
     const teamBJobs = [...installs, ...requests, ...maintenances].filter(isTeamBJob);
     const inProgressJobsCount = teamBJobs.filter((j) => normalize(j.status) === normalize(EXECUTION_STATUS.IN_PROGRESS)).length;
-    const freeSlots = calculateAvailableSlots(teamBJobs);
+    const freeSlots = calculateAvailableTimeSlots(teamBJobs);
 
     const formattedMembers = rawMembers.map(toMember).filter((m) => m.fullName);
 
