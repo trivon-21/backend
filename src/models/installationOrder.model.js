@@ -51,6 +51,6 @@ const InstallationOrderSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   }
-}, { timestamps: true });
+}, { timestamps: true, collection: 'installation_orders' });
 
-module.exports = mongoose.model('InstallationOrder', InstallationOrderSchema);
+module.exports = mongoose.models.InstallationOrder || mongoose.model('InstallationOrder', InstallationOrderSchema, 'installation_orders');

@@ -8,6 +8,7 @@ const ServiceRequest = require('../shared/repair/repair.model');
 const Installation = require('../shared/installation/installation.model');
 const Inspection = require('../shared/inspection/inspectionTicket.model');
 const Maintenance = require('../shared/maintenance/maintenance.model');
+const WarehousePickRequest = require('../../models/WarehousePickRequest');
 const mongoose = require('mongoose');
 const {
   WORKFLOW_STATUS,
@@ -263,44 +264,57 @@ exports.getAllTeamsWithMembers = async (req, res) => {
 
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.statusCode || 500).json({
+      success: false,
+      code: err.code || 'TEAM_LIST_FAILED',
+      error: err.message,
+    });
   }
 };
 
 exports.getPendingAssignments = async (req, res) => {
   try {
     const [serviceRequests, installations, inspections, maintenances] = await Promise.all([
-      ServiceRequest.find({ status: WORKFLOW_STATUS.SENT_TO_IM })
+      ServiceRequest.find({ status: WORKFLOW_STATUS.MATERIALS_READY })
         .populate('customerId', 'fullName name address')
         .lean(),
-      Installation.find({ status: WORKFLOW_STATUS.SENT_TO_IM })
+      Installation.find({ status: WORKFLOW_STATUS.MATERIALS_READY })
         .populate('customerId', 'fullName name address')
         .lean(),
       // Include inspections that have been approved by Finance and are pending assignment
       Inspection.find({ status: WORKFLOW_STATUS.FINANCE_APPROVED })
         .populate('customerId', 'fullName name address')
         .lean(),
-      Maintenance.find({ status: MAINTENANCE_STATUS.SENT_TO_IM })
+      Maintenance.find({ status: MAINTENANCE_STATUS.MATERIALS_READY })
         .populate('customerId', 'fullName name address')
         .lean()
     ]);
 
+    const materialJobIds = [...serviceRequests, ...installations, ...maintenances].map(item => item._id);
+    const reservedRequests = materialJobIds.length
+      ? await WarehousePickRequest.find({ jobId: { $in: materialJobIds }, status: 'reserved' })
+        .select('jobId statusVersion').lean()
+      : [];
+    const warehouseByJob = new Map(reservedRequests.map(request => [String(request.jobId), request]));
+
     const data = [
-      ...serviceRequests.map((item) => ({
+      ...serviceRequests.filter(item => warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.SERVICE,
-        productType: item.productType || '-'
+        productType: item.productType || '-',
+        warehouseStatusVersion: warehouseByJob.get(String(item._id)).statusVersion,
       })),
-      ...installations.map((item) => ({
+      ...installations.filter(item => warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.INSTALLATION,
-        productType: item.productType || '-'
+        productType: item.productType || '-',
+        warehouseStatusVersion: warehouseByJob.get(String(item._id)).statusVersion,
       })),
       // Treat inspections as a pending job type so they appear in the assign modal
       ...inspections.map((item) => ({
@@ -311,13 +325,14 @@ exports.getPendingAssignments = async (req, res) => {
         requestType: REQUEST_TYPES.INSPECTION,
         productType: item.productType || '-'
       })),
-      ...maintenances.map((item) => ({
+      ...maintenances.filter(item => warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: 'Maintenance',
-        productType: item.productType || 'Customer Initiated'
+        productType: item.productType || 'Customer Initiated',
+        warehouseStatusVersion: warehouseByJob.get(String(item._id)).statusVersion,
       }))
     ];
 
@@ -329,7 +344,7 @@ exports.getPendingAssignments = async (req, res) => {
 
 exports.assignServiceRequestToTeam = async (req, res) => {
   try {
-    const { serviceRequestId, teamId, requestType } = req.body || {};
+    const { serviceRequestId, teamId, requestType, warehouseStatusVersion } = req.body || {};
     logger.debug('assignServiceRequestToTeam called with', { serviceRequestId, teamId, requestType });
     const resolvedServiceRequestId = String(serviceRequestId || '').replace(/^#/, '').trim();
     
@@ -391,6 +406,28 @@ exports.assignServiceRequestToTeam = async (req, res) => {
       timeSlot: existingDoc.preferredTimeSlot || "9:00 AM - 11:00 AM"
     };
 
+    const warehouseJobType = isInstallation ? 'Installation' : isMaintenance ? 'Maintenance' : 'Repair';
+    const warehouseRequest = isInspection ? null : await WarehousePickRequest.findOne({
+      jobId: resolvedServiceRequestId,
+      jobType: warehouseJobType,
+      status: 'reserved',
+    });
+    if (!isInspection && !warehouseRequest) {
+      return res.status(409).json({
+        success: false,
+        code: 'MATERIALS_NOT_RESERVED',
+        error: 'The complete material kit must be reserved before assigning a service team.',
+      });
+    }
+    if (warehouseRequest && warehouseStatusVersion !== undefined
+      && Number(warehouseStatusVersion) !== Number(warehouseRequest.statusVersion)) {
+      return res.status(409).json({
+        success: false,
+        code: 'STALE_MATERIAL_REQUEST',
+        error: 'The material request changed; reload before assigning a team.',
+      });
+    }
+
     logger.debug('assignServiceRequestToTeam: isObjectIdHex', { isObjectIdHex, resolvedTeamIdStr });
 
     logger.debug('Updating model', { model: Model.modelName, id: resolvedServiceRequestId, payload: updatePayload });
@@ -399,10 +436,39 @@ exports.assignServiceRequestToTeam = async (req, res) => {
       // Use the raw collection update to avoid Mongoose casting errors when
       // document schemas expect ObjectId but the environment stores numeric
       // team IDs. This performs a direct MongoDB update.
-      const filter = { _id: new mongoose.Types.ObjectId(resolvedServiceRequestId) };
-      const resUpdate = await Model.collection.updateOne(filter, { $set: updatePayload });
-      logger.debug('Raw update result', { result: resUpdate && resUpdate.result ? resUpdate.result : resUpdate });
-      // Fetch the updated document via the model for consistent return shape
+      const filter = { _id: mongoose.Types.ObjectId(resolvedServiceRequestId) };
+      await mongoose.connection.transaction(async session => {
+        const currentStatus = isInspection ? WORKFLOW_STATUS.FINANCE_APPROVED : WORKFLOW_STATUS.MATERIALS_READY;
+        const resUpdate = await Model.collection.updateOne({ ...filter, status: currentStatus }, { $set: updatePayload }, { session });
+        if (resUpdate.matchedCount === 0) {
+          const error = new Error('The job is no longer ready for team assignment.');
+          error.statusCode = 409;
+          error.code = 'INVALID_ASSIGNMENT_TRANSITION';
+          throw error;
+        }
+        logger.debug('Raw update result', { result: resUpdate && resUpdate.result ? resUpdate.result : resUpdate });
+        if (warehouseRequest) {
+          const warehouseUpdate = await WarehousePickRequest.updateOne({
+            _id: warehouseRequest._id,
+            status: 'reserved',
+            statusVersion: warehouseRequest.statusVersion,
+            assignedTeamId: { $exists: false },
+          }, {
+            $set: { assignedTeamId: team._id, assignedTeamName: team.teamName },
+            $inc: { statusVersion: 1 },
+          }, { session, runValidators: true });
+          if (warehouseUpdate.matchedCount === 0) {
+            const error = new Error('The material reservation changed or already has a team.');
+            error.statusCode = 409;
+            error.code = 'STALE_MATERIAL_REQUEST';
+            throw error;
+          }
+        }
+        await TechTeam.updateOne({ _id: team._id }, {
+          $inc: { activeJobsCount: 1 },
+          $set: { status: 'On Job' },
+        }, { session, runValidators: true });
+      });
       assignment = await Model.findById(resolvedServiceRequestId).lean();
       logger.debug('Assignment result (fetched)', { assignment: assignment ? { _id: assignment._id, status: assignment.status } : null });
     } catch (updateErr) {
@@ -415,18 +481,16 @@ exports.assignServiceRequestToTeam = async (req, res) => {
       return res.status(404).json({ success: false, error: `${notFoundType} not found.` });
     }
 
-    const currentActiveJobsCount = Number(team.activeJobsCount || 0);
-    await TechTeam.findByIdAndUpdate(resolvedTeamId, {
-      activeJobsCount: currentActiveJobsCount + 1,
-      status: TEAM_STATUS.BUSY
-    });
-
     res.json({
       success: true,
       message: `${isInspection ? 'Inspection' : isInstallation ? 'Installation' : isMaintenance ? 'Maintenance' : 'Service request'} assigned successfully.`
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.statusCode || 500).json({
+      success: false,
+      code: err.code || 'TEAM_ASSIGNMENT_FAILED',
+      error: err.message,
+    });
   }
 };
 
