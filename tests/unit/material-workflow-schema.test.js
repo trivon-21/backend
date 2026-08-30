@@ -50,23 +50,45 @@ describe('Material workflow schemas', () => {
 
   it('keeps reset dry runs read-only and applies database-side backups before releasing stock', async () => {
     const calls = [];
+    const inventoryId = objectId();
+    let jobDocuments = [{ _id: objectId() }, { _id: objectId() }];
+    let warehouseDocuments = [{ _id: objectId() }];
+    let inventoryDocuments = [{ _id: inventoryId, available: 7, reserved: 3 }];
+    const backupCounts = new Map();
     const collections = {
       job_material_requests: {
-        countDocuments: async () => 2,
-        aggregate: pipeline => ({ toArray: async () => calls.push(['job-backup', pipeline]) }),
-        deleteMany: async () => calls.push(['job-delete']),
+        find: () => ({ toArray: async () => jobDocuments }),
+        countDocuments: async () => jobDocuments.length,
+        aggregate: pipeline => ({ toArray: async () => {
+          calls.push(['job-backup', pipeline]);
+          backupCounts.set(pipeline.at(-1).$out, jobDocuments.length);
+        } }),
+        deleteMany: async () => { calls.push(['job-delete']); jobDocuments = []; },
       },
       warehouse_pick_requests: {
-        countDocuments: async () => 1,
-        aggregate: pipeline => ({ toArray: async () => calls.push(['warehouse-backup', pipeline]) }),
-        deleteMany: async () => calls.push(['warehouse-delete']),
+        find: () => ({ toArray: async () => warehouseDocuments }),
+        countDocuments: async () => warehouseDocuments.length,
+        aggregate: pipeline => ({ toArray: async () => {
+          calls.push(['warehouse-backup', pipeline]);
+          backupCounts.set(pipeline.at(-1).$out, warehouseDocuments.length);
+        } }),
+        deleteMany: async () => { calls.push(['warehouse-delete']); warehouseDocuments = []; },
       },
       inventory: {
-        aggregate: () => ({ toArray: async () => [{ items: 1, units: 3 }] }),
-        updateMany: async (_filter, pipeline) => calls.push(['stock-release', pipeline]),
+        find: () => ({ toArray: async () => inventoryDocuments }),
+        aggregate: pipeline => ({ toArray: async () => {
+          calls.push(['inventory-backup', pipeline]);
+          backupCounts.set(pipeline.at(-1).$out, inventoryDocuments.length);
+        } }),
+        updateMany: async (_filter, pipeline) => {
+          calls.push(['stock-release', pipeline]);
+          inventoryDocuments = inventoryDocuments.map((item) => ({ ...item, available: item.available + item.reserved, reserved: 0 }));
+        },
       },
+      purchase_requests: { countDocuments: async () => 0 },
+      leftover_returns: { countDocuments: async () => 0 },
     };
-    const db = { collection: name => collections[name] };
+    const db = { collection: name => collections[name] || { countDocuments: async () => backupCounts.get(name) || 0 } };
     const logger = { table() {}, log() {} };
     const transaction = async callback => callback('fixture-session');
 
@@ -81,9 +103,9 @@ describe('Material workflow schemas', () => {
     assert.equal(applied.mode, 'APPLY');
     assert.match(applied.jobBackup, /^job_material_requests_backup_/);
     assert.deepEqual(calls.map(call => call[0]), [
-      'job-backup', 'warehouse-backup', 'job-delete', 'warehouse-delete', 'stock-release',
+      'job-backup', 'warehouse-backup', 'inventory-backup', 'job-delete', 'warehouse-delete', 'stock-release',
     ]);
-    const releasePipeline = calls.at(-1)[1];
+    const releasePipeline = calls.find(call => call[0] === 'stock-release')[1];
     assert.deepEqual(releasePipeline[0].$set.reserved, 0);
     assert.ok(releasePipeline[0].$set.available.$add);
   });
