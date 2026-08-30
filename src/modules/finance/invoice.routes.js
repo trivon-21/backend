@@ -45,4 +45,11 @@ router.put("/accept/:invoiceId",           controller.acceptInvoice);
 router.put("/reject/:invoiceId",           controller.rejectInvoice);
 router.put("/cancel-rejection/:invoiceId", controller.cancelRejection);
 
+router.get("/upload-payment/:invoiceId", controller.getInvoiceForCustomer);
+router.put("/upload-payment/:invoiceId", controller.uploadPaymentSlip);
+router.get("/payment-verification", controller.getPaymentVerificationQueue);
+router.get("/repair/payment-verification", controller.getRepairPaymentVerificationQueue);
+router.put("/payment-verification/approve/:id", controller.approveInvoicePayment);
+router.put("/payment-verification/reject/:id", controller.rejectInvoicePayment);
+
 module.exports = router;
