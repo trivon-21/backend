@@ -5,6 +5,7 @@ const WORKFLOW_STATUS = {
   FINANCE_REJECTED: 'Finance Rejected',
   CANCELLED: 'Cancelled',
   SENT_TO_IM: 'Sent to IM',
+  MATERIALS_READY: 'Materials Ready',
 };
 
 const EXECUTION_STATUS = {
@@ -33,12 +34,15 @@ const MAINTENANCE_STATUS = {
   NEW: 'New',
   PENDING: 'Pending',
   FINANCE_APPROVED: 'Finance Approved',
+  FINANCE_REJECTED: 'Finance Rejected',
   SENT_TO_IM: 'Sent to IM',
+  MATERIALS_READY: 'Materials Ready',
   ASSIGNED: 'Assigned',
   SCHEDULED: 'Scheduled',
   IN_PROGRESS: 'In Progress',
   ON_HOLD: 'On Hold',
   COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
 };
 
 const REMINDER_STATUS = {
@@ -73,6 +77,7 @@ const STATUS_GROUPS = {
     WORKFLOW_STATUS.FINANCE_APPROVED,
     WORKFLOW_STATUS.FINANCE_REJECTED,
     WORKFLOW_STATUS.SENT_TO_IM,
+    WORKFLOW_STATUS.MATERIALS_READY,
   ],
   EXECUTION_VISIBLE: [
     EXECUTION_STATUS.ASSIGNED,
