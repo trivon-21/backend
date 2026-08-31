@@ -194,8 +194,64 @@ const sendAutoCancelledEmail = async (email, name, invoiceNum) => {
   } catch (err) { console.error("sendAutoCancelledEmail error:", err); }
 };
 
+// Payment slip approved — final confirmation (money received and verified)
+const sendPaymentApprovedEmail = async (email, name, invoiceNum, total) => {
+  try {
+    await transporter.sendMail({
+      from: `"AirLux Finance" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Payment Confirmed - ${invoiceNum}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+          <h2 style="color:#1e3a2a;">Payment Confirmed! ✓</h2>
+          <p>Dear ${name},</p>
+          <p>We have received and verified your payment for invoice <strong>${invoiceNum}</strong>.</p>
+          <div style="background:#f0fdf4;border-left:4px solid #2d5a3d;padding:16px;margin:16px 0;border-radius:4px;">
+            <p style="margin:0;"><strong>Amount Paid:</strong> LKR ${fmt(total)}</p>
+            <p style="margin:8px 0 0;"><strong>Status:</strong> Paid in Full</p>
+          </div>
+          <p>Our team will now proceed with the next steps of your order. Thank you for choosing AirLux!</p>
+          <p>Best regards,<br><strong>AirLux Finance Team</strong></p>
+        </div>
+      `,
+    });
+    console.log("Payment approved email sent to", email);
+  } catch (err) { console.error("sendPaymentApprovedEmail error:", err); }
+};
+
+// Payment slip rejected — customer must re-upload
+const sendPaymentSlipRejectedEmail = async (email, name, invoiceNum, reason, reuploadLink) => {
+  try {
+    await transporter.sendMail({
+      from: `"AirLux Finance" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Payment Slip Rejected - ${invoiceNum}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+          <h2 style="color:#dc2626;">Payment Slip Rejected</h2>
+          <p>Dear ${name},</p>
+          <p>Your payment slip for invoice <strong>${invoiceNum}</strong> could not be verified.</p>
+          <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:16px;margin:16px 0;border-radius:4px;">
+            <strong>Reason:</strong> ${reason}
+          </div>
+          <p>Please review the reason above and re-upload a valid payment slip:</p>
+          <a href="${reuploadLink}" style="background:#2d5a3d;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;margin:16px 0;">
+            Re-upload Payment Slip
+          </a>
+          <p style="color:#dc2626;font-size:12px;">
+            ⚠️ Your original payment deadline still applies — please re-upload promptly to avoid auto-cancellation.
+          </p>
+          <p>Best regards,<br><strong>AirLux Finance Team</strong></p>
+        </div>
+      `,
+    });
+    console.log("Payment rejection email sent to", email);
+  } catch (err) { console.error("sendPaymentSlipRejectedEmail error:", err); }
+};
+
 module.exports = {
   sendInvoiceEmail, sendInvoiceAcceptedEmail, sendInvoiceRejectedEmail,
   sendRejectionWarningEmail, sendRejectionExpiredEmail,
   sendPaymentReminderEmail, sendAutoCancelledEmail,
+  sendPaymentApprovedEmail, sendPaymentSlipRejectedEmail,
 };

@@ -23,7 +23,12 @@ const installationSchema = new Schema(
     },
     materials: [{ item: String, quantity: Number }],
     financeNotes: String,
-    status: { type: String, enum: ['Pending', 'Assigned', 'In Progress', 'Completed', 'Cancelled'], default: 'Pending' },
+    status: {
+      type: String,
+      enum: ['Pending', 'Finance Approved', 'Finance Rejected', 'Sent to IM', 'Materials Ready', 'Assigned',
+        'Scheduled', 'In Progress', 'On Hold', 'Completed', 'Cancelled'],
+      default: 'Pending'
+    },
   },
   { timestamps: true, collection: 'installations' }
 );

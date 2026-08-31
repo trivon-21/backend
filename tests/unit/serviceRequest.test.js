@@ -70,7 +70,7 @@ describe('Main Technician: Service Requests', () => {
   describe('getAllServiceRequests', () => {
     it('should only return records with executable statuses', async () => {
       // Mocking executable statuses: Assigned, Scheduled, In Progress, etc.
-      await serviceController.getAllServiceRequests({}, mockRes);
+      await serviceController.getAllServiceRequests({ query: {} }, mockRes);
       const results = mockRes._last;
       assert(results && results.success === true); // Verify controller returns success
       assert(Array.isArray(results.data)); // Verify data is array
