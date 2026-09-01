@@ -3,6 +3,11 @@ const PurchaseRequest = require('../../models/PurchaseRequest');
 const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const Procurement = require('../../models/Procurement');
 const Activity = require('../../models/Activity');
+const {
+  canonicalPurchaseStatus,
+  purchaseRequestWorkflowStages,
+  receiptAuthorizationWorkflowStages,
+} = require('../../utils/purchase-workflow');
 require('../../models/Inventory');
 require('../../models/Supplier');
 
@@ -33,7 +38,12 @@ exports.listPurchaseRequests = async (user, filters = {}) => {
   assertFinance(user);
   const query = { status: filters.status || 'pending-finance' };
   if (filters.status === 'all') delete query.status;
-  return PurchaseRequest.find(query).sort({ createdAt: 1 }).lean();
+  const requests = await PurchaseRequest.find(query).sort({ createdAt: 1 }).lean();
+  return requests.map((request) => ({
+    ...request,
+    status: canonicalPurchaseStatus(request.status),
+    workflowStages: purchaseRequestWorkflowStages(request),
+  }));
 };
 
 exports.decidePurchaseRequest = async (id, input, user) => {
@@ -72,11 +82,15 @@ exports.listNonPoReceipts = async (user, filters = {}) => {
   assertFinance(user);
   const query = { financeReviewStatus: filters.status || 'pending', receivedQuantity: { $gt: 0 } };
   if (filters.status === 'all') delete query.financeReviewStatus;
-  return ReceiptAuthorization.find(query)
+  const authorizations = await ReceiptAuthorization.find(query)
     .populate('inventoryId', 'name sku')
     .populate('supplierId', 'name')
     .sort({ updatedAt: 1 })
     .lean();
+  return authorizations.map((authorization) => ({
+    ...authorization,
+    workflowStages: receiptAuthorizationWorkflowStages(authorization),
+  }));
 };
 
 exports.reconcileNonPoReceipt = async (id, input, user) => {

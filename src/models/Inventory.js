@@ -1,5 +1,13 @@
 const mongoose = require('mongoose');
-const { ITEM_CLASSES, deriveStockStatus, legacyStockStatus } = require('../utils/inventory-domain');
+const {
+  ITEM_CLASSES,
+  INVENTORY_LOCATIONS,
+  deriveStockStatus,
+  legacyStockStatus,
+  isValidInventoryLocation
+} = require('../utils/inventory-domain');
+
+const DEFAULT_LOCATION = INVENTORY_LOCATIONS[0];
 
 const InventorySchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -26,8 +34,8 @@ const InventorySchema = new mongoose.Schema({
   phase: { type: String, enum: ['Single Phase', 'Three Phase', 'Not Applicable'], default: 'Not Applicable' },
   available: { type: Number, default: 0, min: 0 },
   reserved: { type: Number, default: 0, min: 0 },
-  location: { type: String, default: 'Warehouse' },
-  binLocation: { type: String, default: '', trim: true },
+  location: { type: String, default: DEFAULT_LOCATION.warehouse, trim: true },
+  binLocation: { type: String, default: DEFAULT_LOCATION.placementAreas[0], trim: true },
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
   unit: { type: String, default: 'units' },
   reorderLevel: { type: Number, default: 10, min: 0 },
@@ -66,6 +74,10 @@ InventorySchema.pre('validate', function synchronizeInventoryCompatibility() {
     this.invalidate('serialNumbers', 'Serial numbers must be unique within an inventory item');
   }
   this.serialNumbers = serials;
+  if ((this.isNew || this.isModified('location') || this.isModified('binLocation'))
+    && !isValidInventoryLocation(this.location, this.binLocation)) {
+    this.invalidate('binLocation', 'Select a placement area belonging to the selected warehouse');
+  }
 });
 
 module.exports = mongoose.models.ManagerInventoryItem

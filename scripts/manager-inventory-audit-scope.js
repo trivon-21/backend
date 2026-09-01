@@ -3,6 +3,7 @@
 const modelDefinitions = {
   User: { module: '../src/models/User', risk: 'standard' },
   Order: { module: '../src/models/Order', risk: 'standard' },
+  Invoice: { module: '../src/modules/finance/Invoice.model', risk: 'standard' },
   SystemConfig: { module: '../src/models/SystemConfig', risk: 'standard' },
   Inventory: { module: '../src/models/Inventory', risk: 'standard' },
   Activity: { module: '../src/models/Activity', risk: 'standard' },
@@ -41,7 +42,7 @@ const managerEndpoints = [
   endpoint('manager', 'GET', '/', 'Status', false, 'manager.controller.getStatus', []),
   endpoint('manager', 'POST', '/payments/auto-cancel', 'Payment auto-cancellation', false, 'manager.service.triggerPaymentAutoCancelJob', ['Order', 'SystemConfig']),
   endpoint('manager', 'GET', '/dashboard', 'Manager dashboard', true, 'manager.service.getDashboardData', ['ManagerServiceTicket', 'ManagerInspectionTicket', 'ManagerInstallation', 'PurchaseRequest', 'Inventory', 'WarehousePickRequest', 'ReceiptAuthorization', 'User']),
-  endpoint('manager', 'GET', '/analytics', 'Manager analytics', true, 'manager.analytics.service.getAnalyticsData', ['ManagerServiceTicket', 'ManagerInspectionTicket', 'ManagerInstallation', 'PurchaseRequest', 'Inventory', 'WarehousePickRequest', 'Procurement', 'ReceiptAuthorization', 'User']),
+  endpoint('manager', 'GET', '/analytics', 'Manager analytics', true, 'manager.analytics.service.getAnalyticsData', ['ManagerServiceTicket', 'ManagerInspectionTicket', 'ManagerInstallation', 'PurchaseRequest', 'Inventory', 'WarehousePickRequest', 'Procurement', 'ReceiptAuthorization', 'Order', 'Invoice', 'User']),
   endpoint('manager', 'GET', '/tickets', 'Legacy ticket list', false, 'manager.tickets.service.listTickets', ['ManagerServiceTicket', 'ManagerInspectionTicket', 'ManagerInstallation', 'ReceiptAuthorization', 'Inventory', 'User']),
   endpoint('manager', 'GET', '/technicians', 'Legacy technician list', false, 'manager.tickets.service.listTechnicians', ['User']),
   endpoint('manager', 'PATCH', '/tickets/:id', 'Legacy ticket update', false, 'manager.tickets.service.updateTicket', ['ManagerServiceTicket', 'User']),
@@ -57,6 +58,7 @@ const managerEndpoints = [
 const inventoryEndpoints = [
   endpoint('inventory', 'GET', '/dashboard', 'Inventory dashboard', true, 'inventory_manager.service.getDashboardData', ['Inventory', 'Activity', 'DispatchOrder', 'AssetLoan', 'WarehousePickRequest', 'PurchaseRequest', 'ReceiptAuthorization', 'User']),
   endpoint('inventory', 'GET', '/list', 'Inventory list', true, 'inventory_manager.service.getInventoryList', ['Inventory', 'Supplier', 'User']),
+  endpoint('inventory', 'GET', '/locations', 'Fixed storage-location catalog', true, 'inventory_manager.service.getInventoryLocations', []),
   endpoint('inventory', 'GET', '/item/:id', 'Inventory detail', true, 'inventory_manager.service.getInventoryItem', ['Inventory', 'Supplier', 'User']),
   endpoint('inventory', 'PUT', '/item/:id', 'Inventory master-data update', false, 'inventory_manager.service.updateInventoryItem', ['Inventory', 'Supplier', 'User']),
   endpoint('inventory', 'PATCH', '/item/:id', 'Inventory master-data update', true, 'inventory_manager.service.updateInventoryItem', ['Inventory', 'Supplier', 'User']),
@@ -101,12 +103,16 @@ const inventoryEndpoints = [
 ];
 
 const collectionUsage = {
+  invoices: {
+    read: ['_id', 'invoiceType', 'grandTotal', 'status', 'paidAt', 'acceptedAt', 'updatedAt'],
+    filter: [],
+  },
   users: {
     read: ['_id', 'fullName', 'email', 'phoneNumber', 'address', 'role', 'isActive', 'deactivationReason'],
     filter: ['_id', 'role'],
   },
   orders: {
-    read: ['_id', 'orderRef', 'orderReference', 'orderId', 'customer', 'userId', 'amount', 'total', 'subtotal', 'createdAt', 'paymentStatus', 'orderStatus'],
+    read: ['_id', 'orderRef', 'orderReference', 'orderId', 'customer', 'userId', 'items', 'items[].price', 'items[].quantity', 'amount', 'total', 'subtotal', 'createdAt', 'updatedAt', 'approvedAt', 'status', 'paymentStatus', 'orderStatus'],
     filter: ['_id', 'customer', 'userId', 'paymentStatus', 'orderStatus', 'createdAt'],
     write: ['customer', 'userId', 'orderStatus', 'paymentStatus', 'status'],
   },
@@ -128,9 +134,9 @@ const collectionUsage = {
     filter: ['_id', 'name'], sort: ['name'], write: ['name', 'status'],
   },
   procurements: {
-    read: ['_id', 'receiptMode', 'orderRequestId', 'orderLineId', 'receiptAuthorizationId', 'receiptEventId', 'poNumber', 'supplierId', 'supplierName', 'inventoryId', 'itemName', 'sku', 'itemClass', 'subcategory', 'brand', 'quantity', 'unit', 'unitCost', 'totalCost', 'condition', 'binLocation', 'receivedBy', 'receivedDate', 'sourceDocumentNumber', 'supportingDocumentUrl', 'nonPoReason', 'affectedWorkReference', 'timestamp', 'createdAt'],
+    read: ['_id', 'receiptMode', 'orderRequestId', 'orderLineId', 'receiptAuthorizationId', 'receiptEventId', 'poNumber', 'supplierId', 'supplierName', 'inventoryId', 'itemName', 'sku', 'itemClass', 'subcategory', 'brand', 'quantity', 'unit', 'unitCost', 'totalCost', 'condition', 'location', 'binLocation', 'receivedBy', 'receivedDate', 'sourceDocumentNumber', 'supportingDocumentUrl', 'nonPoReason', 'affectedWorkReference', 'timestamp', 'createdAt'],
     filter: ['_id', 'receiptEventId'], sort: ['receivedDate', 'timestamp'], populate: ['supplierId', 'inventoryId'],
-    write: ['receiptMode', 'orderRequestId', 'orderLineId', 'receiptAuthorizationId', 'receiptEventId', 'poNumber', 'supplierId', 'supplierName', 'inventoryId', 'itemName', 'sku', 'itemClass', 'subcategory', 'brand', 'quantity', 'unit', 'unitCost', 'totalCost', 'condition', 'binLocation', 'receivedBy', 'receivedDate', 'sourceDocumentNumber', 'supportingDocumentUrl', 'nonPoReason', 'affectedWorkReference'],
+    write: ['receiptMode', 'orderRequestId', 'orderLineId', 'receiptAuthorizationId', 'receiptEventId', 'poNumber', 'supplierId', 'supplierName', 'inventoryId', 'itemName', 'sku', 'itemClass', 'subcategory', 'brand', 'quantity', 'unit', 'unitCost', 'totalCost', 'condition', 'location', 'binLocation', 'receivedBy', 'receivedDate', 'sourceDocumentNumber', 'supportingDocumentUrl', 'nonPoReason', 'affectedWorkReference'],
   },
   dispatch_orders: {
     read: ['_id', 'orderId', 'customer', 'date', 'type', 'items', 'status', 'courier', 'trackId', 'sourceOrderId', 'sourceOrderType', 'completedAt', 'lastMovedAt', 'createdAt'],

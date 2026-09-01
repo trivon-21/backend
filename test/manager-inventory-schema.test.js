@@ -277,7 +277,7 @@ test('audit scope covers every registered manager and inventory route and exclud
   assert.equal(coverage.length, 2);
   assert.ok(coverage.every((entry) => entry.missingFromScope.length === 0));
   assert.ok(coverage.every((entry) => entry.staleScopeEntries.length === 0));
-  assert.equal(auditScope.endpoints.length, 57);
+  assert.equal(auditScope.endpoints.length, 58);
   assert.ok(auditScope.endpoints.every((entry) => !['/orders/:orderId/approve', '/orders/:orderId/reject'].includes(entry.route)));
   assert.ok(auditScope.endpoints.every((entry) => !entry.handler.includes('maintenance-notification')));
   assert.ok(Object.values(auditScope.modelDefinitions).every((definition) => ![
