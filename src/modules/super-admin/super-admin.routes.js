@@ -54,6 +54,36 @@ router.get("/reactivation-requests", controller.getReactivationRequests);
 router.patch("/reactivation-requests/:userId", controller.handleReactivationRequest);
 
 /**
+ * Inquiries Management Routes
+ */
+// GET /api/super-admin/inquiries
+router.get("/inquiries", controller.listInquiries);
+
+// PATCH /api/super-admin/inquiries/:id/status
+router.patch("/inquiries/:id/status", controller.updateInquiryStatus);
+
+// POST /api/super-admin/inquiries/:id/reply
+router.post("/inquiries/:id/reply", controller.replyInquiry);
+
+/**
+ * Service & Repair Requests Routes
+ */
+// GET /api/super-admin/service-requests
+router.get("/service-requests", controller.listServiceRequests);
+
+// PATCH /api/super-admin/service-requests/:id/status
+router.patch("/service-requests/:id/status", controller.updateServiceRequestStatus);
+
+/**
+ * Orders Management Routes
+ */
+// GET /api/super-admin/orders
+router.get("/orders", controller.listOrders);
+
+// PATCH /api/super-admin/orders/:id/status
+router.patch("/orders/:id/status", controller.updateOrderStatus);
+
+/**
  * System Configuration Routes
  */
 router.use("/system-config", systemConfigRoutes);

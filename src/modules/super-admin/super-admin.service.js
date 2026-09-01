@@ -598,6 +598,190 @@ function formatUserResponse(user) {
 }
 
 /**
+ * List inquiries with pagination, filtering, and search
+ */
+exports.listInquiries = async (options = {}) => {
+  const { page = 1, limit = 10, inquiryType, status, search } = options;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  let query = {};
+  if (inquiryType) query.inquiryType = inquiryType;
+  if (status) query.status = status;
+  if (search) {
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { inquiryRef: searchRegex },
+      { name: searchRegex },
+      { email: searchRegex },
+      { phone: searchRegex },
+      { subject: searchRegex },
+      { message: searchRegex }
+    ];
+  }
+
+  const [inquiries, total] = await Promise.all([
+    Inquiry.find(query)
+      .populate("customer", "fullName email phoneNumber role")
+      .skip(skip)
+      .limit(limitNum)
+      .sort({ createdAt: -1 }),
+    Inquiry.countDocuments(query)
+  ]);
+
+  return {
+    data: inquiries,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum)
+    }
+  };
+};
+
+/**
+ * Update inquiry status
+ */
+exports.updateInquiryStatus = async (inquiryId, status) => {
+  const inquiry = await Inquiry.findById(inquiryId);
+  if (!inquiry) throw new Error("Inquiry not found");
+  inquiry.status = status;
+  await inquiry.save();
+  return inquiry;
+};
+
+/**
+ * Reply to inquiry
+ */
+exports.replyInquiry = async (inquiryId, message) => {
+  const inquiry = await Inquiry.findById(inquiryId);
+  if (!inquiry) throw new Error("Inquiry not found");
+  inquiry.thread.push({
+    sender: "Support",
+    message
+  });
+  if (inquiry.status === "Ongoing") {
+    inquiry.status = "Addressed";
+  }
+  await inquiry.save();
+  return inquiry;
+};
+
+/**
+ * List service requests with pagination, filtering, and search
+ */
+exports.listServiceRequests = async (options = {}) => {
+  const { page = 1, limit = 10, serviceType, status, search } = options;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  let query = {};
+  if (serviceType) query.serviceType = serviceType;
+  if (status) query.status = status;
+  if (search) {
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { serviceRequestRef: searchRegex },
+      { acUnitModel: searchRegex },
+      { acUnitSerial: searchRegex },
+      { problemDescription: searchRegex }
+    ];
+  }
+
+  const [requests, total] = await Promise.all([
+    ServiceRequest.find(query)
+      .populate("customer", "fullName email phoneNumber address")
+      .skip(skip)
+      .limit(limitNum)
+      .sort({ createdAt: -1 }),
+    ServiceRequest.countDocuments(query)
+  ]);
+
+  return {
+    data: requests,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum)
+    }
+  };
+};
+
+/**
+ * Update service request status
+ */
+exports.updateServiceRequestStatus = async (requestId, status) => {
+  const req = await ServiceRequest.findById(requestId);
+  if (!req) throw new Error("Service request not found");
+  req.status = status;
+  await req.save();
+  return req;
+};
+
+/**
+ * List orders with pagination, filtering, and search
+ */
+exports.listOrders = async (options = {}) => {
+  const { page = 1, limit = 10, orderType, status, paymentStatus, search } = options;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  let query = {};
+  if (orderType) query.orderType = orderType;
+  if (status) query.status = status;
+  if (paymentStatus) query.paymentStatus = paymentStatus;
+  if (search) {
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { orderRef: searchRegex },
+      { orderNumber: searchRegex },
+      { itemName: searchRegex },
+      { "customerInfo.fullName": searchRegex },
+      { "customerInfo.email": searchRegex }
+    ];
+  }
+
+  const [orders, total] = await Promise.all([
+    Order.find(query)
+      .populate("customer", "fullName email phoneNumber address")
+      .skip(skip)
+      .limit(limitNum)
+      .sort({ createdAt: -1 }),
+    Order.countDocuments(query)
+  ]);
+
+  return {
+    data: orders,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum)
+    }
+  };
+};
+
+/**
+ * Update order status
+ */
+exports.updateOrderStatus = async (orderId, data) => {
+  const order = await Order.findById(orderId);
+  if (!order) throw new Error("Order not found");
+  if (data.status) order.status = data.status;
+  if (data.paymentStatus) order.paymentStatus = data.paymentStatus;
+  if (data.orderStatus) order.orderStatus = data.orderStatus;
+  await order.save();
+  return order;
+};
+
+/**
  * Export formatUserResponse to be accessible as exports.formatUserResponse
  */
 exports.formatUserResponse = formatUserResponse;
+
+
