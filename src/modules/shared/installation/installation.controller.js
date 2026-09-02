@@ -93,7 +93,7 @@ exports.getAllInstallations = async (req, res) => {
         || 'N/A';
 
       // Use orderId as ticketId if ticketId is missing
-      const ticketId = item.ticketId || item.orderId || item._id;
+      const ticketId = item.serviceRequestId || item.serviceRequestRef || item.ticketId || item.orderId || item._id;
 
       return {
         ...item,

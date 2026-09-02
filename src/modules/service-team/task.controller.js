@@ -76,6 +76,10 @@ const findTaskRecord = async (id) => {
     queryParts.push({ _id: new mongoose.Types.ObjectId(normalizedId) });
   }
 
+  // Also match by the string ID like SRQ-1000
+  queryParts.push({ serviceRequestRef: normalizedId });
+  queryParts.push({ ticketId: normalizedId }); // if ticketId is stored as string in some collections
+
   const query = { $or: queryParts };
 
   const [installation, request, maintenance] = await Promise.all([

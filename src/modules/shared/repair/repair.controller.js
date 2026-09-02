@@ -169,7 +169,7 @@ exports.getCustomerHistory = async (req, res) => {
         : EXECUTION_STATUS.SCHEDULED;
 
       return {
-        ticketId: `#${String(item._id)}`,
+        ticketId: item.serviceRequestId || item.serviceRequestRef || item.ticketId || `#${String(item._id)}`,
         serviceType: type,
         productType: item.productType || 'N/A',
         date: item.serviceDate || item.date || item.createdAt || null,

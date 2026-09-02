@@ -235,7 +235,7 @@ exports.listEligibleJobs = async () => {
   };
   return [
     ...tickets.map(ticket => ({
-      ticketId: ticket._id,
+      ticketId: ticket.serviceRequestId || ticket._id,
       productType: ticket.subject || ticket.category || 'N/A',
       serviceType: ticket.requestType || ticket.serviceType || 'Repair',
       serviceDescription: ticket.description || '-',
@@ -247,7 +247,7 @@ exports.listEligibleJobs = async () => {
       ...requestFields(ticket),
     })),
     ...repairs.filter(isEligible).map(job => ({
-      ticketId: job._id,
+      ticketId: job.serviceRequestId || job._id,
       productType: job.repairType || 'Repair',
       serviceType: 'Repair',
       serviceDescription: job.notes || 'Repair material request',
@@ -259,7 +259,7 @@ exports.listEligibleJobs = async () => {
       ...requestFields(job),
     })),
     ...installations.filter(isEligible).map(job => ({
-      ticketId: job._id,
+      ticketId: job.serviceRequestId || job._id,
       productType: job.productType || 'Installation',
       serviceType: 'Installation',
       serviceDescription: job.location || 'Installation material request',
@@ -272,7 +272,7 @@ exports.listEligibleJobs = async () => {
       ...requestFields(job),
     })),
     ...maintenances.filter(isEligible).map(job => ({
-      ticketId: job._id,
+      ticketId: job.serviceRequestId || job._id,
       productType: job.maintenanceType || 'Maintenance',
       serviceType: 'Maintenance',
       serviceDescription: 'Scheduled maintenance',

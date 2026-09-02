@@ -36,11 +36,31 @@ const serviceTicketSchema = new Schema(
 );
 
 // Auto-clear resolvedAt if ticket leaves the resolved state
-serviceTicketSchema.pre('save', function () {
+serviceTicketSchema.pre('save', async function (next) {
+  if (this.isNew && !this.serviceRequestId) {
+    try {
+      const CounterModel = mongoose.model('Counter');
+      let counter = await CounterModel.findOneAndUpdate(
+        { _id: 'serviceRequestId' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      if (!counter) {
+        counter = await CounterModel.updateOne({ _id: 'serviceRequestId' }, { $set: { seq: 1000 } }, { upsert: true });
+      } else if (counter.seq < 1000) {
+        counter = await CounterModel.findOneAndUpdate({ _id: 'serviceRequestId' }, { $set: { seq: 1000 } }, { new: true });
+      }
+      this.serviceRequestId = `SRQ-${counter.seq}`;
+    } catch (err) {
+      return next(err);
+    }
+  }
+
   if (this.isModified('status')) {
     if (this.status === 'resolved' && !this.resolvedAt) this.resolvedAt = new Date();
     if (this.status !== 'resolved') this.resolvedAt = undefined;
   }
+  next();
 });
 
 serviceTicketSchema.post('findOneAndUpdate', async function(doc) {

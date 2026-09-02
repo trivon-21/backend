@@ -54,7 +54,7 @@ const mapTeamMembers = (members) => members.map((member) => ({
 
 const mapActiveJob = (item, type) => ({
   id: item._id,
-  ticketId: normalizeTicketId(item.ticketId || String(item._id).slice(-4).toUpperCase()),
+  ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || String(item._id).slice(-4).toUpperCase()),
   fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
   location: item.customerId?.address || item.location || '-',
   type,
@@ -300,7 +300,7 @@ exports.getPendingAssignments = async (req, res) => {
     const data = [
       ...serviceRequests.filter(item => item.status === WORKFLOW_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
-        ticketId: normalizeTicketId(item.ticketId || item._id),
+        ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.SERVICE,
@@ -309,7 +309,7 @@ exports.getPendingAssignments = async (req, res) => {
       })),
       ...installations.filter(item => item.status === WORKFLOW_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
-        ticketId: normalizeTicketId(item.ticketId || item._id),
+        ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.INSTALLATION,
@@ -319,7 +319,7 @@ exports.getPendingAssignments = async (req, res) => {
       // Treat inspections as a pending job type so they appear in the assign modal
       ...inspections.map((item) => ({
         _id: item._id,
-        ticketId: normalizeTicketId(item.ticketId || item._id),
+        ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.INSPECTION,
@@ -327,7 +327,7 @@ exports.getPendingAssignments = async (req, res) => {
       })),
       ...maintenances.filter(item => item.status === MAINTENANCE_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
-        ticketId: normalizeTicketId(item.ticketId || item._id),
+        ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: 'Maintenance',
@@ -556,7 +556,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
 
       activeJobs = inspections.map((item) => ({
         id: item._id,
-        ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
+        ticketId: item.serviceRequestRef || item.ticketId || `#${String(item._id).slice(-4).toUpperCase()}`,
         fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         type: REQUEST_TYPES.INSPECTION,
@@ -592,7 +592,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
       activeJobs = [
         ...services.map((item) => ({
           id: item._id,
-          ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
+          ticketId: item.serviceRequestRef || item.ticketId || `#${String(item._id).slice(-4).toUpperCase()}`,
           fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
           type: REQUEST_TYPES.SERVICE,
@@ -600,7 +600,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
         })),
         ...installations.map((item) => ({
           id: item._id,
-          ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
+          ticketId: item.serviceRequestRef || item.ticketId || `#${String(item._id).slice(-4).toUpperCase()}`,
           fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
           type: REQUEST_TYPES.INSTALLATION,
@@ -608,7 +608,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
         })),
         ...maintenances.map((item) => ({
           id: item._id,
-          ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
+          ticketId: item.serviceRequestRef || item.ticketId || `#${String(item._id).slice(-4).toUpperCase()}`,
           fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
           type: 'Maintenance',

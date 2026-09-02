@@ -180,13 +180,16 @@ exports.getNewServiceTickets = async (req, res) => {
       const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
       const customerObjectId = customerId || request.customerId;
 
-      // Calculate warranty status for this customer
-      const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(customerObjectId);
-
       const resolvedServiceType = request.serviceType || request.requestType || request.request_type || 'Repair';
 
+      // Calculate warranty status for this customer
+      const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(
+        customerObjectId,
+        resolvedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair'
+      );
+
       return {
-        ticketId: request._id,
+        ticketId: request.serviceRequestRef || request._id,
         productType: request.productType || 'N/A',
         serviceType: resolvedServiceType,
         serviceDescription: request.serviceDescription || request.description || request.problemDescription || request.subject || '-',
@@ -211,7 +214,7 @@ exports.getNewServiceTickets = async (req, res) => {
       const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
 
       return {
-        ticketId: request._id,
+        ticketId: request.serviceRequestRef || request._id,
         productType: request.productType || 'N/A',
         serviceType: request.serviceType || request.requestType || request.request_type || 'Repair',
         serviceDescription: request.serviceDescription || request.description || request.problemDescription || request.subject || '-',
@@ -238,7 +241,7 @@ exports.getNewServiceTickets = async (req, res) => {
       const siteDetailsSummary = formatInstallationSiteDetails(installation);
 
       return {
-        ticketId: installation._id,
+        ticketId: installation.ticketId || installation._id,
         productType: installation.productType || 'N/A',
         serviceDescription: siteDetailsSummary,
         fullName: customer?.fullName || 'Unknown Customer',
@@ -265,7 +268,7 @@ exports.getNewServiceTickets = async (req, res) => {
       const siteDetailsSummary = formatInstallationSiteDetails(installation);
 
       return {
-        ticketId: installation._id,
+        ticketId: installation.ticketId || installation._id,
         productType: installation.productType || 'N/A',
         serviceDescription: siteDetailsSummary,
         fullName: customer?.fullName || 'Unknown Customer',
@@ -291,7 +294,7 @@ exports.getNewServiceTickets = async (req, res) => {
       const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
 
       return {
-        ticketId: maintenance._id,
+        ticketId: maintenance.ticketId || maintenance._id,
         productType: maintenance.productType || 'N/A',
         serviceType: 'Maintenance',
         serviceDescription: maintenance.scheduledServiceType || 'Scheduled Maintenance',
@@ -835,7 +838,7 @@ exports.getNewRequests = async (req, res) => {
 
                 return {
                     ...item,
-                    ticketId: item._id,
+                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
@@ -852,7 +855,7 @@ exports.getNewRequests = async (req, res) => {
 
                 return {
                     ...item,
-                    ticketId: item._id,
+                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
@@ -868,11 +871,15 @@ exports.getNewRequests = async (req, res) => {
             const customerObjectId = customerId || req.customerId;
 
             // Calculate warranty status for this customer
-            const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(customerObjectId);
+            const resolvedServiceType = req.serviceType || req.requestType || req.request_type || 'Repair';
+            const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(
+                customerObjectId,
+                resolvedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair'
+            );
 
             return {
                 ...req,
-                ticketId: req._id,
+                ticketId: req.serviceRequestRef || req._id,
                 customerName: customer?.fullName || req.customerName || req.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                 customerEmail: customer?.email || req.customerEmail || '-',
                 customerContactNo: customer?.phoneNumber || req.customerContactNo || req.customerPhone || '-',
@@ -893,7 +900,7 @@ exports.getNewRequests = async (req, res) => {
 
                 return {
                     ...item,
-                    ticketId: item._id,
+                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
@@ -1030,7 +1037,7 @@ exports.getNewRequests = async (req, res) => {
 
                 return {
                     ...item,
-                    ticketId: item._id,
+                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
@@ -1047,7 +1054,7 @@ exports.getNewRequests = async (req, res) => {
 
                 return {
                     ...item,
-                    ticketId: item._id,
+                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
@@ -1063,11 +1070,15 @@ exports.getNewRequests = async (req, res) => {
             const customerObjectId = customerId || req.customerId;
 
             // Calculate warranty status for this customer
-            const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(customerObjectId);
+            const resolvedServiceType = req.serviceType || req.requestType || req.request_type || 'Repair';
+            const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(
+                customerObjectId,
+                resolvedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair'
+            );
 
             return {
                 ...req,
-                ticketId: req._id,
+                ticketId: req.serviceRequestRef || req._id,
                 customerName: customer?.fullName || req.customerName || req.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                 customerEmail: customer?.email || req.customerEmail || '-',
                 customerContactNo: customer?.phoneNumber || req.customerContactNo || req.customerPhone || '-',
@@ -1088,7 +1099,7 @@ exports.getNewRequests = async (req, res) => {
 
                 return {
                     ...item,
-                    ticketId: item._id,
+                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',

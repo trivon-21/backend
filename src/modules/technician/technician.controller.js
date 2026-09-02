@@ -162,7 +162,7 @@ const mapServiceReportForReview = (report, sourceRecord) => {
   const cleanAddress = stripTestPrefix(customer.address) || stripTestPrefix(report.location) || stripTestPrefix(sourceRecord?.location) || '-';
 
   return {
-    id: String(report._id),
+    id: report.serviceReportId || String(report._id),
     fullName: cleanName,
     customerName: cleanName,
     phoneNumber: customer.phone || '-',
@@ -201,8 +201,8 @@ const mapServiceReportForList = (report, sourceRecord, resolvedCustomer) => {
   const cleanAddress = stripTestPrefix(customer.address) || stripTestPrefix(report.location) || stripTestPrefix(sourceRecord?.location) || '-';
 
   return {
-    _id: String(report._id),
-    ticketId: String(report.ticketId || report._id),
+    _id: report.serviceReportId || String(report._id),
+    ticketId: report.serviceReportId || String(report.ticketId || report._id),
     fullName: cleanName,
     customerName: cleanName,
     phoneNumber: customer.phone || '-',
