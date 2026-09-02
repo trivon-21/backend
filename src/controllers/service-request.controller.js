@@ -4,7 +4,7 @@ const configCache = require("../utils/config-cache");
 // GET /api/service-requests
 exports.getServiceRequests = async (req, res) => {
   try {
-    const requests = await ServiceRequest.find({ customer: req.user._id }).sort({ createdAt: -1 });
+    const requests = await ServiceRequest.find({ customerId: req.user._id }).sort({ createdAt: -1 });
     return res.json(requests);
   } catch (err) {
     return res.status(500).json({ message: "Server error", error: err.message });
@@ -14,7 +14,7 @@ exports.getServiceRequests = async (req, res) => {
 // GET /api/service-requests/:id
 exports.getServiceRequest = async (req, res) => {
   try {
-    const sr = await ServiceRequest.findOne({ _id: req.params.id, customer: req.user._id });
+    const sr = await ServiceRequest.findOne({ _id: req.params.id, customerId: req.user._id });
     if (!sr) return res.status(404).json({ message: "Service request not found" });
     return res.json(sr);
   } catch (err) {
@@ -64,7 +64,7 @@ exports.createServiceRequest = async (req, res) => {
     const subject = serviceType === "Other" ? serviceTypeOther || "Other" : serviceType;
 
     const sr = await ServiceRequest.create({
-      customer: req.user._id,
+      customerId: req.user._id,
       acUnitModel: acUnitModel || "",
       acUnitSerial: acUnitSerial || "",
       acWarrantyStatus: acWarrantyStatus || "Unknown",
@@ -78,7 +78,7 @@ exports.createServiceRequest = async (req, res) => {
       estimatedCharges: estimatedCharges || 0,
       paymentRequired: paymentRequired || false,
       subject,
-      status: "Pending"
+      status: "New"
     });
 
     return res.status(201).json({ message: "Service request submitted successfully", serviceRequest: sr });
@@ -90,7 +90,7 @@ exports.createServiceRequest = async (req, res) => {
 // POST /api/service-requests/:id/cancel
 exports.cancelServiceRequest = async (req, res) => {
   try {
-    const sr = await ServiceRequest.findOne({ _id: req.params.id, customer: req.user._id });
+    const sr = await ServiceRequest.findOne({ _id: req.params.id, customerId: req.user._id });
     if (!sr) return res.status(404).json({ message: "Service request not found" });
 
     if (["Completed", "Cancelled"].includes(sr.status)) {

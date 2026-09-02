@@ -1,14 +1,13 @@
 const mongoose = require("mongoose");
-const { v4: uuidv4 } = require("uuid");
+const Counter = require("./counter.model");
 
 const serviceRequestSchema = new mongoose.Schema(
   {
     serviceRequestRef: {
       type: String,
-      unique: true,
-      default: () => "SRQ-" + uuidv4().split("-")[0].toUpperCase()
+      unique: true
     },
-    customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
     // AC Unit details
     acUnitModel: { type: String, trim: true, default: "" },
@@ -26,7 +25,7 @@ const serviceRequestSchema = new mongoose.Schema(
 
     serviceType: {
       type: String,
-      enum: ["Repair", "General Service", "Gas Refill", "Installation Issue", "AMC Service", "Other"],
+      enum: ["Repair", "Maintenance"],
       required: true
     },
     serviceTypeOther: { type: String, default: "" },
@@ -44,11 +43,45 @@ const serviceRequestSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["Pending", "Assigned", "In Progress", "Completed", "Cancelled"],
-      default: "Pending"
+      enum: ["New", "Pending", "Assigned", "In Progress", "Completed", "Cancelled"],
+      default: "New"
     }
   },
-  { timestamps: true }
+  { timestamps: true, collection: "service_tickets" }
 );
 
-module.exports = mongoose.models.ServiceRequest || mongoose.model("ServiceRequest", serviceRequestSchema);
+serviceRequestSchema.pre('save', async function () {
+  const doc = this;
+  if (doc.isNew) {
+    const CounterModel = mongoose.model('Counter');
+    
+    // First, try to just increment
+    let counter = await CounterModel.findOneAndUpdate(
+      { _id: 'serviceTicket' },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    
+    // If it's somehow null (which shouldn't happen with new+upsert, but just in case)
+    if (!counter) {
+      counter = { seq: 1000 };
+      await CounterModel.updateOne(
+        { _id: 'serviceTicket' },
+        { $set: { seq: 1000 } },
+        { upsert: true }
+      );
+    } 
+    // If it's less than 1000, jump it to 1000
+    else if (counter.seq < 1000) {
+      counter = await CounterModel.findOneAndUpdate(
+        { _id: 'serviceTicket' },
+        { $set: { seq: 1000 } },
+        { new: true }
+      );
+    }
+    
+    doc.serviceRequestRef = `SRQ-${counter.seq}`;
+  }
+});
+
+module.exports = mongoose.models.ServiceRequest || mongoose.model('ServiceRequest', serviceRequestSchema);

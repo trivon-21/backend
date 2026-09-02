@@ -1,19 +1,21 @@
 const Installation = require('../modules/shared/installation/installation.model');
-const ServiceRequest = require('../modules/shared/repair/repair.model');
+const ServiceTicket = require('../models/ServiceRequest');
 const { EXECUTION_STATUS } = require('../constants/enums');
 
 /**
  * Calculates warranty status for a customer.
- * Checks if under warranty and if eligible for free service.
+ * Checks if under warranty and if eligible for free service based on service type.
  * 
  * Warranty rules:
  * - 2 year warranty from installation completion date
- * - First 3 services within warranty period are free
+ * - First 2 Repair services within warranty period are free
+ * - First 4 Maintenance services within warranty period are free
  * 
  * @param {string|ObjectId} customerObjectId - Customer ID to check warranty for
+ * @param {string} [serviceType] - 'Repair' or 'Maintenance'
  * @returns {Promise<{isUnderWarranty: boolean, isFreeOfCharge: boolean}>}
  */
-exports.calculateWarrantyStatus = async (customerObjectId) => {
+exports.calculateWarrantyStatus = async (customerObjectId, serviceType) => {
   try {
     let isUnderWarranty = false;
     let isFreeOfCharge = false;
@@ -33,15 +35,23 @@ exports.calculateWarrantyStatus = async (customerObjectId) => {
       // Check if current date is within warranty period
       isUnderWarranty = new Date() <= warrantyExpiryDate;
 
-      // Count services completed within warranty period
-      const completedWithinWarranty = await ServiceRequest.countDocuments({
-        customerId: customerObjectId,
-        status: EXECUTION_STATUS.COMPLETED,
-        createdAt: { $gte: installDate, $lte: warrantyExpiryDate }
-      });
+      if (isUnderWarranty && serviceType) {
+        // Count services completed within warranty period matching this serviceType
+        const completedCount = await ServiceTicket.countDocuments({
+          customerId: customerObjectId,
+          status: 'Completed',
+          serviceType: serviceType,
+          createdAt: { $gte: installDate, $lte: warrantyExpiryDate }
+        });
 
-      // First 3 services are free
-      isFreeOfCharge = isUnderWarranty && completedWithinWarranty < 3;
+        if (serviceType === 'Repair') {
+          // First 2 repairs are free
+          isFreeOfCharge = completedCount < 2;
+        } else if (serviceType === 'Maintenance') {
+          // First 4 maintenances are free
+          isFreeOfCharge = completedCount < 4;
+        }
+      }
     }
 
     return { isUnderWarranty, isFreeOfCharge };
