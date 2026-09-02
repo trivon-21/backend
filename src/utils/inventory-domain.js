@@ -18,6 +18,36 @@ const ITEM_SUBCATEGORIES = {
   Unclassified: ['Unclassified']
 };
 
+const INVENTORY_LOCATIONS = [
+  {
+    warehouse: 'Central Warehouse',
+    placementAreas: [
+      'Receiving & Inspection',
+      'Small Parts Racking',
+      'Consumables Storage',
+      'Dispatch Staging'
+    ]
+  },
+  {
+    warehouse: 'Equipment Warehouse',
+    placementAreas: [
+      'Indoor Unit Storage',
+      'Outdoor Unit Storage',
+      'Large Equipment Floor',
+      'Installation Materials'
+    ]
+  },
+  {
+    warehouse: 'Service Warehouse',
+    placementAreas: [
+      'Spare Parts Racking',
+      'Tool Crib',
+      'Technician Pickup',
+      'Returns & Quarantine'
+    ]
+  }
+];
+
 const LEGACY_CLASS_MAP = {
   'Air Conditioners': 'AC Equipment',
   'Repair Parts': 'Spare Parts',
@@ -67,9 +97,15 @@ function isValidClassification(itemClass, subcategory) {
   return ITEM_CLASSES.includes(itemClass) && (ITEM_SUBCATEGORIES[itemClass] || []).includes(subcategory);
 }
 
+function isValidInventoryLocation(warehouse, placementArea) {
+  const location = INVENTORY_LOCATIONS.find((entry) => entry.warehouse === warehouse);
+  return Boolean(location && location.placementAreas.includes(placementArea));
+}
+
 module.exports = {
   ITEM_CLASSES,
   ITEM_SUBCATEGORIES,
+  INVENTORY_LOCATIONS,
   LEGACY_CLASS_MAP,
   deriveStockStatus,
   toLegacyStatus,
@@ -78,5 +114,6 @@ module.exports = {
   normalizeStringList,
   suggestedOrderQuantity,
   classifyLegacyItem,
-  isValidClassification
+  isValidClassification,
+  isValidInventoryLocation
 };

@@ -25,7 +25,9 @@ const {
   isLowStock,
   normalizeStringList,
   suggestedOrderQuantity,
-  isValidClassification
+  isValidClassification,
+  INVENTORY_LOCATIONS,
+  isValidInventoryLocation
 } = require('../../utils/inventory-domain');
 const {
   ACTIVE_INCOMING_STATUSES,
@@ -33,6 +35,9 @@ const {
   outstandingQuantity,
   fulfillmentStatus,
   NON_PO_REASONS,
+  purchaseRequestWorkflowStages,
+  receiptAuthorizationWorkflowStages,
+  summarizeProcurementWorkflow,
 } = require('../../utils/purchase-workflow');
 
 const MASTER_DATA_FIELDS = [
@@ -53,6 +58,8 @@ function normalizeInventoryData(data, applyDefaults = true) {
   if (normalized.itemClass) normalized.category = normalized.itemClass;
   else delete normalized.category;
   if (normalized.supplierId === '') delete normalized.supplierId;
+  if (normalized.location !== undefined) normalized.location = String(normalized.location).trim();
+  if (normalized.binLocation !== undefined) normalized.binLocation = String(normalized.binLocation).trim();
   for (const field of ['compatibleModels', 'refrigerants', 'serialNumbers']) {
     if (normalized[field] !== undefined) normalized[field] = normalizeStringList(normalized[field]);
   }
@@ -137,6 +144,9 @@ async function validateCatalogData(data, { partial = false } = {}) {
     if (!isValidClassification(data.itemClass, data.subcategory) || data.itemClass === 'Unclassified') {
       throw serviceError('Select a valid product class and subcategory', 400, 'INVALID_CLASSIFICATION');
     }
+  }
+  if (!isValidInventoryLocation(data.location, data.binLocation)) {
+    throw serviceError('Select a valid warehouse and placement area', 400, 'INVALID_STORAGE_LOCATION');
   }
   for (const field of ['reorderLevel', 'maxStockLevel', 'unitCost', 'capacityBtu']) {
     if (data[field] !== undefined && data[field] !== null && Number(data[field]) < 0) {
@@ -231,23 +241,8 @@ exports.getDashboardData = async (user) => {
       stockStatus: deriveStockStatus(i.available, i.reorderLevel)
     }));
 
-  const normalAwaitingManager = orderRequests.filter((request) =>
-    ['pending-manager', 'pending-approval'].includes(canonicalPurchaseStatus(request.status)),
-  ).length;
-  const normalAwaitingReceipt = orderRequests.filter((request) =>
-    ['ordered', 'partially-received'].includes(canonicalPurchaseStatus(request.status))
-    && (request.items || []).some((line) => outstandingQuantity(line) > 0),
-  ).length;
-  const normalAwaitingFinance = orderRequests.filter((request) =>
-    canonicalPurchaseStatus(request.status) === 'pending-finance',
-  ).length;
-  const emergencyAwaitingManager = authorizations.filter((item) => item.status === 'pending').length;
-  const emergencyAwaitingReceipt = authorizations.filter((item) =>
-    ['approved', 'partially-received'].includes(item.status),
-  ).length;
-  const emergencyAwaitingFinance = authorizations.filter((item) =>
-    Number(item.receivedQuantity || 0) > 0 && item.financeReviewStatus === 'pending',
-  ).length;
+  const inventoryIds = new Set(inventory.map((item) => String(item._id)));
+  const procurementWorkflow = summarizeProcurementWorkflow(orderRequests, authorizations, { inventoryIds });
 
   return {
     managerName: user?.fullName?.split(' ')[0] || 'Manager',
@@ -263,11 +258,7 @@ exports.getDashboardData = async (user) => {
       actionLabel: a.actionLabel
     })),
     reorderList,
-    procurementWorkflow: {
-      awaitingManager: normalAwaitingManager + emergencyAwaitingManager,
-      awaitingReceipt: normalAwaitingReceipt + emergencyAwaitingReceipt,
-      awaitingFinance: normalAwaitingFinance + emergencyAwaitingFinance,
-    }
+    procurementWorkflow,
   };
 };
 
@@ -287,6 +278,11 @@ exports.getInventoryItem = async (id) => {
   const item = await Inventory.findById(id).populate('supplierId', 'name');
   return synchronizeStatusForResponse(item);
 };
+
+exports.getInventoryLocations = () => INVENTORY_LOCATIONS.map((location) => ({
+  warehouse: location.warehouse,
+  placementAreas: [...location.placementAreas],
+}));
 
 /**
  * Updates an existing inventory item.
@@ -309,8 +305,9 @@ exports.updateInventoryItem = async (id, data) => {
   }
   update.status = legacyStockStatus(existing.available, update.reorderLevel ?? existing.reorderLevel);
 
-  return await Inventory.findByIdAndUpdate(id, update, { new: true, runValidators: true })
-    .populate('supplierId', 'name');
+  existing.set(update);
+  await existing.save();
+  return existing.populate('supplierId', 'name');
 };
 
 /**
@@ -421,10 +418,15 @@ exports.getReceiptAuthorizations = async (filters = {}, user) => {
   assertRole(user, ['INVENTORY']);
   const query = {};
   if (filters.status) query.status = filters.status;
-  return ReceiptAuthorization.find(query)
+  const authorizations = await ReceiptAuthorization.find(query)
     .populate('inventoryId', 'name sku available reorderLevel itemClass subcategory brand isSerialized')
     .populate('supplierId', 'name')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
+  return authorizations.map((authorization) => ({
+    ...authorization,
+    workflowStages: receiptAuthorizationWorkflowStages(authorization),
+  }));
 };
 
 /** Posts an issued PO line or approved Non-PO authorization through one transaction. */
@@ -437,6 +439,15 @@ exports.receiveInventory = async (data, user) => {
   const quantity = Number(data.quantity);
   if (!Number.isInteger(quantity) || quantity <= 0) {
     throw serviceError('Receipt quantity must be a positive whole number', 400, 'INVALID_QUANTITY');
+  }
+  const location = String(data.location || '').trim();
+  const binLocation = String(data.binLocation || '').trim();
+  if (!isValidInventoryLocation(location, binLocation)) {
+    throw serviceError(
+      'Select a valid warehouse and placement area for received stock',
+      400,
+      'INVALID_STORAGE_LOCATION',
+    );
   }
   const sourceDocumentNumber = String(data.sourceDocumentNumber || '').trim();
   if (!sourceDocumentNumber) {
@@ -547,8 +558,8 @@ exports.receiveInventory = async (data, user) => {
       item.available += quantity;
       item.serialNumbers.push(...serialNumbers);
       item.supplierId = supplier._id;
-      if (data.location) item.location = data.location;
-      if (data.binLocation !== undefined) item.binLocation = data.binLocation;
+      item.location = location;
+      item.binLocation = binLocation;
       item.unitCost = receiptUnitCost;
       item.status = legacyStockStatus(item.available, item.reorderLevel);
       await item.save({ session });
@@ -592,6 +603,7 @@ exports.receiveInventory = async (data, user) => {
         unit: item.unit,
         unitCost: receiptUnitCost,
         totalCost: quantity * receiptUnitCost,
+        location: item.location,
         binLocation: item.binLocation || '',
         receivedBy: actorName(user, 'Inventory Manager'),
         receivedDate: data.receivedDate || new Date(),
@@ -1046,7 +1058,15 @@ exports.getAssetReturnLogs = async () => {
  */
 exports.getOrderRequests = async (user) => {
   assertRole(user, ['INVENTORY']);
-  return await PurchaseRequest.find().populate('items.supplierId', 'name').sort({ createdAt: -1 });
+  const requests = await PurchaseRequest.find()
+    .populate('items.supplierId', 'name')
+    .sort({ createdAt: -1 })
+    .lean();
+  return requests.map((request) => ({
+    ...request,
+    status: canonicalPurchaseStatus(request.status),
+    workflowStages: purchaseRequestWorkflowStages(request),
+  }));
 };
 
 /**

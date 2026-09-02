@@ -10,7 +10,12 @@
     "test": "npm run test:legacy && npm run test:domain",
     "test:legacy": "mocha tests/unit/*.test.js",
     "test:domain": "node --test test/*.test.js",
-    "workflow:reset-materials": "node scripts/reset-material-workflow.js"
+    "workflow:reset-materials": "node scripts/reset-material-workflow.js",
+    "workflow:migrate-purchasing": "node scripts/migrate-purchasing-workflow.js",
+    "workflow:migrate-orders": "node scripts/migrate-order-compatibility.js",
+    "workflow:reconcile-indexes": "node scripts/reconcile-manager-inventory-indexes.js",
+    "schema:snapshot": "node scripts/export-schema-snapshot.js",
+    "schema:audit": "npm run schema:snapshot && node scripts/audit-schema-snapshot.js --schema-report ../schema-report-new.json"
   },
   "keywords": [],
   "author": "",

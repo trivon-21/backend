@@ -75,7 +75,7 @@ exports.cancelOrder = async (orderId, userId) => {
     const updated = await Order.findByIdAndUpdate(
       orderId,
       { orderStatus: 'Cancelled', status: 'Returned' },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     return updated;
@@ -151,6 +151,7 @@ exports.createOrder = async (orderData, customerId) => {
     const order = await Order.create({
       ...orderData,
       customer: customerId,
+      userId: String(customerId),
       orderStatus,
       status: needsApproval ? 'Pending' : 'Completed',
     });

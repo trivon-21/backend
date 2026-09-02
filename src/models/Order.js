@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require("uuid");
 const normalizeOrderCompatibility = (doc) => {
   if (!doc || typeof doc !== "object") return doc;
 
-  if (!doc.customer && doc.userId) {
+  if (!doc.customer && doc.userId && mongoose.Types.ObjectId.isValid(String(doc.userId))) {
     doc.customer = doc.userId;
   }
 
@@ -51,42 +51,52 @@ const normalizeOrderCompatibility = (doc) => {
   return doc;
 };
 
+const ownerCompatibilityFilter = (ownerId) => {
+  const normalized = String(ownerId || '').trim();
+  if (!normalized) return { _id: null };
+  const alternatives = [
+    { userId: normalized },
+    { $expr: { $eq: [{ $toString: '$userId' }, normalized] } },
+  ];
+  if (mongoose.Types.ObjectId.isValid(normalized)) {
+    alternatives.unshift({ customer: new mongoose.Types.ObjectId(normalized) });
+  }
+  return { $or: alternatives };
+};
+
+function appendCompatibilityClause(query, clause) {
+  if (Array.isArray(query.$or)) {
+    query.$and = [...(query.$and || []), { $or: query.$or }];
+    delete query.$or;
+  }
+  query.$and = [...(query.$and || []), clause];
+}
+
 const normalizeOrderQueryCompatibility = (query = {}) => {
   const normalized = { ...query };
 
   if (normalized.customer && normalized.userId === undefined) {
-    normalized.$or = [
-      { customer: normalized.customer },
-      { userId: String(normalized.customer) }
-    ];
+    appendCompatibilityClause(normalized, ownerCompatibilityFilter(normalized.customer));
     delete normalized.customer;
   }
 
   if (normalized.orderType === "Buy Only") {
-    const combined = Array.isArray(normalized.$or) ? [...normalized.$or] : [];
-    combined.push({ orderType: "Buy Only" }, { "items.purchaseType": "buy_only" });
-    normalized.$or = combined;
+    appendCompatibilityClause(normalized, { $or: [{ orderType: "Buy Only" }, { "items.purchaseType": "buy_only" }] });
     delete normalized.orderType;
   }
 
   if (normalized.orderType === "Buy & Install") {
-    const combined = Array.isArray(normalized.$or) ? [...normalized.$or] : [];
-    combined.push({ orderType: "Buy & Install" }, { "items.purchaseType": "buy_and_install" });
-    normalized.$or = combined;
+    appendCompatibilityClause(normalized, { $or: [{ orderType: "Buy & Install" }, { "items.purchaseType": "buy_and_install" }] });
     delete normalized.orderType;
   }
 
   if (normalized.paymentStatus === "Under Review") {
-    const combined = Array.isArray(normalized.$or) ? [...normalized.$or] : [];
-    combined.push({ paymentStatus: "Under Review" }, { status: "Under Review (Finance)" });
-    normalized.$or = combined;
+    appendCompatibilityClause(normalized, { $or: [{ paymentStatus: "Under Review" }, { status: "Under Review (Finance)" }] });
     delete normalized.paymentStatus;
   }
 
   if (normalized.paymentStatus === "Approved" || normalized.paymentStatus === "Confirmed") {
-    const combined = Array.isArray(normalized.$or) ? [...normalized.$or] : [];
-    combined.push({ paymentStatus: "Approved" }, { paymentStatus: "Confirmed" });
-    normalized.$or = combined;
+    appendCompatibilityClause(normalized, { $or: [{ paymentStatus: "Approved" }, { paymentStatus: "Confirmed" }] });
     delete normalized.paymentStatus;
   }
 
@@ -136,7 +146,8 @@ const orderSchema = new mongoose.Schema(
         "Shipped",
         "Delivered",
         "Installation Scheduled",
-        "Installation Completed"
+        "Installation Completed",
+        "Cancelled"
       ],
       default: "Order Placed"
     },
@@ -206,5 +217,16 @@ orderSchema.pre(["find", "findOne"], function () {
     this._conditions = normalizeOrderQueryCompatibility(this._conditions);
   }
 });
+
+orderSchema.pre('validate', function synchronizeOwnerFields() {
+  if (!this.userId && this.customer) this.userId = String(this.customer);
+  if (!this.customer && this.userId && mongoose.Types.ObjectId.isValid(String(this.userId))) {
+    this.customer = this.userId;
+  }
+});
+
+orderSchema.post('init', normalizeOrderCompatibility);
+orderSchema.statics.normalizeCompatibility = normalizeOrderCompatibility;
+orderSchema.statics.ownerCompatibilityFilter = ownerCompatibilityFilter;
 
 module.exports = mongoose.model("Order", orderSchema);

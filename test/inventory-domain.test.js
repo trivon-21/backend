@@ -6,7 +6,9 @@ const {
   normalizeStringList,
   suggestedOrderQuantity,
   classifyLegacyItem,
-  isValidClassification
+  isValidClassification,
+  INVENTORY_LOCATIONS,
+  isValidInventoryLocation
 } = require('../src/utils/inventory-domain');
 
 test('derives stock status at threshold boundaries including zero reorder level', () => {
@@ -21,6 +23,14 @@ test('validates shared product-class and subcategory pairs', () => {
   assert.equal(isValidClassification('Spare Parts', 'Compressor'), true);
   assert.equal(isValidClassification('Spare Parts', 'Vacuum Pump'), false);
   assert.equal(isValidClassification('Unknown', 'Compressor'), false);
+});
+
+test('allows only fixed warehouse and placement-area pairs', () => {
+  assert.equal(INVENTORY_LOCATIONS.length, 3);
+  assert.equal(isValidInventoryLocation('Central Warehouse', 'Small Parts Racking'), true);
+  assert.equal(isValidInventoryLocation('Central Warehouse', 'Tool Crib'), false);
+  assert.equal(isValidInventoryLocation('Made Up Warehouse', 'Small Parts Racking'), false);
+  assert.equal(isValidInventoryLocation('Central Warehouse', 'Made Up Area'), false);
 });
 
 test('suggests replenishment to maximum stock with a minimum of one', () => {
