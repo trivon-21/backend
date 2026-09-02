@@ -206,3 +206,31 @@ exports.updateTaskStatus = async (req, res) => {
   }
 };
 
+exports.addAdditionalService = async (req, res) => {
+  try {
+    const { description } = req.body;
+    if (!description) {
+      return res.status(400).json({ success: false, message: 'Description is required' });
+    }
+    const task = await findTaskRecord(req.params.id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    const ServiceTicket = require('../shared/serviceTicket/serviceTicket.model');
+    const newService = new ServiceTicket({
+      customerId: task.record.customerId?._id || task.record.customerId,
+      description: description,
+      requestType: 'Repair',
+      category: 'repair',
+      status: 'New',
+      preferredDate: new Date(),
+      serviceRequestRef: 'REF-' + Date.now() + '-' + Math.floor(Math.random() * 1000)
+    });
+
+    await newService.save();
+    res.json({ success: true, data: newService });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
