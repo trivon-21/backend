@@ -42,6 +42,7 @@ const servicePaymentRoutes = require('../modules/finance/servicePayment.routes')
 const auditLogRoutes = require('../modules/finance/auditLog.routes');
 const financialReportRoutes = require('../modules/finance/financialReport.routes');
 const purchaseRequestRoutes = require('../modules/finance/purchaseRequest.routes');
+const maintenancePaymentRoutes = require('../modules/finance/maintenancePayment.routes');
 
 const { API_SEGMENTS } = require('../constants/enums');
 
@@ -91,5 +92,6 @@ router.use('/service-payments', servicePaymentRoutes);
 router.use('/audit-logs', auditLogRoutes);
 router.use('/financial-report', financialReportRoutes);
 router.use('/purchase-requests', purchaseRequestRoutes);
+router.use('/maintenance-payments', maintenancePaymentRoutes);
 
 module.exports = router;
