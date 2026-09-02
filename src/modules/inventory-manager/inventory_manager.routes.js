@@ -11,6 +11,8 @@ router.use(authorize(["INVENTORY", "SUPER_ADMIN"]));
 router.get("/dashboard", controller.getDashboard);
 // Inventory list
 router.get("/list", controller.getInventory);
+// Fixed warehouse and placement-area catalog
+router.get("/locations", controller.getLocations);
 // Single item
 router.get("/item/:id", controller.getItem);
 // Update item

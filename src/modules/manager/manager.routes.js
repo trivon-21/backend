@@ -16,10 +16,6 @@ router.get("/", controller.getStatus);
 // Payment auto-cancel endpoint
 router.post("/payments/auto-cancel", controller.triggerPaymentAutoCancel);
 
-// Quotation approval/rejection endpoints
-router.post("/orders/:orderId/approve", controller.approveQuotation);
-router.post("/orders/:orderId/reject", controller.rejectQuotation);
-
 // Manager dashboard data endpoint
 router.get("/dashboard", controller.getDashboard);
 

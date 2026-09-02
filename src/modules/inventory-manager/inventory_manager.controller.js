@@ -25,6 +25,14 @@ exports.getDashboard = async (req, res) => {
       logistics: [],
       procurementWorkflow: {
         awaitingManager: 0,
+        awaitingFinanceApproval: 0,
+        readyToIssue: 0,
+        readyToReceive: 0,
+        awaitingReceiptReconciliation: 0,
+        breakdown: {
+          awaitingManager: { purchaseRequests: 0, receiptAuthorizations: 0 },
+          readyToReceive: { purchaseOrders: 0, receiptAuthorizations: 0 }
+        },
         awaitingReceipt: 0,
         awaitingFinance: 0
       }
@@ -43,6 +51,10 @@ exports.getInventory = async (req, res) => {
     console.error('Inventory fetch error:', error);
     res.status(500).json({ message: "Failed to fetch inventory data" });
   }
+};
+
+exports.getLocations = (req, res) => {
+  res.json(service.getInventoryLocations());
 };
 
 /**
@@ -67,7 +79,8 @@ exports.updateItem = async (req, res) => {
     if (!data) return res.status(404).json({ message: "Item not found", code: "ITEM_NOT_FOUND" });
     res.json(data);
   } catch (error) {
-    res.status(error.statusCode || 500).json({ message: error.message || "Failed to update item", code: error.code });
+    const status = error.statusCode || (error.name === 'ValidationError' ? 400 : 500);
+    res.status(status).json({ message: error.message || "Failed to update item", code: error.code });
   }
 };
 

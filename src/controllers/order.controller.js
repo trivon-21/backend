@@ -120,6 +120,7 @@ function formatOrder(o) {
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const mongoose = require('mongoose');
 const InstallationOrder = require('../models/installationOrder.model');
 const Cart = require('../models/cart.model');
 const Counter = require('../models/counter.model');
@@ -212,10 +213,13 @@ async function performInitialization(req, res, Model, prefix, purchaseType, coun
     const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
     const total = subtotal;
 
+    const ownerFields = Model === Order
+      ? { userId: String(userId), ...(mongoose.Types.ObjectId.isValid(String(userId)) ? { customer: userId } : {}) }
+      : { userId };
     const order = new Model({
       orderReference,
       orderId: orderReference,
-      userId,
+      ...ownerFields,
       items,
       subtotal,
       total,
@@ -318,7 +322,7 @@ exports.submitPayment = async (req, res) => {
 // ── Other Helpers ────────────────────────────────────────────────────────────
 exports.getOrdersByUser = async (req, res) => {
   try {
-    const orders = await Order.find({ userId: req.params.userId });
+    const orders = await Order.find(Order.ownerCompatibilityFilter(req.params.userId));
     const installationOrders = await InstallationOrder.find({ userId: req.params.userId });
 
     // Combine and sort by date

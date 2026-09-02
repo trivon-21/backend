@@ -4,6 +4,8 @@ const WarehousePickRequest = require('../../models/WarehousePickRequest');
 const PurchaseRequest = require('../../models/PurchaseRequest');
 const Procurement = require('../../models/Procurement');
 const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
+const CustomerOrder = require('../../models/Order');
+const Invoice = require('../finance/Invoice.model');
 const { isLowStock } = require('../../utils/inventory-domain');
 const { buildAnalytics } = require('../../utils/manager-metrics');
 const { loadManagerTickets } = require('./manager.ticket-read-model');
@@ -16,13 +18,19 @@ exports.getAnalyticsData = async (_user, periodKey) => {
     throw error;
   }
 
-  const [tickets, orders, inventory, pendingRequests, procurements, authorizations] = await Promise.all([
+  const [tickets, orders, inventory, pendingRequests, procurements, authorizations, customerOrders, invoices] = await Promise.all([
     loadManagerTickets(),
     PurchaseRequest.find({ status: { $ne: 'draft' } }).lean(),
     Inventory.find().lean(),
     WarehousePickRequest.countDocuments({ status: 'pending' }),
     Procurement.find().lean(),
     ReceiptAuthorization.find().lean(),
+    CustomerOrder.find()
+      .select('_id amount total subtotal items.price items.quantity status paymentStatus approvedAt updatedAt')
+      .lean(),
+    Invoice.find()
+      .select('_id orderId invoiceType grandTotal status paidAt acceptedAt updatedAt')
+      .lean(),
   ]);
   const generatedAt = new Date();
   const inventoryById = new Map(inventory.map(item => [String(item._id), item]));
@@ -38,6 +46,8 @@ exports.getAnalyticsData = async (_user, periodKey) => {
     authorizations,
     inventory,
     pendingRequests,
+    customerOrders,
+    invoices,
   );
 
   return {

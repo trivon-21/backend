@@ -26,6 +26,7 @@ const ProcurementSchema = new mongoose.Schema({
   unit: { type: String, required: true },
   unitCost: { type: Number, default: 0, min: 0 },
   totalCost: { type: Number, default: 0, min: 0 },
+  location: { type: String, default: '' },
   binLocation: { type: String, default: '' },
   receivedBy: { type: String, required: true },
   receivedDate: { type: Date, default: Date.now },

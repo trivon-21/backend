@@ -93,6 +93,10 @@ PurchaseRequestSchema.index({ activeShortageKey: 1 }, {
   unique: true,
   partialFilterExpression: { activeShortageKey: { $type: 'string' } },
 });
+PurchaseRequestSchema.index({ poNumber: 1 }, {
+  unique: true,
+  partialFilterExpression: { poNumber: { $type: 'string' } },
+});
 
 module.exports = mongoose.models.ManagerInventoryPurchaseRequest
   || mongoose.model('ManagerInventoryPurchaseRequest', PurchaseRequestSchema);

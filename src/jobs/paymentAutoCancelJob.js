@@ -52,17 +52,17 @@ async function executePaymentAutoCancelJob() {
             paymentStatus: 'Rejected',
             status: 'Cancelled',
           },
-          { new: true }
+          { new: true, runValidators: true }
         );
 
         cancelledOrders.push({
           _id: updated._id,
-          orderRef: updated.orderRef,
-          customer: updated.customer,
-          amount: updated.amount,
+          orderRef: updated.orderRef || updated.orderReference || updated.orderId,
+          customer: updated.customer || updated.userId,
+          amount: updated.amount ?? updated.total ?? updated.subtotal ?? 0,
         });
 
-        console.log(`[Payment Auto-Cancel Job] Cancelled order: ${updated.orderRef}`);
+        console.log(`[Payment Auto-Cancel Job] Cancelled order: ${updated.orderRef || updated.orderReference || updated.orderId}`);
       } catch (err) {
         console.error(`[Payment Auto-Cancel Job] Error cancelling order ${order.orderRef}:`, err.message);
       }

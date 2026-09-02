@@ -47,6 +47,88 @@ function fulfillmentStatus(lines) {
   return 'ordered';
 }
 
+function inventoryReference(value) {
+  if (!value) return '';
+  return String(value._id || value.id || value);
+}
+
+function purchaseRequestWorkflowStages(request, inventoryIds) {
+  const status = canonicalPurchaseStatus(request.status);
+  if (status === 'pending-manager') return ['awaiting-manager'];
+  if (status === 'pending-finance') return ['awaiting-finance-approval'];
+  if (status === 'approved') return ['ready-to-issue'];
+  if (!['ordered', 'partially-received'].includes(status)) return [];
+
+  const receivable = (request.items || []).some((line) => {
+    const inventoryId = inventoryReference(line.inventoryId);
+    return outstandingQuantity(line) > 0
+      && inventoryId
+      && (!inventoryIds || inventoryIds.has(inventoryId));
+  });
+  return receivable ? ['ready-to-receive'] : [];
+}
+
+function receiptAuthorizationWorkflowStages(authorization, inventoryIds) {
+  const stages = [];
+  if (authorization.status === 'pending') stages.push('awaiting-manager');
+
+  const remaining = Math.max(
+    0,
+    Number(authorization.authorizedQuantity || 0) - Number(authorization.receivedQuantity || 0),
+  );
+  const inventoryId = inventoryReference(authorization.inventoryId);
+  const hasReceivableItem = authorization.newItemSnapshot
+    || (inventoryId && (!inventoryIds || inventoryIds.has(inventoryId)));
+  if (['approved', 'partially-received'].includes(authorization.status)
+    && remaining > 0 && hasReceivableItem) {
+    stages.push('ready-to-receive');
+  }
+  if (Number(authorization.receivedQuantity || 0) > 0
+    && authorization.financeReviewStatus === 'pending') {
+    stages.push('awaiting-receipt-reconciliation');
+  }
+  return stages;
+}
+
+function summarizeProcurementWorkflow(purchaseRequests, authorizations, options = {}) {
+  const inventoryIds = options.inventoryIds;
+  const purchaseStages = purchaseRequests.map((request) => (
+    purchaseRequestWorkflowStages(request, inventoryIds)
+  ));
+  const authorizationStages = authorizations.map((authorization) => (
+    receiptAuthorizationWorkflowStages(authorization, inventoryIds)
+  ));
+  const purchaseCount = (stage) => purchaseStages.filter((stages) => stages.includes(stage)).length;
+  const authorizationCount = (stage) => authorizationStages.filter((stages) => stages.includes(stage)).length;
+
+  const awaitingManagerPurchaseRequests = purchaseCount('awaiting-manager');
+  const awaitingManagerReceiptAuthorizations = authorizationCount('awaiting-manager');
+  const readyPurchaseOrders = purchaseCount('ready-to-receive');
+  const readyReceiptAuthorizations = authorizationCount('ready-to-receive');
+  const readyToReceive = readyPurchaseOrders + readyReceiptAuthorizations;
+  const awaitingReceiptReconciliation = authorizationCount('awaiting-receipt-reconciliation');
+
+  return {
+    awaitingManager: awaitingManagerPurchaseRequests + awaitingManagerReceiptAuthorizations,
+    awaitingFinanceApproval: purchaseCount('awaiting-finance-approval'),
+    readyToIssue: purchaseCount('ready-to-issue'),
+    readyToReceive,
+    awaitingReceiptReconciliation,
+    breakdown: {
+      awaitingManager: {
+        purchaseRequests: awaitingManagerPurchaseRequests,
+        receiptAuthorizations: awaitingManagerReceiptAuthorizations,
+      },
+      readyToReceive: {
+        purchaseOrders: readyPurchaseOrders,
+        receiptAuthorizations: readyReceiptAuthorizations,
+      },
+    },
+    awaitingReceipt: readyToReceive,
+    awaitingFinance: awaitingReceiptReconciliation,
+  };
+}
+
 module.exports = {
   PURCHASE_STATUSES,
   LEGACY_PURCHASE_STATUSES,
@@ -56,4 +138,7 @@ module.exports = {
   canonicalPurchaseStatus,
   outstandingQuantity,
   fulfillmentStatus,
+  purchaseRequestWorkflowStages,
+  receiptAuthorizationWorkflowStages,
+  summarizeProcurementWorkflow,
 };
