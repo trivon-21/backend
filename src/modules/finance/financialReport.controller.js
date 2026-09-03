@@ -71,20 +71,19 @@ exports.getRevenueSummary = async (req, res) => {
       inspectionRevenue = approvedTickets.reduce((s, t) => s + (t.inspectionFee || inspFee), 0);
     }
 
-    // 4. Service payments — real field: paymentStatus "APPROVED", serviceFee
-    let serviceRevenue = 0;
-    const SvcTicket = getServiceTicket();
-    if (SvcTicket) {
-      const approvedSvc = await SvcTicket.find({
-        paymentStatus: "APPROVED",
-        $or: [
-          { approvedAt: { $gte: start, $lte: end } },
-          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
-          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
-        ]
-      });
-      serviceRevenue = approvedSvc.reduce((s, t) => s + (t.serviceFee || 0), 0);
-    }
+
+  // Maintenance revenue — from the Maintenance collection, not ServiceTicket
+let serviceRevenue = 0;
+try {
+  const Maintenance = mongoose.model("Maintenance");
+  const approvedMaintenance = await Maintenance.find({
+    status: "Finance Approved",
+    updatedAt: { $gte: start, $lte: end }
+  });
+  serviceRevenue = approvedMaintenance.reduce((s, m) => s + (m.paymentAmount || 0), 0);
+} catch (e) {
+  console.error("Maintenance revenue calc failed:", e.message);
+}
 
     // 5. Buy-only payments — match by status OR paymentStatus (team schema has both fields;
     //    which one actually gets set depends on the exact approval codepath, so check both)
@@ -215,20 +214,16 @@ async function getMonthlyBreakdown(Invoice, months) {
       inspection = tickets.reduce((s, t) => s + (t.inspectionFee || inspFee), 0);
     } catch {}
 
-    // 4. Services — real status "APPROVED", field serviceFee
-    let service = 0;
-    try {
-      const SvcTicket = mongoose.model("ServiceTicket");
-      const svcs = await SvcTicket.find({
-        paymentStatus: "APPROVED",
-        $or: [
-          { approvedAt: { $gte: start, $lte: end } },
-          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
-          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
-        ]
-      });
-      service = svcs.reduce((s, t) => s + (t.serviceFee || 0), 0);
-    } catch {}
+  // 4. Maintenance revenue
+let service = 0;
+try {
+  const Maintenance = mongoose.model("Maintenance");
+  const maints = await Maintenance.find({
+    status: "Finance Approved",
+    updatedAt: { $gte: start, $lte: end }
+  });
+  service = maints.reduce((s, m) => s + (m.paymentAmount || 0), 0);
+} catch {}
 
     // 5. Purchase expenses
     let purchase = 0;
@@ -436,35 +431,41 @@ exports.getPaymentCollections = async (req, res) => {
       }
     }
 
-    // 4. Service payments — real status "APPROVED", field serviceFee
-    const SvcTicket = getServiceTicket();
-    if (SvcTicket) {
-      const svcs = await SvcTicket.find({
-        paymentStatus: "APPROVED",
-        $or: [
-          { approvedAt: { $gte: start, $lte: end } },
-          { approvedAt: { $exists: false }, updatedAt: { $gte: start, $lte: end } },
-          { approvedAt: null, updatedAt: { $gte: start, $lte: end } },
-        ],
-      });
-      for (const t of svcs) {
-        let customerName = "—";
-        try {
-          const User = mongoose.model("User");
-          const user = await User.findById(t.customerId);
-          if (user) customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
-        } catch {}
-        collections.push({
-          date:      t.approvedAt || t.updatedAt,
-          type:      t.serviceType === "REPAIR" ? "Repair Service" : "Maintenance Service",
-          reference: `SVC-${t._id.toString().slice(-6).toUpperCase()}`,
-          customer:  customerName,
-          amount:    t.serviceFee || 0,
-          method:    "Bank Transfer",
-          status:    "Approved",
-        });
-      }
-    }
+    const getMaintenanceModel = () => {
+  try { return mongoose.model("Maintenance"); }
+  catch {
+    const s = new mongoose.Schema({
+      customerId: mongoose.Schema.Types.ObjectId,
+      status: String,
+      paymentAmount: Number,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("Maintenance", s, "maintenances");
+  }
+};
+
+// 4. Maintenance payments
+const Maintenance = getMaintenanceModel();
+const maints = await Maintenance.find({
+  status: "Finance Approved",
+  updatedAt: { $gte: start, $lte: end },
+});
+for (const m of maints) {
+  let customerName = "—";
+  try {
+    const User = mongoose.model("User");
+    const user = await User.findById(m.customerId);
+    if (user) customerName = `${user.fullName || ""} ${user.lastName || ""}`.trim();
+  } catch {}
+  collections.push({
+    date:      m.updatedAt,
+    type:      "Maintenance Fee",
+    reference: m.ticketId || `MNT-${m._id.toString().slice(-6).toUpperCase()}`,
+    customer:  customerName,
+    amount:    m.paymentAmount || 0,
+    method:    "Bank Transfer",
+    status:    "Approved",
+  });
+}
 
     // 5. Purchase Request expenses (money going OUT — negative)
     const PurchaseRequest = getPurchaseRequestModel();

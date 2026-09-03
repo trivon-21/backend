@@ -217,6 +217,22 @@ exports.addAdditionalService = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Task not found' });
     }
 
+    require('../../models/counter.model');
+    const CounterModel = mongoose.model('Counter');
+    let counter = await CounterModel.findOneAndUpdate(
+      { _id: 'serviceTicket' },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    if (!counter) {
+      counter = { seq: 1000 };
+      await CounterModel.updateOne({ _id: 'serviceTicket' }, { $set: { seq: 1000 } }, { upsert: true });
+    } else if (counter.seq < 1000) {
+      counter = await CounterModel.findOneAndUpdate({ _id: 'serviceTicket' }, { $set: { seq: 1000 } }, { new: true });
+    }
+    
+    const serviceRequestRef = `SRQ-${counter.seq}`;
+
     const ServiceTicket = require('../shared/serviceTicket/serviceTicket.model');
     const newService = new ServiceTicket({
       customerId: task.record.customerId?._id || task.record.customerId,
@@ -225,7 +241,7 @@ exports.addAdditionalService = async (req, res) => {
       category: 'repair',
       status: 'New',
       preferredDate: new Date(),
-      serviceRequestRef: 'REF-' + Date.now() + '-' + Math.floor(Math.random() * 1000)
+      serviceRequestRef: serviceRequestRef
     });
 
     await newService.save();

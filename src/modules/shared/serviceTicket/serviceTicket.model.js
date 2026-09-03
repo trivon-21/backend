@@ -81,15 +81,22 @@ serviceTicketSchema.post('findOneAndUpdate', async function(doc) {
     if (requestType === 'maintenance') {
       const maintenanceEntry = new Maintenance({
         ...docObj,
+        ticketId: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId,
         materialList: doc.materials || [],
         totalEstimatedCost: 0
       });
       await maintenanceEntry.save({ validateBeforeSave: false });
     } else if (requestType === 'installation') {
-      const installationEntry = new Installation(docObj);
+      const installationEntry = new Installation({
+        ...docObj,
+        ticketId: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId
+      });
       await installationEntry.save({ validateBeforeSave: false });
     } else {
-      const serviceEntry = new ServiceRequest(docObj);
+      const serviceEntry = new ServiceRequest({
+        ...docObj,
+        serviceRequestRef: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId
+      });
       await serviceEntry.save({ validateBeforeSave: false });
     }
     
