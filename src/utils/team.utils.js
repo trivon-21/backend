@@ -97,17 +97,16 @@ const isTeamBJob = (job) => matchesTeamName(getAssignmentLabel(job), 'Service Te
  */
 const resolveTeam = async (requestedTeamName) => {
   if (!requestedTeamName) return null;
-  const normalized = normalize(requestedTeamName);
-  
-  const mongoose = require('mongoose');
-  const TechTeam = mongoose.models.TechTeam || mongoose.model('TechTeam');
-  
+  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exact = new RegExp(`^${escaped}$`, 'i');
+  const contains = new RegExp(escaped, 'i');
+
   let team = await TechTeam.findOne({
     $or: [
-      { teamName: { $regex: new RegExp(`^${normalized}$`, 'i') } },
-      { fullName: { $regex: new RegExp(`^${normalized}$`, 'i') } },
-      { teamName: { $regex: normalized, $options: 'i' } },
-      { fullName: { $regex: normalized, $options: 'i' } }
+      { teamName: exact },
+      { fullName: exact },
+      { teamName: contains },
+      { fullName: contains }
     ]
   }).lean();
 
