@@ -266,7 +266,15 @@ exports.getAllServiceReports = async (req, res) => {
 // 2. GET detailed report for review/view
 exports.getServiceReportById = async (req, res) => {
   try {
-    const report = await ServiceReport.findById(req.params.id).lean();
+    const id = req.params.id;
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+    const report = await ServiceReport.findOne({
+      $or: [
+        { _id: isValidId ? id : null },
+        { serviceReportId: id }
+      ]
+    }).lean();
     if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
 
     const sourceRecord = await loadSourceRecord(report.serviceRequestId, report.onModel);
@@ -347,7 +355,15 @@ exports.submitServiceReport = async (req, res) => {
 // 4. Update an existing service report
 exports.updateServiceReport = async (req, res) => {
   try {
-    const report = await ServiceReport.findById(req.params.id);
+    const id = req.params.id;
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+    const report = await ServiceReport.findOne({
+      $or: [
+        { _id: isValidId ? id : null },
+        { serviceReportId: id }
+      ]
+    });
     if (!report) {
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
