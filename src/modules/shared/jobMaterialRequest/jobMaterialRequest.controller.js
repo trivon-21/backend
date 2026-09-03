@@ -340,22 +340,48 @@ exports.submitMaterialRequest = async (req, res) => {
     
     // Remove '#' prefix if present (from UI display format)
     const resolvedId = String(newRequestId || '').replace(/^#/, '');
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(resolvedId);
+    
+    const query = {
+      $or: [
+        { ticketId: resolvedId },
+        { serviceRequestId: resolvedId },
+        { serviceRequestRef: resolvedId }
+      ]
+    };
+    if (isValidId) {
+      query.$or.unshift({ _id: resolvedId });
+    }
 
     // First, check if this is a resubmission (Finance Rejected status)
-    const existingServiceRequest = await ServiceRequest.findById(resolvedId).lean();
-    const existingInstallation = await Installation.findById(resolvedId).lean();
-    const existingMaintenance = await Maintenance.findById(resolvedId).lean();
+    const existingServiceRequest = await ServiceRequest.findOne(query).lean();
+    const existingInstallation = await Installation.findOne(query).lean();
+    const existingMaintenance = await Maintenance.findOne(query).lean();
 
     if (existingMaintenance && [MAINTENANCE_STATUS.NEW, MAINTENANCE_STATUS.FINANCE_REJECTED].includes(existingMaintenance.status)) {
       // MAINTENANCE FLOW: Update Maintenance with new materials and move to PENDING
       const updatedRequest = await Maintenance.findByIdAndUpdate(
-        resolvedId,
+        existingMaintenance._id,
         {
           materialList: materials,
           totalEstimatedCost: 0, // Should calculate, but 0 is fine for now
           status: MAINTENANCE_STATUS.PENDING
         },
         { new: true }
+      );
+
+      const JobMaterialRequest = require('./jobMaterialRequest.model');
+      await JobMaterialRequest.findOneAndUpdate(
+        { jobId: existingMaintenance._id, jobType: 'Maintenance' },
+        { 
+          $set: { 
+            status: 'PENDING',
+            items: materials.map(m => ({ itemName: m.name || m.item, quantity: m.quantity || 1, unitPrice: m.unitPrice || 0, total: m.total || 0 })),
+            notes: financeNotes
+          } 
+        },
+        { upsert: true, new: true }
       );
 
       return res.json({ 
@@ -377,7 +403,7 @@ exports.submitMaterialRequest = async (req, res) => {
 
     // If not found in ServiceRequest or Installation, try NewRequest
     if (!sourceDoc) {
-      sourceDoc = await NewRequest.findById(resolvedId).lean();
+      sourceDoc = await NewRequest.findOne(query).lean();
       if (!sourceDoc) {
         return res.status(404).json({ success: false, message: 'Record not found' });
       }
@@ -391,7 +417,7 @@ exports.submitMaterialRequest = async (req, res) => {
       // Reset status to 'Pending' for new Finance review
       
       const updatedRequest = await ServiceRequest.findByIdAndUpdate(
-        resolvedId,
+        existingServiceRequest._id,
         {
           materials,
           financeNotes,
@@ -400,6 +426,19 @@ exports.submitMaterialRequest = async (req, res) => {
           status: WORKFLOW_STATUS.PENDING
         },
         { new: true }
+      );
+
+      const JobMaterialRequest = require('./jobMaterialRequest.model');
+      await JobMaterialRequest.findOneAndUpdate(
+        { jobId: existingServiceRequest._id, jobType: 'Repair' },
+        { 
+          $set: { 
+            status: 'PENDING',
+            items: materials.map(m => ({ itemName: m.name || m.item, quantity: m.quantity || 1, unitPrice: m.unitPrice || 0, total: m.total || 0 })),
+            notes: financeNotes
+          } 
+        },
+        { upsert: true, new: true }
       );
 
       return res.json({ 
@@ -422,13 +461,26 @@ exports.submitMaterialRequest = async (req, res) => {
       // INSTALLATION FLOW: New or rejected installation moves to Pending on material submission.
       
       const updatedRequest = await Installation.findByIdAndUpdate(
-        resolvedId,
+        existingInstallation._id,
         {
           materials,
           financeNotes,
           status: WORKFLOW_STATUS.PENDING
         },
         { new: true }
+      );
+
+      const JobMaterialRequest = require('./jobMaterialRequest.model');
+      await JobMaterialRequest.findOneAndUpdate(
+        { jobId: existingInstallation._id, jobType: 'Installation' },
+        { 
+          $set: { 
+            status: 'PENDING',
+            items: materials.map(m => ({ itemName: m.name || m.item, quantity: m.quantity || 1, unitPrice: m.unitPrice || 0, total: m.total || 0 })),
+            notes: financeNotes
+          } 
+        },
+        { upsert: true, new: true }
       );
 
       return res.json({ 
@@ -456,16 +508,19 @@ exports.submitMaterialRequest = async (req, res) => {
 
       if (resolvedCustomerId && (!resolvedfullName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
         const Customer = require('../../user/user.model');
-        const cust = await Customer.findById(resolvedCustomerId).lean();
-        if (cust) {
-          if (!resolvedfullName) resolvedfullName = cust.fullName;
-          if (!resolvedCustomerEmail) resolvedCustomerEmail = cust.email;
-          if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.phoneNumber;
-          if (!resolvedLocation) resolvedLocation = cust.address;
+        const isCustValid = require('mongoose').Types.ObjectId.isValid(resolvedCustomerId);
+        if (isCustValid) {
+          const cust = await Customer.findById(resolvedCustomerId).lean();
+          if (cust) {
+            if (!resolvedfullName) resolvedfullName = cust.fullName;
+            if (!resolvedCustomerEmail) resolvedCustomerEmail = cust.email;
+            if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.phoneNumber;
+            if (!resolvedLocation) resolvedLocation = cust.address;
+          }
         }
       }
 
-      await NewRequest.findByIdAndUpdate(resolvedId, {
+      await NewRequest.findByIdAndUpdate(sourceDoc._id, {
         $set: {
           fullName: resolvedfullName,
           customerEmail: resolvedCustomerEmail,
@@ -481,6 +536,19 @@ exports.submitMaterialRequest = async (req, res) => {
         }
       });    
 
+      const JobMaterialRequest = require('./jobMaterialRequest.model');
+      await JobMaterialRequest.findOneAndUpdate(
+        { jobId: sourceDoc._id, jobType: derivedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair' },
+        { 
+          $set: { 
+            status: 'PENDING',
+            items: materials.map(m => ({ itemName: m.name || m.item, quantity: m.quantity || 1, unitPrice: m.unitPrice || 0, total: m.total || 0 })),
+            notes: financeNotes
+          } 
+        },
+        { upsert: true, new: true }
+      );
+
     res.json({ 
       success: true, 
       message: "Material request submitted to Finance",
@@ -493,7 +561,8 @@ exports.submitMaterialRequest = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('submitMaterialRequest ERROR:', err);
+    res.status(500).json({ success: false, error: err.message, stack: err.stack });
   }
 };
 

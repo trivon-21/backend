@@ -143,9 +143,17 @@ async function findRequest(identifier, session) {
 
 async function readRequest(request) {
   const Model = modelForJobType(request.jobType);
-  const job = await Model.findById(request.jobId)
+  let job = await Model.findById(request.jobId)
     .populate('customerId', 'fullName email phoneNumber contactNo address')
     .lean();
+  
+  if (!job) {
+    const ServiceTicket = require('../serviceTicket/serviceTicket.model');
+    job = await ServiceTicket.findById(request.jobId)
+      .populate('customerId', 'fullName email phoneNumber contactNo address')
+      .lean();
+  }
+
   const customer = job?.customerId && typeof job.customerId === 'object' ? job.customerId : null;
   const statusMap = { PENDING: 'Pending', APPROVED: 'Finance Approved', REJECTED: 'Finance Rejected', CANCELLED: 'Cancelled' };
   return {
