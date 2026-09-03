@@ -64,8 +64,8 @@ const inspectionReportSchema = new mongoose.Schema(
 inspectionReportSchema.pre('save', async function (next) {
   if (this.isNew && !this.reportId) {
     try {
+      require('../../models/counter.model');
       const CounterModel = mongoose.model('Counter');
-      let counter = await CounterModel.findOneAndUpdate(
         { _id: 'inspectionReportId' },
         { $inc: { seq: 1 } },
         { new: true, upsert: true }
