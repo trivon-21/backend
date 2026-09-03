@@ -3,6 +3,7 @@ const { Schema } = mongoose;
 
 const repairSchema = new Schema(
   {
+    serviceRequestRef: { type: String, unique: true, sparse: true },
     serviceTicketId: { type: Schema.Types.ObjectId, ref: 'ServiceTicket' },
     customerId: { type: Schema.Types.ObjectId, ref: 'User' },
     orderId: { type: Schema.Types.ObjectId, ref: 'Order' },

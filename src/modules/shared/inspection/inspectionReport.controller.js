@@ -93,8 +93,17 @@ exports.getAllReports = async (req, res) => {
 // 2. GET single report by MongoDB ID
 exports.getReportById = async (req, res) => {
   try {
-    const report = await InspectionReport.findById(req.params.id)
-      .lean();
+    let id = req.params.id;
+    if (id && id.startsWith('#')) id = id.substring(1);
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+
+    const report = await InspectionReport.findOne({
+      $or: [
+        { _id: isValidId ? id : null },
+        { reportId: id }
+      ]
+    }).lean();
 
     if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
 
@@ -142,7 +151,17 @@ exports.getReportById = async (req, res) => {
 // 3. UPDATE Requirements (Reviewed Status)
 exports.updateRequirements = async (req, res) => {
   try {
-    const report = await InspectionReport.findById(req.params.id).lean();
+    let id = req.params.id;
+    if (id && id.startsWith('#')) id = id.substring(1);
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+
+    const report = await InspectionReport.findOne({
+      $or: [
+        { _id: isValidId ? id : null },
+        { reportId: id }
+      ]
+    });
     if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
 
     if (!req.body.requirements) {
@@ -165,7 +184,17 @@ exports.updateRequirements = async (req, res) => {
 // 4. APPROVE: Create Installation and update status
 exports.approveReport = async (req, res) => {
   try {
-    const report = await InspectionReport.findById(req.params.id);
+    let id = req.params.id;
+    if (id && id.startsWith('#')) id = id.substring(1);
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+
+    const report = await InspectionReport.findOne({
+      $or: [
+        { _id: isValidId ? id : null },
+        { reportId: id }
+      ]
+    });
     if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
 
     const recommendedProduct = String(req.body.recommendedProduct || '').trim();
@@ -178,13 +207,116 @@ exports.approveReport = async (req, res) => {
     inspectionMeta.recommendedProducts = [recommendedProduct];
     const reviewNotes = normalizedReviewNotes || report.reviewNotes;
 
+    // Generate unique INT- ticketId if creating a new installation
+    let ticketId;
+    const existingInstallation = await Installation.findOne({ inspectionTicketId: report._id });
+    if (!existingInstallation) {
+      const mongoose = require('mongoose');
+      const CounterModel = mongoose.model('Counter');
+      let counter = await CounterModel.findOneAndUpdate(
+        { _id: 'installationTicket' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      if (!counter) {
+        await CounterModel.updateOne({ _id: 'installationTicket' }, { $set: { seq: 1000 } }, { upsert: true });
+        counter = { seq: 1000 };
+      } else if (counter.seq < 1000) {
+        counter = await CounterModel.findOneAndUpdate({ _id: 'installationTicket' }, { $set: { seq: 1000 } }, { new: true });
+      }
+      ticketId = `INT-${String(counter.seq).padStart(4, '0')}`;
+    } else {
+      ticketId = existingInstallation.ticketId;
+    }
+
+    // Fetch customer details via InspectionTicket
+    let resolvedCustomerId = report.customerId;
+    const InspectionTicket = mongoose.model('InspectionTicket');
+    let ticket = null;
+    
+    if (report.ticketId) {
+      ticket = await InspectionTicket.findById(report.ticketId);
+      if (!resolvedCustomerId && ticket && ticket.customerId) {
+        resolvedCustomerId = ticket.customerId;
+      }
+    }
+    
+    let customer = resolvedCustomerId ? await Customer.findById(resolvedCustomerId) : null;
+    
+    if (!customer) {
+      // Build signature based on site details
+      const site = report.siteDetails || {};
+      const inspectionMeta = report.inspectionMeta || {};
+      const dateValue = inspectionMeta.date ? new Date(inspectionMeta.date).toISOString().slice(0, 10) : '';
+      
+      const signature = [
+        site.buildingType || '',
+        site.floors ?? '',
+        site.rooms ?? '',
+        site.ceilingHeight || '',
+        site.wallType || '',
+        site.powerSupply || '',
+        site.outdoorAccess || '',
+        dateValue,
+        inspectionMeta.time || '',
+      ].join('|');
+
+      const siblingReports = await InspectionReport.find({ _id: { $ne: report._id } }).lean();
+      let fallbackCustomerId = null;
+      for (const sibling of siblingReports) {
+        const toCustomerId = (val) => {
+          if (!val) return null;
+          if (typeof val === 'string') return val;
+          if (typeof val === 'object' && val._id) return String(val._id);
+          if (typeof val === 'object' && val.id) return String(val.id);
+          return String(val);
+        };
+        const siblingSite = sibling.siteDetails || {};
+        const siblingMeta = sibling.inspectionMeta || {};
+        const siblingDate = siblingMeta.date ? new Date(siblingMeta.date).toISOString().slice(0, 10) : '';
+        const siblingSignature = [
+          siblingSite.buildingType || '',
+          siblingSite.floors ?? '',
+          siblingSite.rooms ?? '',
+          siblingSite.ceilingHeight || '',
+          siblingSite.wallType || '',
+          siblingSite.powerSupply || '',
+          siblingSite.outdoorAccess || '',
+          siblingDate,
+          siblingMeta.time || '',
+        ].join('|');
+
+        if (siblingSignature === signature) {
+          const siblingCustomerId = toCustomerId(sibling.customerId);
+          if (siblingCustomerId) {
+            fallbackCustomerId = siblingCustomerId;
+            break;
+          }
+        }
+      }
+
+      if (fallbackCustomerId) {
+        resolvedCustomerId = fallbackCustomerId;
+        customer = await Customer.findById(fallbackCustomerId);
+      }
+    }
+
     // Promote details to the Installations collection for this exact inspection report.
     const installationPayload = {
-      customerId: report.customerId,
+      ticketId,
+      orderId: report.orderId || null,
+      customerId: resolvedCustomerId,
+      assignedTeamId: null,
+      assignedTeamName: '',
+      fullName: customer?.fullName || report.customerName || report.fullName || 'Unknown Customer',
+      customerEmail: customer?.email || report.customerEmail || '-',
+      customerPhone: customer?.phoneNumber || report.contactNumber || report.customerPhone || '-',
+      customerAddress: customer?.address || report.siteAddress || report.customerAddress || '-',
       inspectionTicketId: report._id,
       productType: recommendedProduct,
-      location: report.siteDetails?.buildingType || 'Site Location',
-      serviceDate: report.inspectionMeta?.date || null,
+      units: report.units || 1,
+      location: customer?.address || report.siteAddress || report.siteDetails?.buildingType || 'Site Location',
+      serviceDate: report.inspectionDate || report.inspectionMeta?.date || ticket?.scheduledDate || report.createdAt || null,
       siteDetails: report.siteDetails,
       materials: report.requirements?.materials || [],
       labour: report.requirements?.labour || null,
@@ -197,6 +329,7 @@ exports.approveReport = async (req, res) => {
         photos: report.photos || [],
       },
       status: WORKFLOW_STATUS.NEW,
+      updatedAt: new Date(),
     };
 
     // Use a raw collection upsert to avoid triggering Mongoose validation/hooks
@@ -241,11 +374,22 @@ exports.rejectReport = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Rejection reason is required' });
     }
 
-    const existing = await InspectionReport.findById(req.params.id);
+    let id = req.params.id;
+    if (id && id.startsWith('#')) id = id.substring(1);
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+    const query = {
+      $or: [
+        { _id: isValidId ? id : null },
+        { reportId: id }
+      ]
+    };
+
+    const existing = await InspectionReport.findOne(query);
     if (!existing) return res.status(404).json({ success: false, message: 'Report not found' });
 
-    const updated = await InspectionReport.findByIdAndUpdate(
-      req.params.id,
+    const updated = await InspectionReport.findOneAndUpdate(
+      query,
       { status: INSPECTION_REVIEW_STATUS.REJECTED, reviewNotes: req.body.rejectionReason.trim() },
       { new: true }
     );

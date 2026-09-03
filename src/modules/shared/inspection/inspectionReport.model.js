@@ -23,8 +23,32 @@ const inspectionReportSchema = new Schema(
     status: { type: String, enum: ['DRAFT', 'RECORDED', 'SUBMITTED'], default: 'DRAFT' },
     submittedAt: Date,
     recordedAt: Date,
+    reportId: { type: String, unique: true, sparse: true }
   },
   { timestamps: true, collection: 'inspection_reports' }
 );
+
+inspectionReportSchema.pre('save', async function (next) {
+  if (this.isNew && !this.reportId) {
+    try {
+      const CounterModel = mongoose.model('Counter');
+      let counter = await CounterModel.findOneAndUpdate(
+        { _id: 'inspectionReportId' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      if (!counter) {
+        await CounterModel.updateOne({ _id: 'inspectionReportId' }, { $set: { seq: 1000 } }, { upsert: true });
+        counter = { seq: 1000 };
+      } else if (counter.seq < 1000) {
+        counter = await CounterModel.findOneAndUpdate({ _id: 'inspectionReportId' }, { $set: { seq: 1000 } }, { new: true });
+      }
+      this.reportId = `IREP-${String(counter.seq).padStart(4, '0')}`;
+    } catch (err) {
+      return next(err);
+    }
+  }
+  next();
+});
 
 module.exports = mongoose.models.InspectionReport || mongoose.model('InspectionReport', inspectionReportSchema);

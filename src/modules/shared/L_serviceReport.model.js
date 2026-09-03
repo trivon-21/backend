@@ -58,7 +58,7 @@ lServiceReportSchema.pre('save', async function (next) {
       } else if (counter.seq < 1000) {
         counter = await CounterModel.findOneAndUpdate({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { new: true });
       }
-      this.serviceReportId = `REP-${String(counter.seq).padStart(4, '0')}`;
+      this.serviceReportId = `SREP-${String(counter.seq).padStart(4, '0')}`;
     } catch (err) {
       return next(err);
     }

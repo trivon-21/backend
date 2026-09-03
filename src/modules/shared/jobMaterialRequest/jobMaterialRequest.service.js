@@ -207,10 +207,10 @@ exports.listEligibleJobs = async () => {
   ]);
   const canonicalByJob = new Map(requests.map(request => [String(request.jobId), request]));
   const customerFields = job => ({
-    customerName: job.customerId?.fullName || 'Unknown Customer',
-    customerEmail: job.customerId?.email || '-',
-    customerContactNo: job.customerId?.phoneNumber || '-',
-    customerAddress: job.customerId?.address || job.location || '-',
+    customerName: job.fullName || job.customerName || job.customerId?.fullName || 'Unknown Customer',
+    customerEmail: job.customerEmail || job.customerId?.email || '-',
+    customerContactNo: job.customerPhone || job.customerId?.phoneNumber || '-',
+    customerAddress: job.customerAddress || job.customerId?.address || job.location || '-',
   });
   const requestFields = job => {
     const request = canonicalByJob.get(String(job._id));
@@ -235,7 +235,7 @@ exports.listEligibleJobs = async () => {
   };
   return [
     ...tickets.map(ticket => ({
-      ticketId: ticket.serviceRequestId || ticket._id,
+      ticketId: ticket.ticketId || ticket.serviceRequestId || ticket._id,
       productType: ticket.subject || ticket.category || 'N/A',
       serviceType: ticket.requestType || ticket.serviceType || 'Repair',
       serviceDescription: ticket.description || '-',
@@ -247,7 +247,7 @@ exports.listEligibleJobs = async () => {
       ...requestFields(ticket),
     })),
     ...repairs.filter(isEligible).map(job => ({
-      ticketId: job.serviceRequestId || job._id,
+      ticketId: job.ticketId || job.serviceRequestId || job._id,
       productType: job.repairType || 'Repair',
       serviceType: 'Repair',
       serviceDescription: job.notes || 'Repair material request',
@@ -259,7 +259,7 @@ exports.listEligibleJobs = async () => {
       ...requestFields(job),
     })),
     ...installations.filter(isEligible).map(job => ({
-      ticketId: job.serviceRequestId || job._id,
+      ticketId: job.ticketId || job.serviceRequestId || job._id,
       productType: job.productType || 'Installation',
       serviceType: 'Installation',
       serviceDescription: job.location || 'Installation material request',
@@ -272,7 +272,7 @@ exports.listEligibleJobs = async () => {
       ...requestFields(job),
     })),
     ...maintenances.filter(isEligible).map(job => ({
-      ticketId: job.serviceRequestId || job._id,
+      ticketId: job.ticketId || job.serviceRequestId || job._id,
       productType: job.maintenanceType || 'Maintenance',
       serviceType: 'Maintenance',
       serviceDescription: 'Scheduled maintenance',

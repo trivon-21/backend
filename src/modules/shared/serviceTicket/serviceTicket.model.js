@@ -3,7 +3,7 @@ const { Schema } = mongoose;
 
 const serviceTicketSchema = new Schema(
   {
-    
+    serviceRequestId: { type: String, unique: true, sparse: true },
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     requestType: { type: String, enum: ['Maintenance', 'Repair', 'Installation', 'Inspection'], default: 'Repair' },
     description: { type: String, required: true },

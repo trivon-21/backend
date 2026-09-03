@@ -538,8 +538,12 @@ exports.sendToInventoryManager = async (req, res) => {
         // Migrate it to the appropriate collection now that we are sending to IM
         let newEntry;
         const docObj = { ...newReq, status: WORKFLOW_STATUS.SENT_TO_IM };
+        if (materials) docObj.materials = materials;
+        if (req.body.isUnderWarranty !== undefined) docObj.isUnderWarranty = req.body.isUnderWarranty;
+        if (req.body.isFreeOfCharge !== undefined) docObj.isFreeOfCharge = req.body.isFreeOfCharge;
+        
         if (requestType === 'Maintenance') {
-          newEntry = new Maintenance({ ...docObj, materialList: newReq.materials || [], totalEstimatedCost: 0 });
+          newEntry = new Maintenance({ ...docObj, materialList: materials || newReq.materials || [], totalEstimatedCost: 0 });
         } else if (requestType === REQUEST_TYPES.INSTALLATION) {
           newEntry = new Installation(docObj);
         } else {
@@ -571,24 +575,31 @@ exports.sendToInventoryManager = async (req, res) => {
     });
     await jobMaterial.save();
 
+    let updateObj = { status: WORKFLOW_STATUS.SENT_TO_IM };
+    if (materials) updateObj.materials = materials;
+    if (req.body.isUnderWarranty !== undefined) updateObj.isUnderWarranty = req.body.isUnderWarranty;
+    if (req.body.isFreeOfCharge !== undefined) updateObj.isFreeOfCharge = req.body.isFreeOfCharge;
+
     let updatedRecord = await ServiceRequest.findByIdAndUpdate(
       resolvedId,
-      { status: WORKFLOW_STATUS.SENT_TO_IM },
+      updateObj,
       { new: true }
     );
 
     if (!updatedRecord) {
       updatedRecord = await Installation.findByIdAndUpdate(
         resolvedId,
-        { status: WORKFLOW_STATUS.SENT_TO_IM },
+        updateObj,
         { new: true }
       );
     }
 
     if (!updatedRecord) {
+      let maintUpdateObj = { ...updateObj, status: MAINTENANCE_STATUS.SENT_TO_IM };
+      if (materials) maintUpdateObj.materialList = materials;
       updatedRecord = await Maintenance.findByIdAndUpdate(
         resolvedId,
-        { status: MAINTENANCE_STATUS.SENT_TO_IM },
+        maintUpdateObj,
         { new: true }
       );
     }
