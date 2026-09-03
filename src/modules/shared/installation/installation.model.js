@@ -1,8 +1,10 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
+const Counter = require('../../../models/counter.model');
 
 const installationSchema = new Schema(
   {
+    ticketId: { type: String, unique: true },
     orderId: { type: Schema.Types.ObjectId, ref: 'InstallationOrder' },
     inspectionTicketId: { type: Schema.Types.ObjectId, ref: 'InspectionTicket' },
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -35,11 +37,28 @@ const installationSchema = new Schema(
   { timestamps: true, collection: 'installations', strict: false }
 );
 
-/**
- * Pre-save hook: when an installation transitions to 'Completed',
- * automatically create a MaintenanceSchedule record with status 'New'.
- */
 installationSchema.pre('save', async function (next) {
+  // Generate ticketId for Installation if it doesn't exist
+  if (this.isNew && !this.ticketId) {
+    try {
+      const CounterModel = mongoose.model('Counter');
+      let counter = await CounterModel.findOneAndUpdate(
+        { _id: 'installationTicket' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      if (!counter) {
+        await CounterModel.updateOne({ _id: 'installationTicket' }, { $set: { seq: 1000 } }, { upsert: true });
+        counter = { seq: 1000 };
+      } else if (counter.seq < 1000) {
+        counter = await CounterModel.findOneAndUpdate({ _id: 'installationTicket' }, { $set: { seq: 1000 } }, { new: true });
+      }
+      this.ticketId = `INT-${String(counter.seq).padStart(4, '0')}`;
+    } catch (err) {
+      return next(err);
+    }
+  }
+
   // Only act when the status field changed to 'Completed'
   if (!this.isModified('status') || this.status !== 'Completed') {
     return next();
@@ -62,10 +81,20 @@ installationSchema.pre('save', async function (next) {
     const User = mongoose.model('User');
     const customer = await User.findById(this.customerId).lean();
 
-    // Generate a unique ticket ID  (e.g. MS-LZ1ABC-F9E8D7)
-    const tsSegment = Date.now().toString(36).toUpperCase();
-    const idSuffix  = String(this._id).slice(-6).toUpperCase();
-    const ticketId  = `MS-${tsSegment}-${idSuffix}`;
+    // Generate unique MS- ID
+    const CounterModel = mongoose.model('Counter');
+    let msCounter = await CounterModel.findOneAndUpdate(
+      { _id: 'maintenanceScheduleTicket' },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    if (!msCounter) {
+      await CounterModel.updateOne({ _id: 'maintenanceScheduleTicket' }, { $set: { seq: 1000 } }, { upsert: true });
+      msCounter = { seq: 1000 };
+    } else if (msCounter.seq < 1000) {
+      msCounter = await CounterModel.findOneAndUpdate({ _id: 'maintenanceScheduleTicket' }, { $set: { seq: 1000 } }, { new: true });
+    }
+    const ticketId = `MS-${String(msCounter.seq).padStart(4, '0')}`;
 
     const installationDate = this.serviceDate || this.createdAt || new Date();
 

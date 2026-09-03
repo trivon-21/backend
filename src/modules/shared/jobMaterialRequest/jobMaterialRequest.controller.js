@@ -340,22 +340,48 @@ exports.submitMaterialRequest = async (req, res) => {
     
     // Remove '#' prefix if present (from UI display format)
     const resolvedId = String(newRequestId || '').replace(/^#/, '');
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(resolvedId);
+    
+    const query = {
+      $or: [
+        { ticketId: resolvedId },
+        { serviceRequestId: resolvedId },
+        { serviceRequestRef: resolvedId }
+      ]
+    };
+    if (isValidId) {
+      query.$or.unshift({ _id: resolvedId });
+    }
 
     // First, check if this is a resubmission (Finance Rejected status)
-    const existingServiceRequest = await ServiceRequest.findById(resolvedId).lean();
-    const existingInstallation = await Installation.findById(resolvedId).lean();
-    const existingMaintenance = await Maintenance.findById(resolvedId).lean();
+    const existingServiceRequest = await ServiceRequest.findOne(query).lean();
+    const existingInstallation = await Installation.findOne(query).lean();
+    const existingMaintenance = await Maintenance.findOne(query).lean();
 
     if (existingMaintenance && [MAINTENANCE_STATUS.NEW, MAINTENANCE_STATUS.FINANCE_REJECTED].includes(existingMaintenance.status)) {
       // MAINTENANCE FLOW: Update Maintenance with new materials and move to PENDING
       const updatedRequest = await Maintenance.findByIdAndUpdate(
-        resolvedId,
+        existingMaintenance._id,
         {
           materialList: materials,
           totalEstimatedCost: 0, // Should calculate, but 0 is fine for now
           status: MAINTENANCE_STATUS.PENDING
         },
         { new: true }
+      );
+
+      const JobMaterialRequest = require('./jobMaterialRequest.model');
+      await JobMaterialRequest.findOneAndUpdate(
+        { jobId: existingMaintenance._id, jobType: 'Maintenance' },
+        { 
+          $set: { 
+            status: 'PENDING',
+            items: materials.map(m => ({ itemName: m.name || m.item, quantity: m.quantity || 1, unitPrice: m.unitPrice || 0, total: m.total || 0 })),
+            notes: financeNotes
+          } 
+        },
+        { upsert: true, new: true }
       );
 
       return res.json({ 
@@ -377,7 +403,7 @@ exports.submitMaterialRequest = async (req, res) => {
 
     // If not found in ServiceRequest or Installation, try NewRequest
     if (!sourceDoc) {
-      sourceDoc = await NewRequest.findById(resolvedId).lean();
+      sourceDoc = await NewRequest.findOne(query).lean();
       if (!sourceDoc) {
         return res.status(404).json({ success: false, message: 'Record not found' });
       }
@@ -391,7 +417,7 @@ exports.submitMaterialRequest = async (req, res) => {
       // Reset status to 'Pending' for new Finance review
       
       const updatedRequest = await ServiceRequest.findByIdAndUpdate(
-        resolvedId,
+        existingServiceRequest._id,
         {
           materials,
           financeNotes,
@@ -400,6 +426,19 @@ exports.submitMaterialRequest = async (req, res) => {
           status: WORKFLOW_STATUS.PENDING
         },
         { new: true }
+      );
+
+      const JobMaterialRequest = require('./jobMaterialRequest.model');
+      await JobMaterialRequest.findOneAndUpdate(
+        { jobId: existingServiceRequest._id, jobType: 'Repair' },
+        { 
+          $set: { 
+            status: 'PENDING',
+            items: materials.map(m => ({ itemName: m.name || m.item, quantity: m.quantity || 1, unitPrice: m.unitPrice || 0, total: m.total || 0 })),
+            notes: financeNotes
+          } 
+        },
+        { upsert: true, new: true }
       );
 
       return res.json({ 
@@ -422,13 +461,26 @@ exports.submitMaterialRequest = async (req, res) => {
       // INSTALLATION FLOW: New or rejected installation moves to Pending on material submission.
       
       const updatedRequest = await Installation.findByIdAndUpdate(
-        resolvedId,
+        existingInstallation._id,
         {
           materials,
           financeNotes,
           status: WORKFLOW_STATUS.PENDING
         },
         { new: true }
+      );
+
+      const JobMaterialRequest = require('./jobMaterialRequest.model');
+      await JobMaterialRequest.findOneAndUpdate(
+        { jobId: existingInstallation._id, jobType: 'Installation' },
+        { 
+          $set: { 
+            status: 'PENDING',
+            items: materials.map(m => ({ itemName: m.name || m.item, quantity: m.quantity || 1, unitPrice: m.unitPrice || 0, total: m.total || 0 })),
+            notes: financeNotes
+          } 
+        },
+        { upsert: true, new: true }
       );
 
       return res.json({ 
@@ -456,16 +508,19 @@ exports.submitMaterialRequest = async (req, res) => {
 
       if (resolvedCustomerId && (!resolvedfullName || !resolvedCustomerEmail || !resolvedCustomerPhone)) {
         const Customer = require('../../user/user.model');
-        const cust = await Customer.findById(resolvedCustomerId).lean();
-        if (cust) {
-          if (!resolvedfullName) resolvedfullName = cust.fullName;
-          if (!resolvedCustomerEmail) resolvedCustomerEmail = cust.email;
-          if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.phoneNumber;
-          if (!resolvedLocation) resolvedLocation = cust.address;
+        const isCustValid = require('mongoose').Types.ObjectId.isValid(resolvedCustomerId);
+        if (isCustValid) {
+          const cust = await Customer.findById(resolvedCustomerId).lean();
+          if (cust) {
+            if (!resolvedfullName) resolvedfullName = cust.fullName;
+            if (!resolvedCustomerEmail) resolvedCustomerEmail = cust.email;
+            if (!resolvedCustomerPhone) resolvedCustomerPhone = cust.phoneNumber;
+            if (!resolvedLocation) resolvedLocation = cust.address;
+          }
         }
       }
 
-      await NewRequest.findByIdAndUpdate(resolvedId, {
+      await NewRequest.findByIdAndUpdate(sourceDoc._id, {
         $set: {
           fullName: resolvedfullName,
           customerEmail: resolvedCustomerEmail,
@@ -481,6 +536,19 @@ exports.submitMaterialRequest = async (req, res) => {
         }
       });    
 
+      const JobMaterialRequest = require('./jobMaterialRequest.model');
+      await JobMaterialRequest.findOneAndUpdate(
+        { jobId: sourceDoc._id, jobType: derivedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair' },
+        { 
+          $set: { 
+            status: 'PENDING',
+            items: materials.map(m => ({ itemName: m.name || m.item, quantity: m.quantity || 1, unitPrice: m.unitPrice || 0, total: m.total || 0 })),
+            notes: financeNotes
+          } 
+        },
+        { upsert: true, new: true }
+      );
+
     res.json({ 
       success: true, 
       message: "Material request submitted to Finance",
@@ -493,7 +561,8 @@ exports.submitMaterialRequest = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('submitMaterialRequest ERROR:', err);
+    res.status(500).json({ success: false, error: err.message, stack: err.stack });
   }
 };
 
@@ -538,8 +607,12 @@ exports.sendToInventoryManager = async (req, res) => {
         // Migrate it to the appropriate collection now that we are sending to IM
         let newEntry;
         const docObj = { ...newReq, status: WORKFLOW_STATUS.SENT_TO_IM };
+        if (materials) docObj.materials = materials;
+        if (req.body.isUnderWarranty !== undefined) docObj.isUnderWarranty = req.body.isUnderWarranty;
+        if (req.body.isFreeOfCharge !== undefined) docObj.isFreeOfCharge = req.body.isFreeOfCharge;
+        
         if (requestType === 'Maintenance') {
-          newEntry = new Maintenance({ ...docObj, materialList: newReq.materials || [], totalEstimatedCost: 0 });
+          newEntry = new Maintenance({ ...docObj, materialList: materials || newReq.materials || [], totalEstimatedCost: 0 });
         } else if (requestType === REQUEST_TYPES.INSTALLATION) {
           newEntry = new Installation(docObj);
         } else {
@@ -555,40 +628,78 @@ exports.sendToInventoryManager = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Request not found' });
     }
 
-    const items = (materials || sourceRecord.materials || sourceRecord.materialList || []).map(m => ({
-      itemName: m.item || m.itemName || '',
-      quantity: Number(m.quantity) || 0,
-      unitPrice: m.unitPrice || 0,
-      total: m.total || 0
-    }));
+    const crypto = require('crypto');
+    const mongoose = require('mongoose');
+    
+    const items = (materials || sourceRecord.materials || sourceRecord.materialList || []).map(m => {
+      const qty = Number(m.quantity) || 1;
+      return {
+        lineId: crypto.randomUUID(),
+        inventoryId: m.inventoryId || new mongoose.Types.ObjectId(),
+        sku: m.sku || 'N/A',
+        itemName: m.item || m.itemName || m.name || 'Unknown Item',
+        quantity: qty,
+        unitPrice: m.unitPrice || 0,
+        total: m.total || 0
+      };
+    });
+
+    if (items.length === 0) {
+      items.push({
+        lineId: crypto.randomUUID(),
+        inventoryId: new mongoose.Types.ObjectId(),
+        sku: 'N/A',
+        itemName: 'General Materials',
+        quantity: 1,
+        unitPrice: 0,
+        total: 0
+      });
+    }
+
+    const jobTypeMapping = {
+      'Service': 'Repair',
+      'Repair': 'Repair',
+      'Installation': 'Installation',
+      'Maintenance': 'Maintenance'
+    };
+    const validJobType = jobTypeMapping[requestType] || 'Repair';
 
     const jobMaterial = new JobMaterialRequest({
+      requestId: 'JMR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
       jobId: resolvedId,
-      jobType: requestType,
-      requestedBy: req.user ? req.user._id : null,
+      jobType: validJobType,
+      requestedBy: req.user ? req.user._id : new mongoose.Types.ObjectId(),
+      requesterName: req.user ? (req.user.fullName || 'System') : 'System',
       items: items,
       status: 'PENDING'
     });
     await jobMaterial.save();
 
+    let updateObj = { status: WORKFLOW_STATUS.SENT_TO_IM };
+    if (materials) updateObj.materials = materials;
+    if (req.body.isUnderWarranty !== undefined) updateObj.isUnderWarranty = req.body.isUnderWarranty;
+    if (req.body.isFreeOfCharge !== undefined) updateObj.isFreeOfCharge = req.body.isFreeOfCharge;
+
     let updatedRecord = await ServiceRequest.findByIdAndUpdate(
       resolvedId,
-      { status: WORKFLOW_STATUS.SENT_TO_IM },
+      updateObj,
       { new: true }
     );
 
     if (!updatedRecord) {
       updatedRecord = await Installation.findByIdAndUpdate(
         resolvedId,
-        { status: WORKFLOW_STATUS.SENT_TO_IM },
+        updateObj,
         { new: true }
       );
     }
 
     if (!updatedRecord) {
+      let maintUpdateObj = { ...updateObj, status: MAINTENANCE_STATUS.SENT_TO_IM };
+      if (materials) maintUpdateObj.materialList = materials;
       updatedRecord = await Maintenance.findByIdAndUpdate(
         resolvedId,
-        { status: MAINTENANCE_STATUS.SENT_TO_IM },
+        maintUpdateObj,
         { new: true }
       );
     }
@@ -606,7 +717,8 @@ exports.sendToInventoryManager = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, error: err.message, stack: err.stack });
   }
 };
 
@@ -774,7 +886,8 @@ exports.getNewRequests = async (req, res) => {
         const materialWorkflowStatusRegex = [
             new RegExp(`^\\s*${WORKFLOW_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${WORKFLOW_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const toCustomerId = (value) => {
             if (!value) return null;
@@ -803,7 +916,8 @@ exports.getNewRequests = async (req, res) => {
         const materialMaintenanceStatusRegex = [
             new RegExp(`^\\s*${MAINTENANCE_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const maintenances = await Maintenance.find({
             status: { $in: materialMaintenanceStatusRegex }

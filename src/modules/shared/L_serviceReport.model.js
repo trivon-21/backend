@@ -53,11 +53,12 @@ lServiceReportSchema.pre('save', async function (next) {
         { new: true, upsert: true }
       );
       if (!counter) {
-        counter = await CounterModel.updateOne({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { upsert: true });
+        await CounterModel.updateOne({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { upsert: true });
+        counter = { seq: 1000 };
       } else if (counter.seq < 1000) {
         counter = await CounterModel.findOneAndUpdate({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { new: true });
       }
-      this.serviceReportId = `REP-${counter.seq}`;
+      this.serviceReportId = `SREP-${String(counter.seq).padStart(4, '0')}`;
     } catch (err) {
       return next(err);
     }

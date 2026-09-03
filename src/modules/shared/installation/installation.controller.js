@@ -115,7 +115,8 @@ exports.getAllInstallations = async (req, res) => {
 // 2. GET single installation with full customer details
 exports.getInstallationById = async (req, res) => {
   try {
-    const id = req.params.id;
+    let id = req.params.id;
+    if (id && id.startsWith('#')) id = id.substring(1);
     const mongoose = require('mongoose');
     const isValidId = mongoose.Types.ObjectId.isValid(id);
     const installation = await Installation.findOne({
@@ -172,7 +173,8 @@ exports.getInstallationById = async (req, res) => {
 exports.updateInstallationStatus = async (req, res) => {
   try {
     const { status, date } = req.body;
-    const id = req.params.id;
+    let id = req.params.id;
+    if (id && id.startsWith('#')) id = id.substring(1);
     const mongoose = require('mongoose');
     const isValidId = mongoose.Types.ObjectId.isValid(id);
     
@@ -208,7 +210,8 @@ exports.updateInstallationStatus = async (req, res) => {
 // 4. Mark Installation as Completed
 exports.completeInstallation = async (req, res) => {
   try {
-    const { id } = req.params;
+    let { id } = req.params;
+    if (id && id.startsWith('#')) id = id.substring(1);
     const mongoose = require('mongoose');
     const isValidId = mongoose.Types.ObjectId.isValid(id);
     

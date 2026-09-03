@@ -3,7 +3,7 @@ const { Schema } = mongoose;
 
 const serviceTicketSchema = new Schema(
   {
-    
+    serviceRequestId: { type: String, unique: true, sparse: true },
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     requestType: { type: String, enum: ['Maintenance', 'Repair', 'Installation', 'Inspection'], default: 'Repair' },
     description: { type: String, required: true },
@@ -36,9 +36,11 @@ const serviceTicketSchema = new Schema(
 );
 
 // Auto-clear resolvedAt if ticket leaves the resolved state
-serviceTicketSchema.pre('save', async function (next) {
+serviceTicketSchema.pre('save', async function () {
   if (this.isNew && !this.serviceRequestId) {
     try {
+      // Ensure Counter model is loaded
+      require('../../../models/counter.model');
       const CounterModel = mongoose.model('Counter');
       let counter = await CounterModel.findOneAndUpdate(
         { _id: 'serviceRequestId' },
@@ -52,7 +54,7 @@ serviceTicketSchema.pre('save', async function (next) {
       }
       this.serviceRequestId = `SRQ-${counter.seq}`;
     } catch (err) {
-      return next(err);
+      throw err;
     }
   }
 
@@ -60,7 +62,6 @@ serviceTicketSchema.pre('save', async function (next) {
     if (this.status === 'resolved' && !this.resolvedAt) this.resolvedAt = new Date();
     if (this.status !== 'resolved') this.resolvedAt = undefined;
   }
-  next();
 });
 
 serviceTicketSchema.post('findOneAndUpdate', async function(doc) {
@@ -80,15 +81,22 @@ serviceTicketSchema.post('findOneAndUpdate', async function(doc) {
     if (requestType === 'maintenance') {
       const maintenanceEntry = new Maintenance({
         ...docObj,
+        ticketId: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId,
         materialList: doc.materials || [],
         totalEstimatedCost: 0
       });
       await maintenanceEntry.save({ validateBeforeSave: false });
     } else if (requestType === 'installation') {
-      const installationEntry = new Installation(docObj);
+      const installationEntry = new Installation({
+        ...docObj,
+        ticketId: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId
+      });
       await installationEntry.save({ validateBeforeSave: false });
     } else {
-      const serviceEntry = new ServiceRequest(docObj);
+      const serviceEntry = new ServiceRequest({
+        ...docObj,
+        serviceRequestRef: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId
+      });
       await serviceEntry.save({ validateBeforeSave: false });
     }
     

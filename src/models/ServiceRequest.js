@@ -52,7 +52,7 @@ const serviceRequestSchema = new mongoose.Schema(
 
 serviceRequestSchema.pre('save', async function () {
   const doc = this;
-  if (doc.isNew) {
+  if (doc.isNew && !doc.serviceRequestRef) {
     const CounterModel = mongoose.model('Counter');
     
     // First, try to just increment

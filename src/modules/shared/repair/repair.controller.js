@@ -41,7 +41,12 @@ exports.getAllServiceRequests = async (req, res) => {
 
 exports.getServiceRequestById = async (req, res) => {
   try {
-    const service = await ServiceRequest.findById(req.params.id)
+    const id = req.params.id;
+    const query = mongoose.Types.ObjectId.isValid(id)
+      ? { $or: [{ _id: id }, { serviceRequestRef: id }, { serviceRequestId: id }] }
+      : { $or: [{ serviceRequestRef: id }, { serviceRequestId: id }] };
+
+    const service = await ServiceRequest.findOne(query)
       .populate('customerId', 'fullName name email phoneNumber contactNo address')
       .lean();
 
