@@ -628,17 +628,48 @@ exports.sendToInventoryManager = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Request not found' });
     }
 
-    const items = (materials || sourceRecord.materials || sourceRecord.materialList || []).map(m => ({
-      itemName: m.item || m.itemName || '',
-      quantity: Number(m.quantity) || 0,
-      unitPrice: m.unitPrice || 0,
-      total: m.total || 0
-    }));
+    const crypto = require('crypto');
+    const mongoose = require('mongoose');
+    
+    const items = (materials || sourceRecord.materials || sourceRecord.materialList || []).map(m => {
+      const qty = Number(m.quantity) || 1;
+      return {
+        lineId: crypto.randomUUID(),
+        inventoryId: m.inventoryId || new mongoose.Types.ObjectId(),
+        sku: m.sku || 'N/A',
+        itemName: m.item || m.itemName || m.name || 'Unknown Item',
+        quantity: qty,
+        unitPrice: m.unitPrice || 0,
+        total: m.total || 0
+      };
+    });
+
+    if (items.length === 0) {
+      items.push({
+        lineId: crypto.randomUUID(),
+        inventoryId: new mongoose.Types.ObjectId(),
+        sku: 'N/A',
+        itemName: 'General Materials',
+        quantity: 1,
+        unitPrice: 0,
+        total: 0
+      });
+    }
+
+    const jobTypeMapping = {
+      'Service': 'Repair',
+      'Repair': 'Repair',
+      'Installation': 'Installation',
+      'Maintenance': 'Maintenance'
+    };
+    const validJobType = jobTypeMapping[requestType] || 'Repair';
 
     const jobMaterial = new JobMaterialRequest({
+      requestId: 'JMR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
       jobId: resolvedId,
-      jobType: requestType,
-      requestedBy: req.user ? req.user._id : null,
+      jobType: validJobType,
+      requestedBy: req.user ? req.user._id : new mongoose.Types.ObjectId(),
+      requesterName: req.user ? (req.user.fullName || 'System') : 'System',
       items: items,
       status: 'PENDING'
     });
@@ -686,7 +717,8 @@ exports.sendToInventoryManager = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, error: err.message, stack: err.stack });
   }
 };
 
@@ -854,7 +886,8 @@ exports.getNewRequests = async (req, res) => {
         const materialWorkflowStatusRegex = [
             new RegExp(`^\\s*${WORKFLOW_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${WORKFLOW_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const toCustomerId = (value) => {
             if (!value) return null;
@@ -883,7 +916,8 @@ exports.getNewRequests = async (req, res) => {
         const materialMaintenanceStatusRegex = [
             new RegExp(`^\\s*${MAINTENANCE_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const maintenances = await Maintenance.find({
             status: { $in: materialMaintenanceStatusRegex }
