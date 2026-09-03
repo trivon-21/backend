@@ -562,7 +562,7 @@ exports.submitMaterialRequest = async (req, res) => {
     });
   } catch (err) {
     console.error('submitMaterialRequest ERROR:', err);
-    res.status(500).json({ success: false, error: err.message, stack: err.stack });
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 
