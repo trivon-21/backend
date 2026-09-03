@@ -92,9 +92,59 @@ const matchesJobTeam = (job, teamName) => matchesTeamName(getAssignmentLabel(job
  */
 const isTeamBJob = (job) => matchesTeamName(getAssignmentLabel(job), 'Service Team B');
 
+/**
+ * Resolves a TechTeam by teamName, alias, or member name.
+ */
+const resolveTeam = async (requestedTeamName) => {
+  if (!requestedTeamName) return null;
+  const normalized = normalize(requestedTeamName);
+  
+  const mongoose = require('mongoose');
+  const TechTeam = mongoose.models.TechTeam || mongoose.model('TechTeam');
+  
+  let team = await TechTeam.findOne({
+    $or: [
+      { teamName: { $regex: new RegExp(`^${normalized}$`, 'i') } },
+      { fullName: { $regex: new RegExp(`^${normalized}$`, 'i') } },
+      { teamName: { $regex: normalized, $options: 'i' } },
+      { fullName: { $regex: normalized, $options: 'i' } }
+    ]
+  }).lean();
+
+  if (team) return team;
+
+  const allTeams = await TechTeam.find({}).lean();
+  team = allTeams.find(t => matchesTeamName(t.teamName || t.fullName || '', requestedTeamName));
+  if (team) return team;
+
+  // Try member fallback
+  const db = mongoose.connection.db;
+  if (db) {
+    const collectionsToTry = ['tech_team_members', 'TechTeamMembers', 'techteammembers'];
+    for (const c of collectionsToTry) {
+      try {
+        const collection = db.collection(c);
+        const member = await collection.findOne({
+          $or: [
+            { name: { $regex: new RegExp(`^${normalized}$`, 'i') } },
+            { fullName: { $regex: new RegExp(`^${normalized}$`, 'i') } }
+          ]
+        });
+        if (member && member.teamId) {
+          const foundTeam = await TechTeam.findById(member.teamId).lean();
+          if (foundTeam) return foundTeam;
+        }
+      } catch (err) {}
+    }
+  }
+
+  return null;
+};
+
 exports.normalizeTeamName = normalize;
 exports.getRequestedTeamName = getRequestedTeamName;
 exports.getAssignmentLabel = getAssignmentLabel;
 exports.matchesTeamName = matchesTeamName;
 exports.matchesJobTeam = matchesJobTeam;
 exports.isTeamBJob = isTeamBJob;
+exports.resolveTeam = resolveTeam;

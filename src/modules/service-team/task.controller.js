@@ -128,14 +128,51 @@ const findTaskRecord = async (id) => {
 };
 
 /**
- * Returns jobs assigned to Service Team B in a normalized task shape.
+ * Returns jobs assigned to the requested Service Team in a normalized task shape.
  */
 exports.getTasks = async (req, res) => {
   try {
     const requestedTeamName = getRequestedTeamName(req, DEFAULT_TEAM_NAME);
-    const { installations, requests, maintenances } = await loadTaskCandidates();
+    
+    const { resolveTeam, normalizeTeamName } = require('../../utils/team.utils');
+    const team = await resolveTeam(requestedTeamName);
 
-    const filtered = [...installations, ...requests, ...maintenances].filter((job) => matchesJobTeam(job, requestedTeamName));
+    if (!team) {
+      return res.json([]);
+    }
+
+    const normalized = normalizeTeamName(requestedTeamName);
+
+    const teamIdStr = String(team._id);
+    const mongoose = require('mongoose');
+    const teamIdObj = mongoose.Types.ObjectId.isValid(teamIdStr) ? new mongoose.Types.ObjectId(teamIdStr) : teamIdStr;
+    const teamNamePattern = new RegExp(`^${normalized}$`, 'i');
+    const fullNamePattern = new RegExp(`^${team.fullName?.trim()?.toLowerCase()}$`, 'i');
+
+    const query = {
+      $or: [
+        { assignedTeamId: teamIdObj },
+        { assignedTeamId: teamIdStr },
+        { assignedTeamName: { $regex: teamNamePattern } },
+        { assignedTeam: { $regex: teamNamePattern } },
+        { teamName: { $regex: teamNamePattern } },
+        { assignedTo: { $regex: teamNamePattern } },
+        ...(team.fullName ? [
+          { assignedTeamName: { $regex: fullNamePattern } },
+          { assignedTeam: { $regex: fullNamePattern } },
+          { teamName: { $regex: fullNamePattern } },
+          { assignedTo: { $regex: fullNamePattern } }
+        ] : [])
+      ]
+    };
+
+    const [installations, requests, maintenances] = await Promise.all([
+      Installation.find(query).populate('customerId', 'fullName address phoneNumber email').lean(),
+      ServiceRequest.find(query).populate('customerId', 'fullName address phoneNumber email').lean(),
+      Maintenance.find(query).populate('customerId', 'fullName address phoneNumber email').lean()
+    ]);
+
+    const filtered = [...installations, ...requests, ...maintenances];
 
     const formatted = filtered.map((job) => {
       if (job.units !== undefined) return formatTask(job, 'installation');
