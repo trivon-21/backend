@@ -36,7 +36,9 @@
     "node-cron": "^4.2.1",
     "node-schedule": "^2.1.1",
     "nodemailer": "^8.0.10",
+    "pdf-parse": "^2.4.5",
     "pdfkit": "^0.18.0",
+    "tesseract.js": "^7.0.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
