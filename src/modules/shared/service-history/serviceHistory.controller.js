@@ -122,6 +122,12 @@ const findTaskRecord = async (Model, id) => {
   if (mongoose.Types.ObjectId.isValid(normalizedId)) {
     orFilters.push({ _id: new mongoose.Types.ObjectId(normalizedId) });
   }
+  orFilters.push({ ticketId: normalizedId });
+  orFilters.push({ ticketRef: normalizedId });
+  orFilters.push({ serviceRequestRef: normalizedId });
+  orFilters.push({ serviceRequestId: normalizedId });
+
+  if (orFilters.length === 0) return null;
 
   return Model.findOne({ $or: orFilters }).lean();
 };
@@ -251,7 +257,7 @@ exports.getCustomerHistory = async (req, res) => {
       const normalizedStatus = statusMap[normalizedKey] || EXECUTION_STATUS.SCHEDULED;
 
       return {
-        ticketId: `#${String(item._id)}`,
+        ticketId: item.serviceRequestId || item.serviceRequestRef || item.ticketId || item.ticketRef || `#${String(item._id)}`,
         serviceType: type,
         productType: item.productType || 'N/A',
         date: normalizedStatus === EXECUTION_STATUS.ASSIGNED ? null : (item.scheduledDate || item.serviceDate || item.date || item.createdAt || null),
@@ -286,7 +292,7 @@ exports.getCustomerHistory = async (req, res) => {
       data: {
         customerId: anchorCustomerIdStr,
         summary: {
-          fullName,
+          customerName: fullName,
           location: customerAddress,
           productType: anchor.productType || latestInstallation?.productType || 'N/A',
           installationDate: anchor.serviceDate || anchor.date || latestInstallation?.serviceDate || latestInstallation?.date || null
