@@ -123,15 +123,18 @@ exports.getNewServiceTickets = async (req, res) => {
     const toCustomerId = (value) => {
       if (!value) return null;
       if (typeof value === 'string') return value;
+      // Properly handle raw MongoDB ObjectIds
+      if (value.constructor && value.constructor.name === 'ObjectId') return value.toString();
+      
       if (typeof value === 'object') {
         if (value._id) return String(value._id);
-        if (value.id) return String(value.id);
+        if (value.id && !Buffer.isBuffer(value.id)) return String(value.id);
       }
       return String(value);
     };
 
     // Fetch all new requests with customer details populated
-    const newRequests = await NewRequest.find()
+    const newRequests = await NewRequest.find({ status: WORKFLOW_STATUS.NEW })
       .populate('customerId', 'fullName name email phoneNumber contactNo address')
       .lean();
 
@@ -208,30 +211,38 @@ exports.getNewServiceTickets = async (req, res) => {
     }));
 
     // Transform rejected service requests
-    const rejectedServiceRequestsData = rejectedServiceRequests.map((request) => {
+    const rejectedServiceRequestsData = await Promise.all(rejectedServiceRequests.map(async (request) => {
       const customerId = toCustomerId(request.customerId);
       const populatedCustomer = request.customerId && typeof request.customerId === 'object' ? request.customerId : null;
       const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+      const customerObjectId = customerId || request.customerId;
+
+      const resolvedServiceType = request.serviceType || request.requestType || request.request_type || 'Repair';
+
+      const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(
+        customerObjectId,
+        resolvedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair'
+      );
 
       return {
         ticketId: request.serviceRequestRef || request.serviceRequestId || request.ticketId || request._id,
         productType: request.productType || 'N/A',
-        serviceType: request.serviceType || request.requestType || request.request_type || 'Repair',
+        serviceType: resolvedServiceType,
         serviceDescription: request.serviceDescription || request.description || request.problemDescription || request.subject || '-',
         fullName: customer?.fullName || 'Unknown Customer',
         customerEmail: customer?.email || '-',
         customerphoneNumber: customer?.phoneNumber || '-',
         customerAddress: customer?.address || '-',
-        isUnderWarranty: request.isUnderWarranty || false,
-        isFreeOfCharge: request.isFreeOfCharge || false,
-        requestType: request.serviceType || 'Repair',
+        isUnderWarranty,
+        isFreeOfCharge,
+        requestType: resolvedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair',
         status: WORKFLOW_STATUS.FINANCE_REJECTED,
         note: 'Finance Rejected - Available for Re-submission',
         materials: request.materials || [],
         financeNotes: request.financeNotes || '',
         location: request.location || '-'
       };
-    });
+    }));
 
     // Transform rejected installations
     const rejectedInstallationsData = rejectedInstallations.map((installation) => {
@@ -288,10 +299,16 @@ exports.getNewServiceTickets = async (req, res) => {
     });
 
     // Transform new Maintenances
-    const newMaintenancesData = newMaintenances.map((maintenance) => {
+    const newMaintenancesData = await Promise.all(newMaintenances.map(async (maintenance) => {
       const customerId = toCustomerId(maintenance.customerId);
       const populatedCustomer = maintenance.customerId && typeof maintenance.customerId === 'object' ? maintenance.customerId : null;
       const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+      const customerObjectId = customerId || maintenance.customerId;
+
+      const { isUnderWarranty, isFreeOfCharge } = await calculateWarrantyStatus(
+        customerObjectId,
+        'Maintenance'
+      );
 
       return {
         ticketId: maintenance.ticketId || maintenance._id,
@@ -302,8 +319,8 @@ exports.getNewServiceTickets = async (req, res) => {
         customerEmail: customer?.email || maintenance.customerEmail || '-',
         customerphoneNumber: customer?.phoneNumber || maintenance.customerPhone || '-',
         customerAddress: customer?.address || maintenance.location || '-',
-        isUnderWarranty: true, // As per spec, first 4 are under warranty. Usually we pull this from somewhere, default true.
-        isFreeOfCharge: true,
+        isUnderWarranty,
+        isFreeOfCharge,
         requestType: 'Maintenance', // Treat as Maintenance in UI
         status: maintenance.status,
         note: maintenance.status === MAINTENANCE_STATUS.FINANCE_REJECTED ? 'Finance Rejected - Available for Re-submission' : 'New Maintenance - ready for material submission',
@@ -312,7 +329,7 @@ exports.getNewServiceTickets = async (req, res) => {
         location: maintenance.location || '-',
         siteDetails: {}
       };
-    });
+    }));
 
     // Combine all available tickets
     const data = [...newRequestsData, ...newInstallationsData, ...rejectedServiceRequestsData, ...rejectedInstallationsData, ...newMaintenancesData];

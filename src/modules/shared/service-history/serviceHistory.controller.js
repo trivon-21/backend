@@ -296,7 +296,7 @@ exports.getCustomerHistory = async (req, res) => {
 
     const latestInstallation = teamFilteredInstallations
       .slice()
-      .sort((a, b) => new Date(b.date || b.serviceDate || b.createdAt || 0).getTime() - new Date(a.date || a.serviceDate || a.createdAt || 0).getTime())[0];
+      .sort((a, b) => new Date(b.serviceDate || b.date || b.createdAt || 0).getTime() - new Date(a.serviceDate || a.date || a.createdAt || 0).getTime())[0];
 
     res.json({
       success: true,

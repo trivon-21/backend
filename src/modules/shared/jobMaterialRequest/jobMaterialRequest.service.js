@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 const JobMaterialRequest = require('../../../models/JobMaterialRequest');
+const { calculateWarrantyStatus } = require('../../../utils/warranty.utils');
 const WarehousePickRequest = require('../../../models/WarehousePickRequest');
 const Inventory = require('../../../models/Inventory');
 const ServiceTicket = require('../serviceTicket/serviceTicket.model');
@@ -241,56 +242,86 @@ exports.listEligibleJobs = async () => {
     const request = canonicalByJob.get(String(job._id));
     return !request || request.status === 'REJECTED';
   };
-  return [
-    ...tickets.map(ticket => ({
+
+  const getWarranty = async (job, serviceType) => {
+    if (!job.customerId) return { isUnderWarranty: false, isFreeOfCharge: false };
+    const customerId = job.customerId?._id ? String(job.customerId._id) : String(job.customerId);
+    return calculateWarrantyStatus(customerId, serviceType);
+  };
+
+  const mapTicket = async ticket => {
+    const serviceType = ticket.requestType || ticket.serviceType || 'Repair';
+    const { isUnderWarranty, isFreeOfCharge } = await getWarranty(ticket, serviceType === 'Maintenance' ? 'Maintenance' : 'Repair');
+    return {
       ticketId: ticket.ticketId || ticket.serviceRequestId || ticket.serviceRequestRef || ticket._id,
       productType: ticket.subject || ticket.category || 'N/A',
-      serviceType: ticket.requestType || ticket.serviceType || 'Repair',
+      serviceType: serviceType,
       serviceDescription: ticket.description || '-',
       requestType: String(ticket.requestType || '').toLowerCase().includes('maintenance') ? 'Maintenance' : 'Service',
       location: ticket.location || '-',
-      isUnderWarranty: false,
-      isFreeOfCharge: false,
+      isUnderWarranty,
+      isFreeOfCharge,
       ...customerFields(ticket),
       ...requestFields(ticket),
-    })),
-    ...repairs.filter(isEligible).map(job => ({
+    };
+  };
+
+  const mapRepair = async job => {
+    const { isUnderWarranty, isFreeOfCharge } = await getWarranty(job, 'Repair');
+    return {
       ticketId: job.ticketId || job.serviceRequestRef || job.serviceRequestId || job._id,
       productType: job.repairType || 'Repair',
       serviceType: 'Repair',
       serviceDescription: job.notes || 'Repair material request',
       requestType: 'Service',
       location: job.location || '-',
-      isUnderWarranty: false,
-      isFreeOfCharge: false,
+      isUnderWarranty,
+      isFreeOfCharge,
       ...customerFields(job),
       ...requestFields(job),
-    })),
-    ...installations.filter(isEligible).map(job => ({
-      ticketId: job.ticketId || job.serviceRequestId || job._id,
-      productType: job.productType || 'Installation',
-      serviceType: 'Installation',
-      serviceDescription: job.location || 'Installation material request',
-      requestType: 'Installation',
-      location: job.location || '-',
-      siteDetails: job.siteDetails || {},
-      isUnderWarranty: false,
-      isFreeOfCharge: false,
-      ...customerFields(job),
-      ...requestFields(job),
-    })),
-    ...maintenances.filter(isEligible).map(job => ({
+    };
+  };
+
+  const mapInstallation = job => ({
+    ticketId: job.ticketId || job.serviceRequestId || job._id,
+    productType: job.productType || 'Installation',
+    serviceType: 'Installation',
+    serviceDescription: job.location || 'Installation material request',
+    requestType: 'Installation',
+    location: job.location || '-',
+    siteDetails: job.siteDetails || {},
+    isUnderWarranty: false,
+    isFreeOfCharge: false,
+    ...customerFields(job),
+    ...requestFields(job),
+  });
+
+  const mapMaintenance = async job => {
+    const { isUnderWarranty, isFreeOfCharge } = await getWarranty(job, 'Maintenance');
+    return {
       ticketId: job.ticketId || job.serviceRequestId || job._id,
       productType: job.maintenanceType || 'Maintenance',
       serviceType: 'Maintenance',
       serviceDescription: 'Scheduled maintenance',
       requestType: 'Maintenance',
       location: job.location || '-',
-      isUnderWarranty: Boolean(job.isUnderWarranty),
-      isFreeOfCharge: Boolean(job.isUnderWarranty),
+      isUnderWarranty,
+      isFreeOfCharge,
       ...customerFields(job),
       ...requestFields(job),
-    })),
+    };
+  };
+
+  const resolvedTickets = await Promise.all(tickets.map(mapTicket));
+  const resolvedRepairs = await Promise.all(repairs.filter(isEligible).map(mapRepair));
+  const resolvedInstallations = installations.filter(isEligible).map(mapInstallation);
+  const resolvedMaintenances = await Promise.all(maintenances.filter(isEligible).map(mapMaintenance));
+
+  return [
+    ...resolvedTickets,
+    ...resolvedRepairs,
+    ...resolvedInstallations,
+    ...resolvedMaintenances,
   ];
 };
 
