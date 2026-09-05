@@ -27,7 +27,7 @@ const installationSchema = new Schema(
     financeNotes: String,
     status: {
       type: String,
-      enum: ['Pending', 'Finance Approved', 'Finance Rejected', 'Sent to IM', 'Materials Ready', 'Assigned',
+      enum: ['New', 'Pending', 'Finance Approved', 'Finance Rejected', 'Sent to IM', 'Materials Ready', 'Assigned',
         'Scheduled', 'In Progress', 'On Hold', 'Completed', 'Cancelled'],
       default: 'Pending'
     },

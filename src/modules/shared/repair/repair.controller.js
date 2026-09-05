@@ -90,7 +90,7 @@ exports.getCustomerHistory = async (req, res) => {
     const buildFilters = () => {
       const orFilters = [];
       if (mongoose.Types.ObjectId.isValid(id)) {
-        orFilters.push({ _id: id });
+        orFilters.push({ _id: new mongoose.Types.ObjectId(id) });
       }
       const numId = Number(id);
       if (!Number.isNaN(numId)) {
@@ -124,9 +124,11 @@ exports.getCustomerHistory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Record not found' });
     }
 
-    const anchorCustomerId = typeof anchor.customerId === 'object' && anchor.customerId?._id
-      ? anchor.customerId._id
-      : anchor.customerId;
+    const rawAnchorCustomer = anchor.customerId || anchor.customer || anchor.userId;
+    
+    const anchorCustomerId = typeof rawAnchorCustomer === 'object' && rawAnchorCustomer?._id
+      ? rawAnchorCustomer._id
+      : rawAnchorCustomer;
     const anchorCustomerIdStr = anchorCustomerId ? String(anchorCustomerId) : null;
     
     if (!anchorCustomerIdStr) {
@@ -150,7 +152,7 @@ exports.getCustomerHistory = async (req, res) => {
       customerIdCandidates.push(new mongoose.Types.ObjectId(anchorCustomerIdStr));
     }
 
-    const customerIdQuery = { customerId: { $in: customerIdCandidates } };
+
 
     const toCustomerIdString = (value) => {
       if (!value) return '';
@@ -162,21 +164,23 @@ exports.getCustomerHistory = async (req, res) => {
       return String(value);
     };
 
-    const isSameCustomer = (item) => toCustomerIdString(item?.customerId) === anchorCustomerIdStr;
+    const isSameCustomer = (item) => {
+      const itemCustomer = item?.customerId || item?.customer || item?.userId;
+      return toCustomerIdString(itemCustomer) === anchorCustomerIdStr;
+    };
+
+    const customerQuery = {
+      $or: [
+        { customerId: { $in: customerIdCandidates } },
+        { customer: { $in: customerIdCandidates } },
+        { userId: { $in: customerIdCandidates } }
+      ]
+    };
 
     const [services, installations, inspections, customer] = await Promise.all([
-      ServiceRequest.find({
-        ...customerIdQuery,
-        
-      }).lean(),
-      Installation.find({
-        ...customerIdQuery,
-        
-      }).lean(),
-      Inspection.find({
-        ...customerIdQuery,
-        
-      }).lean(),
+      ServiceRequest.find(customerQuery).lean(),
+      Installation.find(customerQuery).lean(),
+      Inspection.find(customerQuery).lean(),
       Customer.findById(mongoose.Types.ObjectId.isValid(anchorCustomerIdStr) ? anchorCustomerIdStr : null).lean()
     ]);
 
@@ -186,9 +190,13 @@ exports.getCustomerHistory = async (req, res) => {
 
     const toHistoryItem = (item, type) => {
       const rawStatus = String(item.status || EXECUTION_STATUS.SCHEDULED);
-      const normalizedStatus = STATUS_GROUPS.HISTORY_NORMALIZED.includes(rawStatus)
+      let normalizedStatus = STATUS_GROUPS.HISTORY_NORMALIZED.includes(rawStatus)
         ? rawStatus
         : EXECUTION_STATUS.SCHEDULED;
+      
+      if (rawStatus.toUpperCase() === 'INSPECTED') {
+        normalizedStatus = EXECUTION_STATUS.COMPLETED;
+      }
 
       return {
         ticketId: item.serviceRequestId || item.serviceRequestRef || item.ticketId || item.ticketRef || `#${String(item._id)}`,
@@ -202,7 +210,7 @@ exports.getCustomerHistory = async (req, res) => {
         warrantyStatus: type === REQUEST_TYPES.INSPECTION
           ? 'Warranty Period not started yet'
           : type === REQUEST_TYPES.INSTALLATION
-            ? 'Warranty Activated'
+            ? (normalizedStatus === EXECUTION_STATUS.COMPLETED ? 'Warranty Activated' : 'Warranty Period not started yet')
             : (item.isUnderWarranty ? 'Warranty Claimed' : 'Warranty Not Claimed')
       };
     };

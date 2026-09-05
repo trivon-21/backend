@@ -30,6 +30,7 @@ const inspectionReportSchema = new mongoose.Schema(
     ticketId: { type: mongoose.Schema.Types.ObjectId, ref: "InspectionTicket", required: true },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
     inspectorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
     // Section 1
     customerName: String, contactNumber: String,
@@ -51,7 +52,7 @@ const inspectionReportSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: ["DRAFT", "RECORDED", "SUBMITTED"],
+      enum: ["DRAFT", "RECORDED", "SUBMITTED", "Approved", "Rejected"],
       default: "DRAFT"
     },
     submittedAt: Date,

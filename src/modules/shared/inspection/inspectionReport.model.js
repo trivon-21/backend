@@ -6,6 +6,7 @@ const inspectionReportSchema = new Schema(
     ticketId: { type: Schema.Types.ObjectId, ref: 'InspectionTicket', required: true },
     orderId: { type: Schema.Types.ObjectId, ref: 'InstallationOrder' },
     inspectorId: { type: Schema.Types.ObjectId, ref: 'User' },
+    customerId: { type: Schema.Types.ObjectId, ref: 'User' },
     customerName: String,
     contactNumber: String,
     siteAddress: String,
@@ -20,7 +21,7 @@ const inspectionReportSchema = new Schema(
     inspectorName: String,
     acknowledgeDate: String,
     acknowledgeTime: String,
-    status: { type: String, enum: ['DRAFT', 'RECORDED', 'SUBMITTED'], default: 'DRAFT' },
+    status: { type: String, enum: ['DRAFT', 'RECORDED', 'SUBMITTED', 'Approved', 'Rejected'], default: 'DRAFT' },
     submittedAt: Date,
     recordedAt: Date,
     reportId: { type: String, unique: true, sparse: true }
