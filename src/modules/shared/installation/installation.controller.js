@@ -3,7 +3,6 @@ const Installation = require('./installation.model');
 const Customer = require('../../user/user.model');
 const TechTeam = require('../tech-teams/techTeam.model');
 
-// ✅ FIXED PATH: Going up one level to 'shared' and into 'maintenance'
 const MaintenanceSchedule = require('../maintenance/maintenanceSchedule.model');
 
 const { 
