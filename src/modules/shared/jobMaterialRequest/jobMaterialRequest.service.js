@@ -159,7 +159,7 @@ async function readRequest(request) {
   return {
     _id: request._id,
     materialRequestId: request.requestId,
-    ticketId: request.jobId,
+    ticketId: job?.ticketId || job?.serviceRequestId || job?.serviceRequestRef || request.jobId,
     requestType: request.jobType === 'Repair' ? 'Service' : request.jobType,
     serviceType: request.jobType,
     customerName: customer?.fullName || job?.fullName || request.requesterName,
@@ -243,7 +243,7 @@ exports.listEligibleJobs = async () => {
   };
   return [
     ...tickets.map(ticket => ({
-      ticketId: ticket.ticketId || ticket.serviceRequestId || ticket._id,
+      ticketId: ticket.ticketId || ticket.serviceRequestId || ticket.serviceRequestRef || ticket._id,
       productType: ticket.subject || ticket.category || 'N/A',
       serviceType: ticket.requestType || ticket.serviceType || 'Repair',
       serviceDescription: ticket.description || '-',
@@ -255,7 +255,7 @@ exports.listEligibleJobs = async () => {
       ...requestFields(ticket),
     })),
     ...repairs.filter(isEligible).map(job => ({
-      ticketId: job.ticketId || job.serviceRequestId || job._id,
+      ticketId: job.ticketId || job.serviceRequestRef || job.serviceRequestId || job._id,
       productType: job.repairType || 'Repair',
       serviceType: 'Repair',
       serviceDescription: job.notes || 'Repair material request',

@@ -189,7 +189,7 @@ exports.getNewServiceTickets = async (req, res) => {
       );
 
       return {
-        ticketId: request.serviceRequestRef || request._id,
+        ticketId: request.serviceRequestId || request.serviceRequestRef || request.ticketId || request._id,
         productType: request.productType || 'N/A',
         serviceType: resolvedServiceType,
         serviceDescription: request.serviceDescription || request.description || request.problemDescription || request.subject || '-',
@@ -214,7 +214,7 @@ exports.getNewServiceTickets = async (req, res) => {
       const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
 
       return {
-        ticketId: request.serviceRequestRef || request._id,
+        ticketId: request.serviceRequestRef || request.serviceRequestId || request.ticketId || request._id,
         productType: request.productType || 'N/A',
         serviceType: request.serviceType || request.requestType || request.request_type || 'Repair',
         serviceDescription: request.serviceDescription || request.description || request.problemDescription || request.subject || '-',
@@ -582,22 +582,36 @@ exports.sendToInventoryManager = async (req, res) => {
       materials 
     } = req.body;
     
+    const mongoose = require('mongoose');
+    const isValidId = mongoose.Types.ObjectId.isValid(resolvedId);
+    
+    const query = {
+      $or: [
+        { ticketId: resolvedId },
+        { serviceRequestId: resolvedId },
+        { serviceRequestRef: resolvedId }
+      ]
+    };
+    if (isValidId) {
+      query.$or.unshift({ _id: resolvedId });
+    }
+
     // Support ServiceRequest, Installation, and Maintenance so they all follow the same workflow behavior.
-    let sourceRecord = await ServiceRequest.findById(resolvedId).lean();
+    let sourceRecord = await ServiceRequest.findOne(query).lean();
     let requestType = REQUEST_TYPES.SERVICE;
 
     if (!sourceRecord) {
-      sourceRecord = await Installation.findById(resolvedId).lean();
+      sourceRecord = await Installation.findOne(query).lean();
       requestType = REQUEST_TYPES.INSTALLATION;
     }
 
     if (!sourceRecord) {
-      sourceRecord = await Maintenance.findById(resolvedId).lean();
+      sourceRecord = await Maintenance.findOne(query).lean();
       requestType = 'Maintenance';
     }
 
     if (!sourceRecord) {
-      const newReq = await NewRequest.findById(resolvedId).lean();
+      const newReq = await NewRequest.findOne(query).lean();
       if (newReq) {
         sourceRecord = newReq;
         requestType = (newReq.requestType || newReq.serviceType || 'Repair').toLowerCase() === 'maintenance' 
@@ -619,7 +633,7 @@ exports.sendToInventoryManager = async (req, res) => {
           newEntry = new ServiceRequest(docObj);
         }
         await newEntry.save({ validateBeforeSave: false });
-        await NewRequest.findByIdAndDelete(resolvedId);
+        await NewRequest.findByIdAndDelete(sourceRecord._id);
         sourceRecord = docObj; // Use the migrated object moving forward
       }
     }
@@ -629,7 +643,6 @@ exports.sendToInventoryManager = async (req, res) => {
     }
 
     const crypto = require('crypto');
-    const mongoose = require('mongoose');
     
     const items = (materials || sourceRecord.materials || sourceRecord.materialList || []).map(m => {
       const qty = Number(m.quantity) || 1;
@@ -665,7 +678,7 @@ exports.sendToInventoryManager = async (req, res) => {
     const validJobType = jobTypeMapping[requestType] || 'Repair';
 
     await JobMaterialRequest.findOneAndUpdate(
-      { jobId: resolvedId, jobType: validJobType },
+      { jobId: sourceRecord._id, jobType: validJobType },
       {
         $set: {
           requestId: 'JMR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
@@ -684,14 +697,14 @@ exports.sendToInventoryManager = async (req, res) => {
     if (req.body.isFreeOfCharge !== undefined) updateObj.isFreeOfCharge = req.body.isFreeOfCharge;
 
     let updatedRecord = await ServiceRequest.findByIdAndUpdate(
-      resolvedId,
+      sourceRecord._id,
       updateObj,
       { new: true }
     );
 
     if (!updatedRecord) {
       updatedRecord = await Installation.findByIdAndUpdate(
-        resolvedId,
+        sourceRecord._id,
         updateObj,
         { new: true }
       );
@@ -701,7 +714,7 @@ exports.sendToInventoryManager = async (req, res) => {
       let maintUpdateObj = { ...updateObj, status: MAINTENANCE_STATUS.SENT_TO_IM };
       if (materials) maintUpdateObj.materialList = materials;
       updatedRecord = await Maintenance.findByIdAndUpdate(
-        resolvedId,
+        sourceRecord._id,
         maintUpdateObj,
         { new: true }
       );

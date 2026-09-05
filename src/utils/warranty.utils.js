@@ -24,7 +24,7 @@ exports.calculateWarrantyStatus = async (customerObjectId, serviceType) => {
     const installation = await Installation.findOne({
       customerId: customerObjectId,
       status: EXECUTION_STATUS.COMPLETED
-    }).lean();
+    }).sort({ createdAt: -1 }).lean();
 
     if (installation) {
       // Calculate warranty period: 2 years from installation date

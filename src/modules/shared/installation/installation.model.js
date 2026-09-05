@@ -37,7 +37,16 @@ const installationSchema = new Schema(
   { timestamps: true, collection: 'installations', strict: false }
 );
 
-installationSchema.pre('save', async function (next) {
+installationSchema.pre('validate', async function() {
+  if (this.isModified('status') && this.status) {
+    const lstatus = this.status.toLowerCase();
+    if (lstatus === 'complete' || lstatus === 'completed') {
+      this.status = 'Completed';
+    }
+  }
+});
+
+installationSchema.pre('save', async function () {
   // Generate ticketId for Installation if it doesn't exist
   if (this.isNew && !this.ticketId) {
     try {
@@ -55,18 +64,18 @@ installationSchema.pre('save', async function (next) {
       }
       this.ticketId = `INT-${String(counter.seq).padStart(4, '0')}`;
     } catch (err) {
-      return next(err);
+      throw err;
     }
   }
 
   // Only act when the status field changed to 'Completed'
   if (!this.isModified('status') || this.status !== 'Completed') {
-    return next();
+    return;
   }
 
   // Guard: skip if a schedule is already linked
   if (this.maintenanceScheduleId) {
-    return next();
+    return;
   }
 
   try {
@@ -117,10 +126,10 @@ installationSchema.pre('save', async function (next) {
     this.maintenanceScheduleId = schedule._id;
     this.maintenanceStatus = INSTALLATION_MAINTENANCE_STATUS.SCHEDULE_CREATED;
 
-    next();
+    return;
   } catch (err) {
     console.error('[Installation pre-save hook] Failed to create MaintenanceSchedule:', err.message);
-    next(err);
+    throw err;
   }
 });
 
