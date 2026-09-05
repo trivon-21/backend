@@ -173,7 +173,6 @@ exports.getOrders = async (req, res) => {
 exports.updateOrder = async (req, res) => {
   try {
     const data = await service.updateOrder(req.params.id, req.body);
-    if (!data) return res.status(404).json({ message: 'Order not found', code: 'ORDER_NOT_FOUND' });
     res.json(data);
   } catch (error) {
     res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({ message: error.message || "Failed to update order", code: error.code });
@@ -202,6 +201,18 @@ exports.updateMaterialRequest = async (req, res) => {
     res.json(data);
   } catch (error) {
     res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({ message: error.message || "Failed to update material request", code: error.code });
+  }
+};
+
+exports.getReceiptDiscrepancies = async (req, res) => {
+  try {
+    const data = await service.getReceiptDiscrepancies({ status: req.query.status });
+    res.json(data);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      message: error.message || 'Failed to fetch receipt discrepancies',
+      code: error.code,
+    });
   }
 };
 
@@ -352,7 +363,7 @@ exports.updateOrderRequest = async (req, res) => {
 
 exports.submitOrderRequest = async (req, res) => {
   try {
-    res.json(await service.submitOrderRequest(req.params.id, req.user));
+    res.json(await service.submitOrderRequest(req.params.id, req.body || {}, req.user));
   } catch (error) {
     res.status(error.statusCode || 400).json({ message: error.message, code: error.code });
   }
@@ -360,7 +371,7 @@ exports.submitOrderRequest = async (req, res) => {
 
 exports.issuePurchaseOrder = async (req, res) => {
   try {
-    res.json(await service.issuePurchaseOrder(req.params.id, req.user));
+    res.json(await service.issuePurchaseOrder(req.params.id, req.body || {}, req.user));
   } catch (error) {
     res.status(error.statusCode || 400).json({ message: error.message, code: error.code });
   }

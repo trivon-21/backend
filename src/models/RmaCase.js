@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const RmaCaseSchema = new mongoose.Schema({
   rmaId: { type: String, required: true, unique: true },
   inventoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'ManagerInventoryItem' },
+  serializedAssetId: { type: mongoose.Schema.Types.ObjectId, ref: 'SerializedAsset', index: true },
   serialNumber: { type: String, required: true },
   itemName: { type: String },
   itemSku: { type: String },

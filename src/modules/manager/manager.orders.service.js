@@ -5,6 +5,10 @@ const Activity = require('../../models/Activity');
 require('../../models/Inventory');
 require('../../models/Supplier');
 const { approvalMode, canonicalPurchaseStatus } = require('../../utils/purchase-workflow');
+const {
+  assertPurchaseStatusVersion,
+  savePurchaseRequest,
+} = require('../../utils/purchase-request-concurrency');
 
 function serviceError(statusCode, message, code) {
   const error = new Error(message);
@@ -68,13 +72,13 @@ exports.decideOrder = async (id, input, user) => {
   const comment = requireComment(input.comment ?? input.reason);
   const request = await PurchaseRequest.findById(id);
   if (!request) throw serviceError(404, 'Purchase request not found', 'ORDER_NOT_FOUND');
-  if (canonicalPurchaseStatus(request.status) !== 'pending-manager') {
-    throw serviceError(409, 'This request is not awaiting Manager approval', 'INVALID_ORDER_TRANSITION');
-  }
   if (String(request.requestedById || '') === String(user._id)) {
     throw serviceError(403, 'You cannot approve your own purchase request', 'SELF_APPROVAL');
   }
-  assertVersion(request, input.statusVersion);
+  assertPurchaseStatusVersion(request, input.statusVersion);
+  if (canonicalPurchaseStatus(request.status) !== 'pending-manager') {
+    throw serviceError(409, 'This request is not awaiting Manager approval', 'INVALID_ORDER_TRANSITION');
+  }
 
   const now = new Date();
   request.operationalApproval = {
@@ -111,7 +115,7 @@ exports.decideOrder = async (id, input, user) => {
     }
   }
   request.statusVersion += 1;
-  await request.save();
+  await savePurchaseRequest(request);
   await Activity.create({
     type: input.decision === 'approved' ? 'request' : 'alert',
     title: `Purchase Request ${input.decision === 'approved' ? 'Approved' : 'Rejected'}`,

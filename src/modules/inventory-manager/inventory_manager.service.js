@@ -11,6 +11,8 @@ const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const LeftoverReturn = require('../../models/LeftoverReturn');
 const RmaCase = require('../../models/RmaCase');
 const QuarantineItem = require('../../models/QuarantineItem');
+const ReceiptDiscrepancy = require('../../models/ReceiptDiscrepancy');
+const SerializedAsset = require('../../models/SerializedAsset');
 const ServiceTicket = require('../../models/ServiceTicket');
 const InspectionTicket = require('../../models/InspectionTicket');
 const Installation = require('../../models/Installation');
@@ -39,6 +41,17 @@ const {
   receiptAuthorizationWorkflowStages,
   summarizeProcurementWorkflow,
 } = require('../../utils/purchase-workflow');
+const {
+  nextDiscrepancyState,
+  normalizeReceiptDisposition,
+  receiptProgress,
+} = require('./receipt-disposition');
+const { normalizeSerialNumber } = require('../../utils/serialized-asset-domain');
+const { buildDispatchMutation } = require('../../utils/dispatch-workflow');
+const {
+  assertPurchaseStatusVersion,
+  savePurchaseRequest,
+} = require('../../utils/purchase-request-concurrency');
 
 const MASTER_DATA_FIELDS = [
   'name', 'itemClass', 'subcategory', 'brand', 'manufacturerPartNumber', 'type', 'unit',
@@ -48,7 +61,6 @@ const MASTER_DATA_FIELDS = [
 ];
 const PROTECTED_STOCK_FIELDS = ['available', 'reserved', 'serialNumbers', 'status', 'category'];
 const TECHNICIAN_ROLES = ['MAIN_TECH', 'SERVICE_TEAM', 'INSPECTION'];
-const ORDER_UPDATE_FIELDS = ['status', 'courier', 'trackId', 'items', 'completedAt', 'lastMovedAt'];
 const MATERIAL_REQUEST_UPDATE_FIELDS = ['status', 'items', 'serviceTeam', 'completedAt', 'lastMovedAt'];
 
 function normalizeInventoryData(data, applyDefaults = true) {
@@ -106,6 +118,10 @@ function orderLookup(id) {
 
 function authorizationLookup(id) {
   return mongoose.isValidObjectId(id) ? { _id: id } : { authorizationNumber: id };
+}
+
+function discrepancyLookup(id) {
+  return mongoose.isValidObjectId(id) ? { _id: id } : { discrepancyId: id };
 }
 
 async function affectedWorkExists(type, id) {
@@ -174,9 +190,26 @@ function rejectProtectedStockFields(data) {
   }
 }
 
-function synchronizeStatusForResponse(item) {
-  if (item) item.status = legacyStockStatus(item.available, item.reorderLevel);
-  return item;
+async function projectSerialNumbers(items) {
+  const list = (Array.isArray(items) ? items : [items]).filter(Boolean);
+  if (!list.length) return Array.isArray(items) ? [] : null;
+  const assets = await SerializedAsset.find({
+    inventoryId: { $in: list.map((item) => item._id) },
+    status: { $ne: 'retired' },
+  }).select('inventoryId serialNumber').sort({ serialNumber: 1 }).lean();
+  const serialsByInventory = new Map();
+  for (const asset of assets) {
+    const key = String(asset.inventoryId);
+    if (!serialsByInventory.has(key)) serialsByInventory.set(key, []);
+    serialsByInventory.get(key).push(asset.serialNumber);
+  }
+  const projected = list.map((item) => {
+    const value = item.toObject ? item.toObject({ virtuals: true }) : { ...item };
+    value.status = legacyStockStatus(value.available, value.reorderLevel);
+    value.serialNumbers = serialsByInventory.get(String(value._id)) || [];
+    return value;
+  });
+  return Array.isArray(items) ? projected : projected[0];
 }
 
 /**
@@ -267,7 +300,7 @@ exports.getDashboardData = async (user) => {
  */
 exports.getInventoryList = async () => {
   const items = await Inventory.find().populate('supplierId', 'name').sort({ name: 1 });
-  return items.map(synchronizeStatusForResponse);
+  return projectSerialNumbers(items);
 };
 
 /**
@@ -276,7 +309,7 @@ exports.getInventoryList = async () => {
 exports.getInventoryItem = async (id) => {
   if (!mongoose.isValidObjectId(id)) return null;
   const item = await Inventory.findById(id).populate('supplierId', 'name');
-  return synchronizeStatusForResponse(item);
+  return projectSerialNumbers(item);
 };
 
 exports.getInventoryLocations = () => INVENTORY_LOCATIONS.map((location) => ({
@@ -300,14 +333,16 @@ exports.updateInventoryItem = async (id, data) => {
   const merged = { ...existing.toObject(), ...update };
   await validateCatalogData(merged);
   if (update.isSerialized !== undefined && update.isSerialized !== existing.isSerialized
-    && (existing.available > 0 || existing.serialNumbers.length > 0)) {
+    && (existing.available > 0 || existing.serialNumbers.length > 0
+      || await SerializedAsset.exists({ inventoryId: existing._id, status: { $ne: 'retired' } }))) {
     throw serviceError('Serialized tracking cannot change while stock or asset tags exist', 409, 'SERIALIZATION_LOCKED');
   }
   update.status = legacyStockStatus(existing.available, update.reorderLevel ?? existing.reorderLevel);
 
   existing.set(update);
   await existing.save();
-  return existing.populate('supplierId', 'name');
+  await existing.populate('supplierId', 'name');
+  return projectSerialNumbers(existing);
 };
 
 /**
@@ -436,10 +471,8 @@ exports.receiveInventory = async (data, user) => {
   if (!['PO', 'NON_PO'].includes(mode)) {
     throw serviceError('receiptMode must be PO or NON_PO; legacy direct receipts are no longer accepted', 400, 'RECEIPT_MODE_REQUIRED');
   }
-  const quantity = Number(data.quantity);
-  if (!Number.isInteger(quantity) || quantity <= 0) {
-    throw serviceError('Receipt quantity must be a positive whole number', 400, 'INVALID_QUANTITY');
-  }
+  const disposition = normalizeReceiptDisposition(data);
+  const { quantity, acceptedQuantity, damagedQuantity, missingQuantity } = disposition;
   const location = String(data.location || '').trim();
   const binLocation = String(data.binLocation || '').trim();
   if (!isValidInventoryLocation(location, binLocation)) {
@@ -460,10 +493,23 @@ exports.receiveInventory = async (data, user) => {
   if (!validHttpUrl(data.supportingDocumentUrl)) {
     throw serviceError('Supporting document URL must use http or https', 400, 'INVALID_URL');
   }
-  const submittedSerials = Array.isArray(data.serialNumbers) ? data.serialNumbers : [];
+  const hasExplicitBreakdown = ['acceptedQuantity', 'damagedQuantity', 'missingQuantity']
+    .some((field) => data[field] !== undefined && data[field] !== null && data[field] !== '');
+  const legacyDamagedSerials = !hasExplicitBreakdown && disposition.condition === 'Damaged';
+  const submittedSerials = legacyDamagedSerials ? [] : Array.isArray(data.serialNumbers) ? data.serialNumbers : [];
+  const submittedDamagedSerials = Array.isArray(data.damagedSerialNumbers)
+    ? data.damagedSerialNumbers
+    : legacyDamagedSerials && Array.isArray(data.serialNumbers) ? data.serialNumbers : [];
   const serialNumbers = normalizeStringList(submittedSerials);
+  const damagedSerialNumbers = normalizeStringList(submittedDamagedSerials);
+  const normalizedReportedSerials = [...serialNumbers, ...damagedSerialNumbers].map(normalizeSerialNumber);
   if (serialNumbers.length !== submittedSerials.length) {
-    throw serviceError('Serial numbers must be unique within the receipt', 409, 'DUPLICATE_SERIAL');
+    throw serviceError('Accepted serial numbers must be unique within the receipt', 409, 'DUPLICATE_SERIAL');
+  }
+  if (damagedSerialNumbers.length !== submittedDamagedSerials.length
+    || normalizedReportedSerials.some((serial) => !serial)
+    || new Set(normalizedReportedSerials).size !== normalizedReportedSerials.length) {
+    throw serviceError('Accepted and damaged serial numbers must be unique within the receipt', 409, 'DUPLICATE_SERIAL');
   }
 
   try {
@@ -475,6 +521,7 @@ exports.receiveInventory = async (data, user) => {
       let item;
       let receiptUnitCost;
       let sourceDocumentKey;
+      let replacementDiscrepancy;
 
       if (mode === 'PO') {
         if (!data.orderRequestId || !data.orderLineId) {
@@ -542,38 +589,66 @@ exports.receiveInventory = async (data, user) => {
         sourceDocumentKey = `${supplier._id}:${sourceDocumentNumber}:NON_PO:${authorization._id}`;
       }
 
-      if (item.isSerialized && serialNumbers.length !== quantity) {
-        throw serviceError('Serialized items require one serial number per received unit', 400, 'SERIAL_COUNT_MISMATCH');
+      if (data.discrepancyId) {
+        replacementDiscrepancy = await ReceiptDiscrepancy.findOne(discrepancyLookup(data.discrepancyId)).session(session);
+        if (!replacementDiscrepancy) {
+          throw serviceError('Receipt discrepancy not found', 404, 'DISCREPANCY_NOT_FOUND');
+        }
+        if (!['open', 'supplier-contacted', 'replacement-pending'].includes(replacementDiscrepancy.status)) {
+          throw serviceError('This discrepancy is not awaiting replacement', 409, 'DISCREPANCY_NOT_OPEN');
+        }
+        if (String(replacementDiscrepancy.inventoryId) !== String(item._id)
+          || String(replacementDiscrepancy.supplierId) !== String(supplier._id)
+          || replacementDiscrepancy.receiptMode !== mode
+          || mode === 'PO' && (String(replacementDiscrepancy.orderRequestId) !== String(order._id)
+            || replacementDiscrepancy.orderLineId !== orderLine.lineId)
+          || mode === 'NON_PO' && String(replacementDiscrepancy.receiptAuthorizationId) !== String(authorization._id)) {
+          throw serviceError(
+            'Replacement receipt must use the original supplier, item, and workflow source',
+            409,
+            'DISCREPANCY_SOURCE_MISMATCH',
+          );
+        }
+        nextDiscrepancyState(replacementDiscrepancy, disposition);
       }
-      if (!item.isSerialized && serialNumbers.length) {
+
+      if (item.isSerialized && serialNumbers.length !== acceptedQuantity) {
+        throw serviceError('Serialized items require one accepted serial number per accepted unit', 400, 'SERIAL_COUNT_MISMATCH');
+      }
+      if (item.isSerialized && damagedSerialNumbers.length !== damagedQuantity) {
+        throw serviceError('Serialized items require one damaged serial number per damaged unit', 400, 'DAMAGED_SERIAL_COUNT_MISMATCH');
+      }
+      if (!item.isSerialized && (serialNumbers.length || damagedSerialNumbers.length)) {
         throw serviceError('Serial numbers are only allowed for serialized items', 400, 'UNEXPECTED_SERIALS');
       }
-      if (serialNumbers.length && await Inventory.exists({ serialNumbers: { $in: serialNumbers } }).session(session)) {
+      if (normalizedReportedSerials.length
+        && await SerializedAsset.exists({ normalizedSerial: { $in: normalizedReportedSerials } }).session(session)) {
         throw serviceError('One or more serial numbers already exist in inventory', 409, 'DUPLICATE_SERIAL');
       }
       if (await Procurement.exists({ receiptEventId }).session(session)) {
         throw serviceError('This receipt submission has already been posted', 409, 'DUPLICATE_RECEIPT_EVENT');
       }
 
-      item.available += quantity;
-      item.serialNumbers.push(...serialNumbers);
-      item.supplierId = supplier._id;
-      item.location = location;
-      item.binLocation = binLocation;
-      item.unitCost = receiptUnitCost;
-      item.status = legacyStockStatus(item.available, item.reorderLevel);
-      await item.save({ session });
+      if (acceptedQuantity > 0) {
+        item.available += acceptedQuantity;
+        item.supplierId = supplier._id;
+        item.location = location;
+        item.binLocation = binLocation;
+        item.unitCost = receiptUnitCost;
+        item.status = legacyStockStatus(item.available, item.reorderLevel);
+        await item.save({ session });
+      }
 
       if (order) {
-        orderLine.receivedQuantity += quantity;
+        orderLine.receivedQuantity += acceptedQuantity;
         order.status = fulfillmentStatus(order.items);
         order.statusVersion += 1;
         await order.save({ session });
       }
       if (authorization) {
-        authorization.receivedQuantity += quantity;
-        authorization.status = authorization.receivedQuantity >= authorization.authorizedQuantity
-          ? 'completed' : 'partially-received';
+        const progress = receiptProgress(authorization, acceptedQuantity);
+        authorization.receivedQuantity = progress.receivedQuantity;
+        authorization.status = progress.status;
         authorization.statusVersion += 1;
         await authorization.save({ session });
       }
@@ -600,33 +675,139 @@ exports.receiveInventory = async (data, user) => {
         subcategory: item.subcategory,
         brand: item.brand,
         quantity,
+        acceptedQuantity,
+        damagedQuantity,
+        missingQuantity,
         unit: item.unit,
         unitCost: receiptUnitCost,
-        totalCost: quantity * receiptUnitCost,
-        location: item.location,
-        binLocation: item.binLocation || '',
+        totalCost: acceptedQuantity * receiptUnitCost,
+        acceptedTotalCost: acceptedQuantity * receiptUnitCost,
+        disputedTotalCost: (damagedQuantity + missingQuantity) * receiptUnitCost,
+        replacementForDiscrepancyId: replacementDiscrepancy?._id,
+        damagedSerialNumbers,
+        location,
+        binLocation,
         receivedBy: actorName(user, 'Inventory Manager'),
         receivedDate: data.receivedDate || new Date(),
-        condition: data.condition || 'Good',
+        condition: disposition.condition,
       }], { session });
+
+      let discrepancy;
+      if (replacementDiscrepancy) {
+        const nextState = nextDiscrepancyState(replacementDiscrepancy, disposition);
+        replacementDiscrepancy.outstandingQuantity = nextState.outstandingQuantity;
+        replacementDiscrepancy.resolvedQuantity = nextState.resolvedQuantity;
+        replacementDiscrepancy.status = nextState.status;
+        replacementDiscrepancy.replacementProcurementIds.push(procurement._id);
+        replacementDiscrepancy.resolvedAt = nextState.status === 'resolved' ? new Date() : undefined;
+        await replacementDiscrepancy.save({ session });
+        discrepancy = replacementDiscrepancy;
+      } else if (damagedQuantity + missingQuantity > 0) {
+        [discrepancy] = await ReceiptDiscrepancy.create([{
+          discrepancyId: generateReference('DISC'),
+          receiptEventId,
+          inventoryId: item._id,
+          procurementId: procurement._id,
+          supplierId: supplier._id,
+          supplierName: supplier.name,
+          itemName: item.name,
+          sku: item.sku,
+          receiptMode: mode,
+          orderRequestId: order?._id,
+          orderLineId: orderLine?.lineId || '',
+          receiptAuthorizationId: authorization?._id,
+          sourceDocumentNumber,
+          expectedQuantity: quantity,
+          acceptedQuantity,
+          damagedQuantity,
+          missingQuantity,
+          outstandingQuantity: damagedQuantity + missingQuantity,
+          unit: item.unit,
+          unitCost: receiptUnitCost,
+          disputedValue: (damagedQuantity + missingQuantity) * receiptUnitCost,
+          acceptedSerialNumbers: serialNumbers,
+          damagedSerialNumbers,
+          reportedById: user._id,
+          reportedByName: actorName(user, 'Inventory Manager'),
+        }], { session });
+        procurement.discrepancyId = discrepancy._id;
+        await procurement.save({ session });
+      }
+
+      let quarantine;
+      if (damagedQuantity > 0) {
+        [quarantine] = await QuarantineItem.create([{
+          quarantineId: generateReference('Q'),
+          itemName: item.name,
+          quantity: damagedQuantity,
+          unit: item.unit,
+          reason: `Damaged supplier receipt ${sourceDocumentNumber}`,
+          location,
+          source: 'receipt',
+          sourceRefId: receiptEventId,
+          inventoryId: item._id,
+          procurementId: procurement._id,
+          supplierId: supplier._id,
+          serialNumbers: damagedSerialNumbers,
+        }], { session });
+      }
+
+      if (item.isSerialized && normalizedReportedSerials.length) {
+        const commonAssetFields = {
+          inventoryId: item._id,
+          supplierId: supplier._id,
+          procurementId: procurement._id,
+          receiptDiscrepancyId: discrepancy?._id,
+          receiptEventId,
+          location,
+          binLocation,
+          origin: 'receipt',
+        };
+        await SerializedAsset.create([
+          ...serialNumbers.map((serialNumber) => ({
+            ...commonAssetFields,
+            serialNumber,
+            status: 'available',
+          })),
+          ...damagedSerialNumbers.map((serialNumber) => ({
+            ...commonAssetFields,
+            serialNumber,
+            status: 'quarantined',
+            quarantineId: quarantine?._id,
+          })),
+        ], { session });
+      }
 
       await Activity.create([{
         type: 'grn', title: 'Goods Received',
-        description: `${mode} receipt: ${quantity} ${item.unit} of ${item.name} from ${supplier.name}`,
+        description: `${mode} receipt for ${item.name}: ${acceptedQuantity} accepted, ${damagedQuantity} damaged, ${missingQuantity} missing from ${supplier.name}`,
         actionLabel: 'View GRN',
       }], { session });
-      return { itemId: item._id, procurementId: procurement._id };
+      return {
+        itemId: item._id,
+        procurementId: procurement._id,
+        discrepancyId: discrepancy?._id,
+        quarantineId: quarantine?._id,
+      };
     });
 
     return {
-      item: await Inventory.findById(result.itemId).populate('supplierId', 'name'),
+      item: await projectSerialNumbers(await Inventory.findById(result.itemId).populate('supplierId', 'name')),
       procurement: await Procurement.findById(result.procurementId)
         .populate('supplierId', 'name')
         .populate('receiptAuthorizationId'),
+      discrepancy: result.discrepancyId
+        ? await ReceiptDiscrepancy.findById(result.discrepancyId)
+        : null,
+      quarantine: result.quarantineId ? await QuarantineItem.findById(result.quarantineId) : null,
     };
   } catch (error) {
     if (error.code === 11000) {
-      const field = error.keyPattern?.sku ? 'SKU' : error.keyPattern?.serialNumbers ? 'serial number' : 'source document';
+      const field = error.keyPattern?.sku
+        ? 'SKU'
+        : error.keyPattern?.normalizedSerial || error.keyPattern?.serialNumbers
+          ? 'serial number'
+          : 'source document';
       throw serviceError(`${field} already exists`, 409, `DUPLICATE_${field.replace(' ', '_').toUpperCase()}`);
     }
     if (/Transaction numbers are only allowed|replica set|transaction support/i.test(error.message || '')) {
@@ -645,8 +826,22 @@ exports.getRecentProcurements = async () => {
     .populate('supplierId', 'name')
     .populate('orderRequestId', 'requestId poNumber status')
     .populate('receiptAuthorizationId', 'authorizationNumber status financeReviewStatus nonPoReason')
+    .populate('discrepancyId', 'discrepancyId status outstandingQuantity')
+    .populate('replacementForDiscrepancyId', 'discrepancyId status outstandingQuantity')
     .sort({ timestamp: -1 })
     .limit(100);
+};
+
+exports.getReceiptDiscrepancies = async (filters = {}) => {
+  const query = {};
+  if (filters.status && filters.status !== 'all') query.status = filters.status;
+  return ReceiptDiscrepancy.find(query)
+    .populate('inventoryId', 'name sku')
+    .populate('supplierId', 'name')
+    .populate('orderRequestId', 'requestId poNumber status')
+    .populate('receiptAuthorizationId', 'authorizationNumber status')
+    .populate('replacementProcurementIds', 'sourceDocumentNumber receivedDate acceptedQuantity')
+    .sort({ createdAt: -1 });
 };
 
 /**
@@ -677,11 +872,26 @@ exports.getOrders = async () => {
  * Updates an order's details and manages status-related timestamps.
  */
 exports.updateOrder = async (id, data) => {
-  const safe = pickFields(data, ORDER_UPDATE_FIELDS);
-  const update = safe.lastMovedAt === null
-    ? { $unset: { lastMovedAt: 1, completedAt: 1 }, $set: pickFields(safe, ORDER_UPDATE_FIELDS.filter((field) => !['lastMovedAt', 'completedAt'].includes(field))) }
-    : { $set: safe };
-  return DispatchOrder.findOneAndUpdate({ orderId: id }, update, { new: true, runValidators: true });
+  const order = await DispatchOrder.findOne({ orderId: id }).lean();
+  if (!order) throw serviceError('Dispatch order not found', 404, 'DISPATCH_NOT_FOUND');
+  const mutation = buildDispatchMutation(order, data);
+  const update = { $set: mutation.set, $inc: { statusVersion: 1 } };
+  if (Object.keys(mutation.unset).length) update.$unset = mutation.unset;
+  const updated = await DispatchOrder.findOneAndUpdate({
+    _id: order._id,
+    status: order.status,
+    statusVersion: data.statusVersion,
+  }, update, { returnDocument: 'after', runValidators: true });
+  if (!updated) throw serviceError('This dispatch changed; refresh before trying again', 409, 'STALE_DISPATCH');
+  if (mutation.transitioned) {
+    await Activity.create({
+      type: 'dispatch',
+      title: data.undo === true ? 'Dispatch Stage Restored' : 'Dispatch Stage Advanced',
+      description: `${order.orderId}: ${mutation.previousStatus} → ${mutation.nextStatus}`,
+      actionLabel: 'View Dispatch',
+    });
+  }
+  return updated;
 };
 
 /**
@@ -933,25 +1143,35 @@ exports.getTechnicians = async () => {
  * Fetches all active asset loans.
  */
 exports.getAssetLoans = async () => {
-  return await AssetLoan.find({ status: { $ne: 'returned' } }).sort({ checkedOutAt: -1 });
+  return AssetLoan.find({ status: { $ne: 'returned' } })
+    .populate('serializedAssetId', 'serialNumber status')
+    .sort({ checkedOutAt: -1 });
 };
 
 /**
  * Returns serialized HVAC tools with asset tags that are not currently on loan.
  */
 exports.getAvailableTools = async () => {
-  const [tools, activeLoans] = await Promise.all([
-    Inventory.find({ itemClass: 'Tools and Test Equipment', isSerialized: true })
-      .select('name sku itemClass subcategory brand serialNumbers location binLocation'),
-    AssetLoan.find({ status: { $ne: 'returned' } }).select('assetTag')
-  ]);
-  const loanedTags = new Set(activeLoans.map((loan) => loan.assetTag));
-  return tools
-    .map((tool) => ({
-      ...tool.toObject({ virtuals: true }),
-      availableSerialNumbers: tool.serialNumbers.filter((serial) => !loanedTags.has(serial))
-    }))
-    .filter((tool) => tool.availableSerialNumbers.length > 0);
+  const availableAssets = await SerializedAsset.find({ status: 'available' })
+    .select('inventoryId serialNumber')
+    .sort({ serialNumber: 1 })
+    .lean();
+  const availableByInventory = new Map();
+  for (const asset of availableAssets) {
+    const key = String(asset.inventoryId);
+    if (!availableByInventory.has(key)) availableByInventory.set(key, []);
+    availableByInventory.get(key).push(asset.serialNumber);
+  }
+  const tools = await Inventory.find({
+    _id: { $in: [...availableByInventory.keys()] },
+    itemClass: 'Tools and Test Equipment',
+    isSerialized: true,
+  }).select('name sku itemClass subcategory brand location binLocation available reorderLevel');
+  const projected = await projectSerialNumbers(tools);
+  return projected.map((tool) => ({
+    ...tool,
+    availableSerialNumbers: availableByInventory.get(String(tool._id)) || [],
+  }));
 };
 
 /**
@@ -970,49 +1190,67 @@ exports.checkOutTool = async (data, user) => {
   }
   const technician = await User.findOne({ _id: data.technicianId, role: { $in: TECHNICIAN_ROLES } });
   if (!technician) throw serviceError('Technician not found or role is not eligible for tool lending', 404, 'TECHNICIAN_NOT_FOUND');
-  const tool = await Inventory.findOne({
-    _id: data.toolId,
-    itemClass: 'Tools and Test Equipment',
-    isSerialized: true,
-    serialNumbers: data.assetTag
-  });
-  if (!tool) throw serviceError('Serialized tool or asset tag not found', 404, 'TOOL_NOT_FOUND');
-  const assetTag = String(data.assetTag).trim();
-  const existingLoan = await AssetLoan.findOne({ assetTag });
-  if (existingLoan && existingLoan.status !== 'returned') {
-    throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
-  }
-
-  const newLoan = existingLoan || new AssetLoan({ assetTag });
-  Object.assign(newLoan, {
-    toolId: tool._id,
-    toolName: tool.name,
-    technicianId: String(technician._id),
-    technicianUserId: technician._id,
-    technicianName: technician.fullName,
-    checkedOutAt: new Date(),
-    dueDate,
-    status: 'on-loan',
-    returnedAt: undefined,
-    condition: 'good',
-  });
-  let savedLoan;
+  const normalizedAssetTag = normalizeSerialNumber(data.assetTag);
   try {
-    savedLoan = await newLoan.save();
+    return await mongoose.connection.transaction(async (session) => {
+      const asset = await SerializedAsset.findOne({ normalizedSerial: normalizedAssetTag }).session(session);
+      if (!asset || String(asset.inventoryId) !== String(data.toolId)) {
+        throw serviceError('Serialized tool or asset tag not found', 404, 'TOOL_NOT_FOUND');
+      }
+      if (asset.status !== 'available') {
+        throw serviceError('This asset tag is not available for checkout', 409, 'ASSET_NOT_AVAILABLE');
+      }
+      const tool = await Inventory.findOne({
+        _id: asset.inventoryId,
+        itemClass: 'Tools and Test Equipment',
+        isSerialized: true,
+      }).session(session);
+      if (!tool) throw serviceError('Serialized tool or asset tag not found', 404, 'TOOL_NOT_FOUND');
+
+      const activeLoan = await AssetLoan.findOne({
+        $or: [{ serializedAssetId: asset._id }, { normalizedAssetTag }],
+        status: 'on-loan',
+      }).session(session);
+      if (activeLoan) {
+        throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
+      }
+      const loan = new AssetLoan({
+        assetTag: asset.serialNumber,
+        normalizedAssetTag,
+        serializedAssetId: asset._id,
+      });
+      Object.assign(loan, {
+        toolId: tool._id,
+        serializedAssetId: asset._id,
+        toolName: tool.name,
+        assetTag: asset.serialNumber,
+        normalizedAssetTag,
+        technicianId: String(technician._id),
+        technicianUserId: technician._id,
+        technicianName: technician.fullName,
+        checkedOutAt: new Date(),
+        dueDate,
+        status: 'on-loan',
+        returnedAt: undefined,
+        condition: 'good',
+      });
+      await loan.save({ session });
+      asset.status = 'on-loan';
+      asset.currentLoanId = loan._id;
+      await asset.save({ session });
+      await Activity.create([{
+        type: 'request', title: 'Tool Checked Out',
+        description: `${technician.fullName} checked out ${tool.name} (${asset.serialNumber})`,
+        actionLabel: 'View Asset',
+      }], { session });
+      return loan;
+    });
   } catch (error) {
-    if (error.code === 11000) throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
+    if (error.code === 11000) {
+      throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
+    }
     throw error;
   }
-
-  const activity = new Activity({
-    type: 'request',
-    title: 'Tool Checked Out',
-    description: `${technician.fullName} checked out ${tool.name} (${data.assetTag})`,
-    actionLabel: 'View Asset'
-  });
-  await activity.save();
-
-  return savedLoan;
 };
 
 /**
@@ -1021,27 +1259,53 @@ exports.checkOutTool = async (data, user) => {
 exports.returnTool = async (loanId, user, input = {}) => {
   assertRole(user, ['INVENTORY']);
   assertObjectId(loanId, 'Loan reference is invalid', 'INVALID_LOAN_ID');
-  const loan = await AssetLoan.findById(loanId);
-  if (!loan) throw serviceError('Loan not found', 404, 'LOAN_NOT_FOUND');
-  if (loan.status === 'returned') throw serviceError('This loan has already been returned', 409, 'ASSET_ALREADY_RETURNED');
   const condition = input.condition || 'good';
   if (!['good', 'damaged', 'incomplete'].includes(condition)) {
     throw serviceError('Return condition must be good, damaged, or incomplete', 400, 'INVALID_RETURN_CONDITION');
   }
-  loan.status = 'returned';
-  loan.returnedAt = new Date();
-  loan.condition = condition;
-  await loan.save();
-
-  const activity = new Activity({
-    type: 'return',
-    title: 'Tool Returned',
-    description: `${loan.technicianName} returned ${loan.toolName} (${loan.assetTag})`,
-    actionLabel: 'View Log'
+  return mongoose.connection.transaction(async (session) => {
+    const loan = await AssetLoan.findById(loanId).session(session);
+    if (!loan) throw serviceError('Loan not found', 404, 'LOAN_NOT_FOUND');
+    if (loan.status === 'returned') throw serviceError('This loan has already been returned', 409, 'ASSET_ALREADY_RETURNED');
+    const asset = loan.serializedAssetId
+      ? await SerializedAsset.findById(loan.serializedAssetId).session(session)
+      : await SerializedAsset.findOne({ normalizedSerial: normalizeSerialNumber(loan.assetTag) }).session(session);
+    if (!asset) throw serviceError('Serialized asset registry record not found', 409, 'ASSET_REGISTRY_MISSING');
+    if (asset.status !== 'on-loan' || String(asset.currentLoanId || '') !== String(loan._id)) {
+      throw serviceError('Serialized asset loan state is inconsistent', 409, 'ASSET_LOAN_STATE_CONFLICT');
+    }
+    loan.serializedAssetId = asset._id;
+    loan.status = 'returned';
+    loan.returnedAt = new Date();
+    loan.condition = condition;
+    await loan.save({ session });
+    if (condition === 'good') {
+      asset.status = 'available';
+      asset.quarantineId = undefined;
+    } else {
+      const [quarantine] = await QuarantineItem.create([{
+        quarantineId: generateId('QZ'),
+        itemName: loan.toolName,
+        quantity: 1,
+        unit: 'unit',
+        reason: `Returned tool marked ${condition}: ${loan.assetTag}`,
+        source: 'manual',
+        sourceRefId: String(loan._id),
+        inventoryId: loan.toolId,
+        serialNumbers: [asset.serialNumber],
+      }], { session });
+      asset.status = 'quarantined';
+      asset.quarantineId = quarantine._id;
+    }
+    asset.currentLoanId = undefined;
+    await asset.save({ session });
+    await Activity.create([{
+      type: 'return', title: 'Tool Returned',
+      description: `${loan.technicianName} returned ${loan.toolName} (${loan.assetTag})`,
+      actionLabel: 'View Log',
+    }], { session });
+    return loan;
   });
-  await activity.save();
-
-  return loan;
 };
 
 /**
@@ -1178,11 +1442,12 @@ exports.updateOrderRequest = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
   const request = await PurchaseRequest.findOne({ requestId: id });
   if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
-  if (!['draft', 'rejected'].includes(canonicalPurchaseStatus(request.status))) {
-    throw serviceError('Only draft or rejected requests can be edited', 409, 'ORDER_LOCKED');
-  }
   if (String(request.requestedById || '') !== String(user._id)) {
     throw serviceError('Only the requester can edit this purchase request', 403, 'NOT_REQUEST_OWNER');
+  }
+  assertPurchaseStatusVersion(request, data.statusVersion);
+  if (!['draft', 'rejected'].includes(canonicalPurchaseStatus(request.status))) {
+    throw serviceError('Only draft or rejected requests can be edited', 409, 'ORDER_LOCKED');
   }
   const safe = controllerSafeOrderFields(data);
   if (safe.items) {
@@ -1243,16 +1508,17 @@ exports.updateOrderRequest = async (id, data, user) => {
   request.approvedBy = '';
   request.approvedAt = undefined;
   request.statusVersion += 1;
-  return request.save();
+  return savePurchaseRequest(request);
 };
 
-exports.submitOrderRequest = async (id, user) => {
+exports.submitOrderRequest = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
   const request = await PurchaseRequest.findOne(orderLookup(id));
   if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
   if (String(request.requestedById || '') !== String(user._id)) {
     throw serviceError('Only the requester can submit this purchase request', 403, 'NOT_REQUEST_OWNER');
   }
+  assertPurchaseStatusVersion(request, data.statusVersion);
   if (!['draft', 'rejected'].includes(canonicalPurchaseStatus(request.status))) {
     throw serviceError('Only draft or rejected requests can be submitted', 409, 'INVALID_ORDER_TRANSITION');
   }
@@ -1271,7 +1537,7 @@ exports.submitOrderRequest = async (id, user) => {
     stage: 'manager', decision: 'submitted', actorId: user._id,
     actorName: actorName(user, 'Inventory Manager'), comment: request.notes || '',
   });
-  await request.save();
+  await savePurchaseRequest(request);
   await Activity.create({
     type: 'request', title: 'Purchase Request Submitted',
     description: `${request.requestId} submitted to Manager for operational approval`, actionLabel: 'View Request',
@@ -1279,10 +1545,11 @@ exports.submitOrderRequest = async (id, user) => {
   return request;
 };
 
-exports.issuePurchaseOrder = async (id, user) => {
+exports.issuePurchaseOrder = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
   const request = await PurchaseRequest.findOne(orderLookup(id));
   if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
+  assertPurchaseStatusVersion(request, data.statusVersion);
   if (canonicalPurchaseStatus(request.status) !== 'approved') {
     throw serviceError('Only fully approved requests can be issued as purchase orders', 409, 'ORDER_NOT_APPROVED');
   }
@@ -1295,7 +1562,7 @@ exports.issuePurchaseOrder = async (id, user) => {
     stage: 'fulfillment', decision: 'po-issued', actorId: user._id,
     actorName: actorName(user, 'Inventory Manager'), comment: request.poNumber,
   });
-  await request.save();
+  await savePurchaseRequest(request);
   await Activity.create({
     type: 'request', title: 'Purchase Order Issued',
     description: `${request.poNumber} issued from ${request.requestId}`, actionLabel: 'Receive Stock',
@@ -1493,7 +1760,9 @@ exports.createLeftoverReturn = async (data, user) => {
  * Fetches all RMA cases sorted by most recent first.
  */
 exports.getRmaCases = async () => {
-  return await RmaCase.find().sort({ createdAt: -1 });
+  return RmaCase.find()
+    .populate('serializedAssetId', 'serialNumber status')
+    .sort({ createdAt: -1 });
 };
 
 /**
@@ -1507,36 +1776,47 @@ exports.createRmaCase = async (data, user) => {
   if (!serialNumber || !String(data.faultDescription || '').trim()) {
     throw serviceError('Serial number and fault description are required', 400, 'RMA_DETAILS_REQUIRED');
   }
-  const inventoryItem = await Inventory.findOne({ serialNumbers: serialNumber });
-  if (!inventoryItem) throw serviceError('Serial number was not found in inventory', 404, 'SERIAL_NOT_FOUND');
-  if (await RmaCase.exists({ serialNumber, status: { $nin: ['resolved', 'closed'] } })) {
-    throw serviceError('An active RMA case already exists for this serial number', 409, 'ACTIVE_RMA_EXISTS');
-  }
-
-  const rmaCase = new RmaCase({
-    rmaId,
-    inventoryId: inventoryItem._id,
-    serialNumber,
-    itemName: inventoryItem.name,
-    itemSku: inventoryItem.sku,
-    faultDescription: data.faultDescription,
-    reportedBy,
-    status: 'reported',
-    type: inventoryItem.type,
-    resolution: '',
+  return mongoose.connection.transaction(async (session) => {
+    const asset = await SerializedAsset.findOne({ normalizedSerial: normalizeSerialNumber(serialNumber) }).session(session);
+    if (!asset) throw serviceError('Serial number was not found in the serialized asset registry', 404, 'SERIAL_NOT_FOUND');
+    if (asset.status === 'rma') {
+      throw serviceError('An active RMA case already exists for this serial number', 409, 'ACTIVE_RMA_EXISTS');
+    }
+    if (!['available', 'quarantined'].includes(asset.status)) {
+      throw serviceError('This serialized asset is not eligible for RMA', 409, 'ASSET_NOT_AVAILABLE');
+    }
+    const inventoryItem = await Inventory.findById(asset.inventoryId).session(session);
+    if (!inventoryItem) throw serviceError('Inventory item not found for serialized asset', 409, 'ASSET_OWNER_MISSING');
+    if (await RmaCase.exists({
+      serializedAssetId: asset._id,
+      status: { $nin: ['resolved', 'closed'] },
+    }).session(session)) {
+      throw serviceError('An active RMA case already exists for this serial number', 409, 'ACTIVE_RMA_EXISTS');
+    }
+    const [rmaCase] = await RmaCase.create([{
+      rmaId,
+      inventoryId: inventoryItem._id,
+      serializedAssetId: asset._id,
+      serialNumber: asset.serialNumber,
+      itemName: inventoryItem.name,
+      itemSku: inventoryItem.sku,
+      faultDescription: data.faultDescription,
+      reportedBy,
+      status: 'reported',
+      type: inventoryItem.type,
+      resolution: '',
+    }], { session });
+    asset.preRmaStatus = asset.status;
+    asset.status = 'rma';
+    asset.activeRmaCaseId = rmaCase._id;
+    await asset.save({ session });
+    await Activity.create([{
+      type: 'return', title: 'RMA Case Created',
+      description: `RMA ${rmaId} filed for ${asset.serialNumber}: ${data.faultDescription}`,
+      actionLabel: 'View RMA',
+    }], { session });
+    return rmaCase;
   });
-
-  const saved = await rmaCase.save();
-
-  const activity = new Activity({
-    type: 'return',
-    title: 'RMA Case Created',
-    description: `RMA ${rmaId} filed for ${data.serialNumber}: ${data.faultDescription}`,
-    actionLabel: 'View RMA',
-  });
-  await activity.save();
-
-  return saved;
 };
 
 /**
@@ -1545,9 +1825,6 @@ exports.createRmaCase = async (data, user) => {
  */
 exports.updateRmaCase = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
-  const rmaCase = await RmaCase.findOne({ rmaId: id });
-  if (!rmaCase) throw serviceError('RMA case not found', 404, 'RMA_NOT_FOUND');
-
   const validTransitions = {
     'reported': ['under-review'],
     'under-review': ['sent-to-supplier', 'resolved'],
@@ -1556,34 +1833,41 @@ exports.updateRmaCase = async (id, data, user) => {
     'closed': [],
   };
 
-  if (data.status && data.status !== rmaCase.status) {
-    const allowed = validTransitions[rmaCase.status] || [];
-    if (!allowed.includes(data.status)) {
-      throw new Error(`Invalid status transition from '${rmaCase.status}' to '${data.status}'`);
+  return mongoose.connection.transaction(async (session) => {
+    const rmaCase = await RmaCase.findOne({ rmaId: id }).session(session);
+    if (!rmaCase) throw serviceError('RMA case not found', 404, 'RMA_NOT_FOUND');
+    if (data.status && data.status !== rmaCase.status) {
+      const allowed = validTransitions[rmaCase.status] || [];
+      if (!allowed.includes(data.status)) {
+        throw new Error(`Invalid status transition from '${rmaCase.status}' to '${data.status}'`);
+      }
+      rmaCase.status = data.status;
+      if (data.status === 'resolved' || data.status === 'closed') {
+        rmaCase.resolvedAt = rmaCase.resolvedAt || new Date();
+      }
     }
+    if (data.resolution !== undefined) rmaCase.resolution = data.resolution;
+    await rmaCase.save({ session });
 
-    rmaCase.status = data.status;
-
-    if (data.status === 'resolved' || data.status === 'closed') {
-      rmaCase.resolvedAt = rmaCase.resolvedAt || new Date();
+    if (['resolved', 'closed'].includes(rmaCase.status)) {
+      const asset = rmaCase.serializedAssetId
+        ? await SerializedAsset.findById(rmaCase.serializedAssetId).session(session)
+        : await SerializedAsset.findOne({ normalizedSerial: normalizeSerialNumber(rmaCase.serialNumber) }).session(session);
+      if (!asset) throw serviceError('Serialized asset registry record not found', 409, 'ASSET_REGISTRY_MISSING');
+      if (asset.status === 'rma' && String(asset.activeRmaCaseId || '') === String(rmaCase._id)) {
+        asset.status = asset.preRmaStatus || 'available';
+        asset.activeRmaCaseId = undefined;
+        asset.preRmaStatus = undefined;
+        await asset.save({ session });
+      }
     }
-  }
-
-  if (data.resolution !== undefined) {
-    rmaCase.resolution = data.resolution;
-  }
-
-  const saved = await rmaCase.save();
-
-  const activity = new Activity({
-    type: 'return',
-    title: 'RMA Status Updated',
-    description: `RMA ${rmaCase.rmaId} status changed to ${rmaCase.status}`,
-    actionLabel: 'View RMA',
+    await Activity.create([{
+      type: 'return', title: 'RMA Status Updated',
+      description: `RMA ${rmaCase.rmaId} status changed to ${rmaCase.status}`,
+      actionLabel: 'View RMA',
+    }], { session });
+    return rmaCase;
   });
-  await activity.save();
-
-  return saved;
 };
 
 /**

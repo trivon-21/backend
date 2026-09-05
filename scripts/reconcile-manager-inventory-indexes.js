@@ -5,6 +5,7 @@ const connectDB = require('../src/config/db');
 
 const APPLY_TOKEN = '--confirm-indexes=RECONCILE-MANAGER-INVENTORY-INDEXES';
 const DESIRED_INDEXES = [
+  { collection: 'asset_loans', key: { assetTag: 1 }, options: { unique: false, name: 'assetTag_1' } },
   { collection: 'inspection_tickets', key: { ticketRef: 1 }, options: { unique: true, name: 'ticketRef_1', sparse: true } },
   { collection: 'job_material_requests', key: { jobType: 1, jobId: 1 }, options: { unique: true, name: 'jobType_1_jobId_1' } },
   { collection: 'job_material_requests', key: { requestId: 1 }, options: { unique: true, name: 'requestId_1', partialFilterExpression: { requestId: { $type: 'string' } } } },

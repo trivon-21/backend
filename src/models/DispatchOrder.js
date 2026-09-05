@@ -15,10 +15,11 @@ const DispatchOrderSchema = new mongoose.Schema({
   date: { type: String, required: true },
   type: { type: String, required: true },
   status: { type: String, enum: ['to-pack', 'ready', 'in-transit', 'completed'], default: 'to-pack' },
+  statusVersion: { type: Number, default: 0, min: 0 },
   courier: { type: String },
   trackId: { type: String },
   items: [DispatchItemSchema],
-  completedAt: { type: String },
+  completedAt: { type: Date },
   lastMovedAt: { type: Date },
 }, {
   timestamps: true,

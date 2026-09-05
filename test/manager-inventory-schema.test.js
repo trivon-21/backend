@@ -7,6 +7,7 @@ const LegacyServiceTicket = require('../src/modules/shared/serviceTicket/service
 const LegacyInspectionTicket = require('../src/modules/shared/inspection/inspectionTicket.model');
 const LegacyInstallation = require('../src/modules/shared/installation/installation.model');
 const AssetLoan = require('../src/models/AssetLoan');
+const SerializedAsset = require('../src/models/SerializedAsset');
 const WarehousePickRequest = require('../src/models/WarehousePickRequest');
 const DispatchOrder = require('../src/models/DispatchOrder');
 const Inventory = require('../src/models/Inventory');
@@ -15,11 +16,14 @@ const InspectionTicket = require('../src/models/InspectionTicket');
 const Installation = require('../src/models/Installation');
 const PurchaseRequest = require('../src/models/PurchaseRequest');
 const Procurement = require('../src/models/Procurement');
+const ReceiptDiscrepancy = require('../src/models/ReceiptDiscrepancy');
+const QuarantineItem = require('../src/models/QuarantineItem');
 const ReceiptAuthorization = require('../src/models/ReceiptAuthorization');
 const Order = require('../src/models/Order');
 const configCache = require('../src/utils/config-cache');
 const paymentJob = require('../src/jobs/paymentAutoCancelJob');
 const { preparePurchaseUpdate, findDuplicateShortageKeys, migrate, APPLY_TOKEN: PURCHASE_TOKEN } = require('../scripts/migrate-purchasing-workflow');
+const { migrate: migrateSerializedAssets, APPLY_TOKEN: SERIALIZED_ASSET_TOKEN } = require('../scripts/migrate-serialized-assets');
 const { prepareOrderOwnerUpdate, migrateOrderCompatibility, APPLY_TOKEN: ORDER_TOKEN } = require('../scripts/migrate-order-compatibility');
 const { countDownstreamReferences, inventoryTotals, recomputeTeamCounts, resetWorkflow, APPLY_TOKEN: RESET_TOKEN } = require('../scripts/reset-material-workflow');
 const { indexNeedsReplacement, matchingIndex, reconcileIndexes, APPLY_TOKEN: INDEX_TOKEN } = require('../scripts/reconcile-manager-inventory-indexes');
@@ -64,6 +68,57 @@ test('receipt schemas require the reference appropriate to their mode', async ()
   });
   const nonPoError = await nonPoReceipt.validate().catch((validationError) => validationError);
   assert.match(nonPoError.errors.receiptAuthorizationId.message, /require an approved authorization/i);
+});
+
+test('procurement receipt breakdown keeps expected and accepted quantities distinct', async () => {
+  const document = new Procurement({
+    inventoryId: new mongoose.Types.ObjectId(), receiptMode: 'PO',
+    orderRequestId: new mongoose.Types.ObjectId(), orderLineId: 'line-disposition-1',
+    supplierName: 'Fabricated Supplier', itemName: 'Fabricated Item', sku: 'FAB-DISPOSITION-1',
+    quantity: 5, acceptedQuantity: 3, damagedQuantity: 1, missingQuantity: 1,
+    unit: 'units', receivedBy: 'Audit Inventory', condition: 'Incomplete',
+  });
+  await document.validate();
+  assert.equal(document.quantity, 5);
+  assert.equal(document.acceptedQuantity, 3);
+  assert.equal(document.damagedQuantity, 1);
+  assert.equal(document.missingQuantity, 1);
+});
+
+test('procurement rejects a receipt breakdown that does not match expected quantity', async () => {
+  const document = new Procurement({
+    receiptMode: 'PO', orderRequestId: new mongoose.Types.ObjectId(), orderLineId: 'line-disposition-2',
+    supplierName: 'Fabricated Supplier', itemName: 'Fabricated Item', sku: 'FAB-DISPOSITION-2',
+    quantity: 5, acceptedQuantity: 4, damagedQuantity: 0, missingQuantity: 0,
+    unit: 'units', receivedBy: 'Audit Inventory', condition: 'Good',
+  });
+  await assert.rejects(() => document.validate(), /breakdown/i);
+});
+
+test('receipt discrepancies require auditable workflow references and valid totals', async () => {
+  const document = new ReceiptDiscrepancy({
+    discrepancyId: 'DISC-FAB-1', receiptEventId: 'event-fab-1',
+    inventoryId: new mongoose.Types.ObjectId(), supplierId: new mongoose.Types.ObjectId(),
+    supplierName: 'Fabricated Supplier', itemName: 'Fabricated Item', sku: 'FAB-DISPOSITION-3',
+    receiptMode: 'PO', orderRequestId: new mongoose.Types.ObjectId(), orderLineId: 'line-disposition-3',
+    sourceDocumentNumber: 'DN-FAB-1', expectedQuantity: 5, acceptedQuantity: 3,
+    damagedQuantity: 1, missingQuantity: 1, outstandingQuantity: 2,
+    unitCost: 10, disputedValue: 20, reportedById: new mongoose.Types.ObjectId(),
+    reportedByName: 'Audit Inventory',
+  });
+  await document.validate();
+  assert.equal(document.status, 'open');
+});
+
+test('quarantine supports receipt-sourced damaged stock references', async () => {
+  const document = new QuarantineItem({
+    quarantineId: 'Q-FAB-1', itemName: 'Fabricated Item', quantity: 1,
+    reason: 'Damaged supplier receipt', source: 'receipt', sourceRefId: 'event-fab-1',
+    inventoryId: new mongoose.Types.ObjectId(), procurementId: new mongoose.Types.ObjectId(),
+    supplierId: new mongoose.Types.ObjectId(),
+  });
+  await document.validate();
+  assert.equal(document.source, 'receipt');
 });
 
 test('receipt authorizations reject missing item sources and excess receipts', async () => {
@@ -119,6 +174,7 @@ test('adapted models use the shared collection names', () => {
   assert.equal(ServiceTicket.collection.collectionName, 'service_tickets');
   assert.equal(InspectionTicket.collection.collectionName, 'inspection_tickets');
   assert.equal(Installation.collection.collectionName, 'installations');
+  assert.equal(SerializedAsset.collection.collectionName, 'serialized_assets');
 });
 
 test('incoming schemas remain isolated from current-system model registrations', () => {
@@ -277,7 +333,7 @@ test('audit scope covers every registered manager and inventory route and exclud
   assert.equal(coverage.length, 2);
   assert.ok(coverage.every((entry) => entry.missingFromScope.length === 0));
   assert.ok(coverage.every((entry) => entry.staleScopeEntries.length === 0));
-  assert.equal(auditScope.endpoints.length, 58);
+  assert.equal(auditScope.endpoints.length, 59);
   assert.ok(auditScope.endpoints.every((entry) => !['/orders/:orderId/approve', '/orders/:orderId/reject'].includes(entry.route)));
   assert.ok(auditScope.endpoints.every((entry) => !entry.handler.includes('maintenance-notification')));
   assert.ok(Object.values(auditScope.modelDefinitions).every((definition) => ![
@@ -377,6 +433,7 @@ test('purchasing preparation catches ordered-quantity-only gaps and shortage dup
 
 test('all mutating maintenance tools reject apply mode without their confirmation token', async () => {
   await assert.rejects(() => migrate({ apply: true, confirmed: false }), new RegExp(PURCHASE_TOKEN));
+  await assert.rejects(() => migrateSerializedAssets({ db: {}, apply: true, confirmed: false }), new RegExp(SERIALIZED_ASSET_TOKEN));
   await assert.rejects(() => migrateOrderCompatibility({ apply: true, confirmed: false }), new RegExp(ORDER_TOKEN));
   await assert.rejects(() => resetWorkflow({ db: {}, apply: true, confirmed: false }), new RegExp(RESET_TOKEN));
   await assert.rejects(() => reconcileIndexes({ db: {}, apply: true, confirmed: false }), new RegExp(INDEX_TOKEN));
