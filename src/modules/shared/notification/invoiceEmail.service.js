@@ -72,7 +72,7 @@ const sendInvoiceAcceptedEmail = async (email, name, invoiceNum, total, paymentD
             Upload Payment Slip
           </a>
           <p style="color:#dc2626;font-size:12px;">
-            ⚠️ If payment is not received within 14 days, the invoice will be automatically cancelled.
+            If payment is not received within 14 days, the invoice will be automatically cancelled.
           </p>
           <p>Our installation team will contact you after payment confirmation.</p>
           <p>Best regards,<br><strong>AirLux Team</strong></p>
@@ -118,10 +118,10 @@ const sendRejectionWarningEmail = async (email, name, invoiceNum, daysLeft) => {
     await transporter.sendMail({
       from: `"AirLux Finance" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: `⚠️ ${daysLeft} Day(s) Left to Cancel Rejection - ${invoiceNum}`,
+      subject: `${daysLeft} Day(s) Left to Cancel Rejection - ${invoiceNum}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-          <h2 style="color:#dc2626;">⚠️ Action Required</h2>
+          <h2 style="color:#dc2626;">Action Required</h2>
           <p>Dear ${name},</p>
           <p>Your rejection for invoice <strong>${invoiceNum}</strong> will expire in <strong>${daysLeft} day(s)</strong>.</p>
           <p>After expiry, your order will be <strong>permanently closed</strong> with no possibility of recovery.</p>
@@ -160,10 +160,10 @@ const sendPaymentReminderEmail = async (email, name, invoiceNum, total, daysLeft
     await transporter.sendMail({
       from: `"AirLux Finance" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: `⚠️ Payment Due in ${daysLeft} Day(s) - ${invoiceNum}`,
+      subject: `Payment Due in ${daysLeft} Day(s) - ${invoiceNum}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-          <h2 style="color:#f59e0b;">⚠️ Payment Reminder</h2>
+          <h2 style="color:#f59e0b;">Payment Reminder</h2>
           <p>Dear ${name},</p>
           <p>Your payment of <strong>LKR ${fmt(total)}</strong> for invoice <strong>${invoiceNum}</strong> is due in <strong>${daysLeft} day(s)</strong>.</p>
           <p>If payment is not received by the deadline, your invoice will be <strong>automatically cancelled</strong>.</p>
@@ -239,7 +239,7 @@ const sendPaymentSlipRejectedEmail = async (email, name, invoiceNum, reason, reu
             Re-upload Payment Slip
           </a>
           <p style="color:#dc2626;font-size:12px;">
-            ⚠️ Your original payment deadline still applies — please re-upload promptly to avoid auto-cancellation.
+            Your original payment deadline still applies — please re-upload promptly to avoid auto-cancellation.
           </p>
           <p>Best regards,<br><strong>AirLux Finance Team</strong></p>
         </div>
