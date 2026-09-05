@@ -343,7 +343,7 @@ const sendBuyOnlyApprovalEmail = async (email, customerName, orderId) => {
             <h2 style="color:white;margin:0;">AirLux</h2>
           </div>
           <div style="background:#f0fdf4;border:1px solid #86efac;padding:20px;margin:16px 0;border-radius:8px;">
-            <h3 style="color:#166534;margin:0 0 8px;">✅ Payment Approved!</h3>
+            <h3 style="color:#166534;margin:0 0 8px;">Payment Approved!</h3>
             <p style="color:#166534;margin:0;">Your payment has been verified successfully.</p>
           </div>
           <p>Dear <strong>${customerName}</strong>,</p>
@@ -373,7 +373,7 @@ const sendBuyOnlyRejectionEmail = async (email, customerName, orderId, itemName,
             <h2 style="color:white;margin:0;">AirLux</h2>
           </div>
           <div style="background:#fef2f2;border:1px solid #fca5a5;padding:20px;margin:16px 0;border-radius:8px;">
-            <h3 style="color:#dc2626;margin:0 0 8px;">❌ Payment Rejected</h3>
+            <h3 style="color:#dc2626;margin:0 0 8px;">Payment Rejected</h3>
           </div>
           <p>Dear <strong>${customerName}</strong>,</p>
           <p>Unfortunately, your payment for <strong>Order ${orderId}</strong> (${itemName}) has been rejected.</p>
@@ -410,7 +410,7 @@ const sendServiceApprovalEmail = async (email, customerName, orderId, serviceTyp
             <h2 style="color:white;margin:0;">AirLux</h2>
           </div>
           <div style="background:#f0fdf4;border:1px solid #86efac;padding:20px;margin:16px 0;border-radius:8px;">
-            <h3 style="color:#166534;margin:0 0 8px;">✅ ${label} Payment Approved!</h3>
+            <h3 style="color:#166534;margin:0 0 8px;">${label} Payment Approved!</h3>
             <p style="color:#166534;margin:0;">Your payment has been verified successfully.</p>
           </div>
           <p>Dear <strong>${customerName}</strong>,</p>
@@ -440,7 +440,7 @@ const sendServiceRejectionEmail = async (email, customerName, orderId, serviceTy
             <h2 style="color:white;margin:0;">AirLux</h2>
           </div>
           <div style="background:#fef2f2;border:1px solid #fca5a5;padding:20px;margin:16px 0;border-radius:8px;">
-            <h3 style="color:#dc2626;margin:0 0 8px;">❌ ${label} Payment Rejected</h3>
+            <h3 style="color:#dc2626;margin:0 0 8px;">${label} Payment Rejected</h3>
           </div>
           <p>Dear <strong>${customerName}</strong>,</p>
           <p>Your payment for <strong>${label} service (${orderId})</strong> has been rejected.</p>
@@ -475,7 +475,7 @@ const sendPurchaseApprovalEmail = async (email, managerName, requestId, totalAmo
             <h2 style="color:white;margin:0;">AirLux</h2>
           </div>
           <div style="background:#f0fdf4;border:1px solid #86efac;padding:20px;margin:16px 0;border-radius:8px;">
-            <h3 style="color:#166534;margin:0 0 8px;">✅ Purchase Request Approved!</h3>
+            <h3 style="color:#166534;margin:0 0 8px;">Purchase Request Approved!</h3>
             <p style="color:#166534;margin:0;">Total Amount: LKR ${Number(totalAmount).toLocaleString()}</p>
           </div>
           <p>Dear <strong>${managerName}</strong>,</p>
@@ -504,7 +504,7 @@ const sendPurchaseRejectionEmail = async (email, managerName, requestId, reason)
             <h2 style="color:white;margin:0;">AirLux</h2>
           </div>
           <div style="background:#fef2f2;border:1px solid #fca5a5;padding:20px;margin:16px 0;border-radius:8px;">
-            <h3 style="color:#dc2626;margin:0 0 8px;">❌ Purchase Request Rejected</h3>
+            <h3 style="color:#dc2626;margin:0 0 8px;">Purchase Request Rejected</h3>
           </div>
           <p>Dear <strong>${managerName}</strong>,</p>
           <p>Your purchase request <strong>${requestId}</strong> has been rejected.</p>
