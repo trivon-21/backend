@@ -10,17 +10,22 @@ async function insertInstallation() {
 
     console.log("Connected to MongoDB");
 
+    // =====================================================
+    // CREATE INSTALLATION FOR EXISTING INSTALLATION ORDER
+    // =====================================================
+
     const installation = await Installation.create({
+
       // =====================================================
       // REFERENCES
       // =====================================================
 
       orderId: new mongoose.Types.ObjectId(
-        "6a911fb3009f12531159e810"
+        "6a9ba35d6d61fc74196202df"
       ),
 
       inspectionTicketId: new mongoose.Types.ObjectId(
-        "6a9120092114920bb82776cd"
+        "6a9ba38a6a16834fdb7447d6"
       ),
 
       customerId: new mongoose.Types.ObjectId(

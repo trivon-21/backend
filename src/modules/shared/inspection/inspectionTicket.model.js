@@ -6,6 +6,7 @@ const inspectionTicketSchema = new Schema(
     ticketRef: { type: String, unique: true, sparse: true },
     orderId: { type: Schema.Types.ObjectId, ref: 'InstallationOrder', required: true }, // ref target is catalog's InstallationOrder/Order
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    assignedInspectorId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     status: {
       type: String,
       default: 'PENDING_PAYMENT',

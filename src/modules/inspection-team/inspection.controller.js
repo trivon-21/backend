@@ -59,7 +59,7 @@ exports.getScheduledInspections = async (req, res) => {
 exports.startInspection = async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const { arrivalTime } = req.body;
+    const { arrivalTime, inspectorId } = req.body;
 
     if (!arrivalTime) return res.status(400).json({ message: "Arrival time is required" });
 
@@ -68,6 +68,7 @@ exports.startInspection = async (req, res) => {
 
     ticket.status = "ONGOING";
     ticket.startedAt = new Date();
+    if (inspectorId) ticket.assignedInspectorId = inspectorId; // additive — doesn't affect anything if not sent
     await ticket.save();
 
     const Order = getOrderModel();
@@ -95,7 +96,10 @@ exports.startInspection = async (req, res) => {
 // ── GET ongoing inspections ───────────────────────────────────────────────────
 exports.getOngoingInspections = async (req, res) => {
   try {
-    const tickets = await InspectionTicket.find({ status: "ONGOING" }).sort({ startedAt: -1 });
+    const { inspectorId } = req.query;
+    const query = { status: "ONGOING" };
+    if (inspectorId) query.assignedInspectorId = inspectorId;
+    const tickets = await InspectionTicket.find(query).sort({ startedAt: -1 });
     const Order = getOrderModel();
     const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
@@ -187,7 +191,10 @@ exports.recordReport = async (req, res) => {
 // ── GET completed inspections ─────────────────────────────────────────────────
 exports.getCompletedInspections = async (req, res) => {
   try {
-    const tickets = await InspectionTicket.find({ status: { $in: ["REPORT_RECORDED", "INSPECTED"] } }).sort({ inspectedAt: -1 });
+    const { inspectorId } = req.query;
+    const query = { status: { $in: ["REPORT_RECORDED", "INSPECTED"] } };
+    if (inspectorId) query.assignedInspectorId = inspectorId;
+    const tickets = await InspectionTicket.find(query).sort({ inspectedAt: -1 });
     const Order = getOrderModel();
     const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
@@ -267,15 +274,22 @@ exports.submitReport = async (req, res) => {
 // ── GET dashboard stats ───────────────────────────────────────────────────────
 exports.getDashboardStats = async (req, res) => {
   try {
+    const { inspectorId } = req.query;
+    const inspectorFilter = inspectorId ? { assignedInspectorId: inspectorId } : {};
+
     const [ongoing, scheduled, completed, submitted] = await Promise.all([
-      InspectionTicket.countDocuments({ status: { $in: ["ONGOING", "REPORT_RECORDED"] } }),
-      InspectionTicket.countDocuments({ status: "INSPECTION_SCHEDULED" }),
-      InspectionTicket.countDocuments({ status: { $in: ["REPORT_RECORDED", "INSPECTED"] } }),
+      InspectionTicket.countDocuments({ status: { $in: ["ONGOING", "REPORT_RECORDED"] }, ...inspectorFilter }),
+      InspectionTicket.countDocuments({ status: "INSPECTION_SCHEDULED" }), // scheduled stays common to all
+      InspectionTicket.countDocuments({ status: { $in: ["REPORT_RECORDED", "INSPECTED"] }, ...inspectorFilter }),
       InspectionReport.countDocuments({ status: "SUBMITTED" }),
     ]);
 
     const allTickets = await InspectionTicket.find({
-      status: { $in: ["ONGOING", "REPORT_RECORDED", "INSPECTION_SCHEDULED", "INSPECTED"] }
+      status: { $in: ["ONGOING", "REPORT_RECORDED", "INSPECTION_SCHEDULED", "INSPECTED"] },
+      $or: [
+        { status: "INSPECTION_SCHEDULED" }, // scheduled tickets always visible
+        inspectorId ? { assignedInspectorId: inspectorId } : {},
+      ]
     }).sort({ updatedAt: -1 }).limit(20);
 
     const Order = getOrderModel();
