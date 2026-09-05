@@ -664,16 +664,19 @@ exports.sendToInventoryManager = async (req, res) => {
     };
     const validJobType = jobTypeMapping[requestType] || 'Repair';
 
-    const jobMaterial = new JobMaterialRequest({
-      requestId: 'JMR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
-      jobId: resolvedId,
-      jobType: validJobType,
-      requestedBy: req.user ? req.user._id : new mongoose.Types.ObjectId(),
-      requesterName: req.user ? (req.user.fullName || 'System') : 'System',
-      items: items,
-      status: 'PENDING'
-    });
-    await jobMaterial.save();
+    await JobMaterialRequest.findOneAndUpdate(
+      { jobId: resolvedId, jobType: validJobType },
+      {
+        $set: {
+          requestId: 'JMR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
+          requestedBy: req.user ? req.user._id : new mongoose.Types.ObjectId(),
+          requesterName: req.user ? (req.user.fullName || 'System') : 'System',
+          items: items,
+          status: 'PENDING'
+        }
+      },
+      { upsert: true, new: true }
+    );
 
     let updateObj = { status: WORKFLOW_STATUS.SENT_TO_IM };
     if (materials) updateObj.materials = materials;
