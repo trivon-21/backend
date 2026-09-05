@@ -21,7 +21,7 @@ const buildReportSignature = (report) => {
   const inspectionMeta = report?.inspectionMeta || {};
   const dateValue = inspectionMeta.date ? new Date(inspectionMeta.date).toISOString().slice(0, 10) : '';
 
-  return [
+  const parts = [
     site.buildingType || '',
     site.floors ?? '',
     site.rooms ?? '',
@@ -31,7 +31,13 @@ const buildReportSignature = (report) => {
     site.outdoorAccess || '',
     dateValue,
     inspectionMeta.time || '',
-  ].join('|');
+  ];
+
+  // If there's no real data, don't generate a signature that matches other empty reports
+  const hasData = parts.some(p => String(p).trim() !== '');
+  if (!hasData) return null;
+
+  return parts.join('|');
 };
 
 // 1. GET all reports with populated Customer details
@@ -245,60 +251,53 @@ exports.approveReport = async (req, res) => {
     
     if (!customer) {
       // Build signature based on site details
-      const site = report.siteDetails || {};
-      const inspectionMeta = report.inspectionMeta || {};
-      const dateValue = inspectionMeta.date ? new Date(inspectionMeta.date).toISOString().slice(0, 10) : '';
-      
-      const signature = [
-        site.buildingType || '',
-        site.floors ?? '',
-        site.rooms ?? '',
-        site.ceilingHeight || '',
-        site.wallType || '',
-        site.powerSupply || '',
-        site.outdoorAccess || '',
-        dateValue,
-        inspectionMeta.time || '',
-      ].join('|');
+      const signature = buildReportSignature(report);
 
-      const siblingReports = await InspectionReport.find({ _id: { $ne: report._id } }).lean();
-      let fallbackCustomerId = null;
-      for (const sibling of siblingReports) {
-        const toCustomerId = (val) => {
-          if (!val) return null;
-          if (typeof val === 'string') return val;
-          if (typeof val === 'object' && val._id) return String(val._id);
-          if (typeof val === 'object' && val.id) return String(val.id);
-          return String(val);
-        };
-        const siblingSite = sibling.siteDetails || {};
-        const siblingMeta = sibling.inspectionMeta || {};
-        const siblingDate = siblingMeta.date ? new Date(siblingMeta.date).toISOString().slice(0, 10) : '';
-        const siblingSignature = [
-          siblingSite.buildingType || '',
-          siblingSite.floors ?? '',
-          siblingSite.rooms ?? '',
-          siblingSite.ceilingHeight || '',
-          siblingSite.wallType || '',
-          siblingSite.powerSupply || '',
-          siblingSite.outdoorAccess || '',
-          siblingDate,
-          siblingMeta.time || '',
-        ].join('|');
+      if (signature) {
+        const siblingReports = await InspectionReport.find({ _id: { $ne: report._id } }).lean();
+        let fallbackCustomerId = null;
+        for (const sibling of siblingReports) {
+          const siblingSignature = buildReportSignature(sibling);
 
-        if (siblingSignature === signature) {
-          const siblingCustomerId = toCustomerId(sibling.customerId);
-          if (siblingCustomerId) {
-            fallbackCustomerId = siblingCustomerId;
-            break;
+          if (siblingSignature === signature) {
+            const siblingCustomerId = toCustomerId(sibling.customerId);
+            if (siblingCustomerId) {
+              fallbackCustomerId = siblingCustomerId;
+              break;
+            }
           }
         }
-      }
 
-      if (fallbackCustomerId) {
-        resolvedCustomerId = fallbackCustomerId;
-        customer = await Customer.findById(fallbackCustomerId);
+        if (fallbackCustomerId) {
+          resolvedCustomerId = fallbackCustomerId;
+          customer = await Customer.findById(fallbackCustomerId);
+        }
       }
+    }
+
+    // Additional fallback: Try finding customer by name
+    if (!customer && (report.customerName || report.fullName)) {
+      const searchName = report.customerName || report.fullName;
+      customer = await Customer.findOne({
+        $or: [{ fullName: searchName }, { name: searchName }]
+      });
+      if (customer) {
+        resolvedCustomerId = customer._id;
+      }
+    }
+
+    // Final fallback: Create a new customer record to satisfy the installation schema
+    if (!resolvedCustomerId) {
+      const newCustomer = new Customer({
+        fullName: report.customerName || report.fullName || 'Unknown Customer',
+        phoneNumber: report.contactNumber || report.customerPhone || undefined,
+        address: report.siteAddress || report.customerAddress || '',
+        email: report.customerEmail || `${Date.now()}@example.com`,
+        role: 'CUSTOMER',
+      });
+      await newCustomer.save();
+      resolvedCustomerId = newCustomer._id;
+      customer = newCustomer;
     }
 
     // Promote details to the Installations collection for this exact inspection report.
@@ -309,6 +308,7 @@ exports.approveReport = async (req, res) => {
       assignedTeamId: null,
       assignedTeamName: '',
       fullName: customer?.fullName || report.customerName || report.fullName || 'Unknown Customer',
+      customerName: customer?.fullName || report.customerName || report.fullName || 'Unknown Customer',
       customerEmail: customer?.email || report.customerEmail || '-',
       customerPhone: customer?.phoneNumber || report.contactNumber || report.customerPhone || '-',
       customerAddress: customer?.address || report.siteAddress || report.customerAddress || '-',
@@ -332,18 +332,14 @@ exports.approveReport = async (req, res) => {
       updatedAt: new Date(),
     };
 
-    // Use a raw collection upsert to avoid triggering Mongoose validation/hooks
-    // that may attempt to re-validate the original InspectionReport document
-    // (legacy enum values can cause those validations to fail). This writes
-    // directly to MongoDB and then we update the report with a raw update.
     try {
       await Installation.collection.updateOne(
         { inspectionTicketId: report._id },
-        { $set: installationPayload, $setOnInsert: { createdAt: new Date() } },
+        { $set: installationPayload },
         { upsert: true }
       );
     } catch (instErr) {
-      // If the raw collection write fails for any reason, propagate so caller
+      // If the write fails for any reason, propagate so caller
       // gets an error. We do not want silent failures here.
       throw instErr;
     }

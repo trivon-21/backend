@@ -28,6 +28,7 @@ const installationSchema = new Schema(
     status: {
       type: String,
       enum: [
+        'New',
         'Pending',
         'Finance Approved',
         'Finance Rejected',
@@ -55,7 +56,16 @@ const installationSchema = new Schema(
   }
 );
 
-installationSchema.pre('save', async function (next) {
+installationSchema.pre('validate', async function() {
+  if (this.isModified('status') && this.status) {
+    const lstatus = this.status.toLowerCase();
+    if (lstatus === 'complete' || lstatus === 'completed') {
+      this.status = 'Completed';
+    }
+  }
+});
+
+installationSchema.pre('save', async function () {
   // Generate ticketId for Installation if it doesn't exist
   if (this.isNew && !this.ticketId) {
     try {
@@ -84,7 +94,7 @@ installationSchema.pre('save', async function (next) {
 
       this.ticketId = `INT-${String(counter.seq).padStart(4, '0')}`;
     } catch (err) {
-      return next(err);
+      throw err;
     }
   }
 
@@ -95,12 +105,12 @@ installationSchema.pre('save', async function (next) {
 
   // Only act when the status field changed to 'Completed'
   if (!this.isModified('status') || this.status !== 'Completed') {
-    return next();
+    return;
   }
 
   // Guard: skip if a schedule is already linked
   if (this.maintenanceScheduleId) {
-    return next();
+    return;
   }
 
   try {

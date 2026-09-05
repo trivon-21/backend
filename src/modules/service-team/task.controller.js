@@ -219,11 +219,23 @@ exports.updateTaskStatus = async (req, res) => {
 
     let updated;
     if (task.source === 'installation') {
-      updated = await Installation.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+      const doc = await Installation.findById(task.record._id);
+      if (doc) {
+        doc.status = normalizedStatus;
+        updated = await doc.save();
+      }
     } else if (task.source === 'maintenance') {
-      updated = await Maintenance.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+      const doc = await Maintenance.findById(task.record._id);
+      if (doc) {
+        doc.status = normalizedStatus;
+        updated = await doc.save();
+      }
     } else {
-      updated = await ServiceRequest.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+      const doc = await ServiceRequest.findById(task.record._id);
+      if (doc) {
+        doc.status = normalizedStatus;
+        updated = await doc.save();
+      }
     }
 
     if (task.serviceReport) {

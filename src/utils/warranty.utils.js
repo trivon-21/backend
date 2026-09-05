@@ -1,5 +1,6 @@
 const Installation = require('../modules/shared/installation/installation.model');
-const ServiceTicket = require('../models/ServiceRequest');
+const Repair = require('../modules/shared/repair/repair.model');
+const Maintenance = require('../modules/shared/maintenance/maintenance.model');
 const { EXECUTION_STATUS } = require('../constants/enums');
 
 /**
@@ -24,39 +25,49 @@ exports.calculateWarrantyStatus = async (customerObjectId, serviceType) => {
     const installation = await Installation.findOne({
       customerId: customerObjectId,
       status: EXECUTION_STATUS.COMPLETED
-    }).lean();
+    }).sort({ serviceDate: -1, date: -1, createdAt: -1 }).lean();
 
     if (installation) {
       // Calculate warranty period: 2 years from installation date
-      const installDate = new Date(installation.serviceDate || installation.date);
-      const warrantyExpiryDate = new Date(installDate);
-      warrantyExpiryDate.setFullYear(warrantyExpiryDate.getFullYear() + 2);
+      const installDate = new Date(installation.serviceDate || installation.date || installation.createdAt);
+      
+      // Safety check for invalid dates
+      if (!isNaN(installDate.getTime())) {
+        const warrantyExpiryDate = new Date(installDate);
+        warrantyExpiryDate.setFullYear(warrantyExpiryDate.getFullYear() + 2);
 
-      // Check if current date is within warranty period
-      isUnderWarranty = new Date() <= warrantyExpiryDate;
+        // Check if current date is within warranty period
+        isUnderWarranty = new Date() <= warrantyExpiryDate;
 
-      if (isUnderWarranty && serviceType) {
-        // Count services completed within warranty period matching this serviceType
-        const completedCount = await ServiceTicket.countDocuments({
-          customerId: customerObjectId,
-          status: 'Completed',
-          serviceType: serviceType,
-          createdAt: { $gte: installDate, $lte: warrantyExpiryDate }
-        });
-
-        if (serviceType === 'Repair') {
-          // First 2 repairs are free
-          isFreeOfCharge = completedCount < 2;
-        } else if (serviceType === 'Maintenance') {
-          // First 4 maintenances are free
-          isFreeOfCharge = completedCount < 4;
+        if (isUnderWarranty && serviceType) {
+          let completedCount = 0;
+          
+          if (serviceType === 'Repair') {
+            completedCount = await Repair.countDocuments({
+              customerId: customerObjectId,
+              status: EXECUTION_STATUS.COMPLETED,
+              createdAt: { $gte: installDate, $lte: warrantyExpiryDate }
+            });
+            // First 2 repairs are free
+            isFreeOfCharge = completedCount < 2;
+          } else if (serviceType === 'Maintenance') {
+            completedCount = await Maintenance.countDocuments({
+              customerId: customerObjectId,
+              status: EXECUTION_STATUS.COMPLETED,
+              createdAt: { $gte: installDate, $lte: warrantyExpiryDate }
+            });
+            // First 4 maintenances are free
+            isFreeOfCharge = completedCount < 4;
+          }
         }
+      } else {
+        console.warn(`[warranty.utils] Invalid installation date for customer ${customerObjectId}`);
       }
     }
-
+    
     return { isUnderWarranty, isFreeOfCharge };
   } catch (err) {
     console.error('Error calculating warranty status:', err);
-    return { isUnderWarranty: false, isFreeOfCharge: false };
+    throw err; // Let upstream handle the error instead of swallowing it
   }
 };

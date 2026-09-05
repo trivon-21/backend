@@ -35,7 +35,7 @@ const queryChain = {
 
 ServiceRequest.find = () => ({ ...queryChain, _data: mockServiceData });
 ServiceRequest.findById = (id) => ({ ...queryChain, _data: mockServiceById });
-ServiceRequest.findOne = () => ({ ...queryChain, _data: null });
+ServiceRequest.findOne = () => ({ ...queryChain, _data: mockServiceById });
 
 Installation.find = () => ({ ...queryChain, _data: [] });
 Installation.findById = () => ({ ...queryChain, _data: null });

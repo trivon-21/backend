@@ -144,10 +144,10 @@ exports.saveReport = async (req, res) => {
     let report = await InspectionReport.findOne({ ticketId });
 
     if (report) {
-      Object.assign(report, reportData);
+      Object.assign(report, { customerId: ticket.customerId }, reportData);
       await report.save();
     } else {
-      report = await InspectionReport.create({ ticketId, orderId: ticket.orderId, ...reportData });
+      report = await InspectionReport.create({ ticketId, orderId: ticket.orderId, customerId: ticket.customerId, ...reportData });
     }
 
     res.json({ message: "Report saved", report });
@@ -168,11 +168,11 @@ exports.recordReport = async (req, res) => {
 
     let report = await InspectionReport.findOne({ ticketId });
     if (report) {
-      Object.assign(report, reportData, { status: "RECORDED", recordedAt: new Date() });
+      Object.assign(report, { customerId: ticket.customerId }, reportData, { status: "RECORDED", recordedAt: new Date() });
       await report.save();
     } else {
       report = await InspectionReport.create({
-        ticketId, orderId: ticket.orderId, ...reportData,
+        ticketId, orderId: ticket.orderId, customerId: ticket.customerId, ...reportData,
         status: "RECORDED", recordedAt: new Date()
       });
     }
