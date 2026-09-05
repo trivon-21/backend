@@ -29,7 +29,9 @@ const {
   suggestedOrderQuantity,
   isValidClassification,
   INVENTORY_LOCATIONS,
-  isValidInventoryLocation
+  isValidInventoryLocation,
+  toBusinessDateString,
+  isLoanOverdue,
 } = require('../../utils/inventory-domain');
 const {
   ACTIVE_INCOMING_STATUSES,
@@ -258,7 +260,7 @@ exports.getDashboardData = async (user) => {
       total: loans.length,
       subStats: [
         { label: 'Tools in Field', value: loans.length },
-        { label: 'Overdue Returns', value: loans.filter(l => new Date(l.dueDate) < new Date()).length }
+        { label: 'Overdue Returns', value: loans.filter((l) => isLoanOverdue(l.dueDate)).length }
       ]
     },
     stockAlerts: {
@@ -284,6 +286,23 @@ exports.getDashboardData = async (user) => {
   const inventoryIds = new Set(inventory.map((item) => String(item._id)));
   const procurementWorkflow = summarizeProcurementWorkflow(orderRequests, authorizations, { inventoryIds });
 
+  const logistics = orders
+    .sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0))
+    .map(o => ({
+      id: o.orderId,
+      orderId: o.orderId,
+      customer: o.customer,
+      status: o.status,
+      statusVersion: o.statusVersion ?? 0,
+      type: o.type,
+      courier: o.courier || '',
+      trackId: o.trackId || '',
+      itemCount: Array.isArray(o.items) ? o.items.length : 0,
+      date: o.date,
+      lastMovedAt: o.lastMovedAt,
+      completedAt: o.completedAt,
+    }));
+
   return {
     managerName: user?.fullName?.split(' ')[0] || 'Manager',
     currentDate: new Date(),
@@ -299,6 +318,7 @@ exports.getDashboardData = async (user) => {
     })),
     reorderList,
     procurementWorkflow,
+    logistics,
   };
 };
 
@@ -1196,10 +1216,12 @@ exports.checkOutTool = async (data, user) => {
   if (!String(data.assetTag || '').trim()) {
     throw serviceError('Select an asset tag', 400, 'ASSET_TAG_REQUIRED');
   }
-  const dueDate = new Date(data.dueDate);
-  if (Number.isNaN(dueDate.getTime()) || dueDate <= new Date()) {
+  const dueDateStr = toBusinessDateString(data.dueDate);
+  const todayStr = toBusinessDateString(new Date());
+  if (!dueDateStr || dueDateStr < todayStr) {
     throw serviceError('Tool due date must be a valid future date', 400, 'INVALID_DUE_DATE');
   }
+  const dueDate = new Date(`${dueDateStr}T00:00:00.000Z`);
   const technician = await User.findOne({ _id: data.technicianId, role: { $in: TECHNICIAN_ROLES } });
   if (!technician) throw serviceError('Technician not found or role is not eligible for tool lending', 404, 'TECHNICIAN_NOT_FOUND');
   const normalizedAssetTag = normalizeSerialNumber(data.assetTag);

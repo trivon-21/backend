@@ -10,32 +10,9 @@ exports.getDashboard = async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Dashboard fetch error:', error);
-    res.json({
-      managerName: req.user?.fullName?.split(' ')[0] || 'Manager',
-      currentDate: new Date(),
-      status: 'Offline',
-      stats: {
-        materialReservations: { total: 0, subStats: [] },
-        dispatchQueue: { total: 0, subStats: [] },
-        assetHealth: { total: 0, subStats: [] },
-        stockAlerts: { total: 0, subStats: [] }
-      },
-      recentActivity: [],
-      reorderList: [],
-      logistics: [],
-      procurementWorkflow: {
-        awaitingManager: 0,
-        awaitingFinanceApproval: 0,
-        readyToIssue: 0,
-        readyToReceive: 0,
-        awaitingReceiptReconciliation: 0,
-        breakdown: {
-          awaitingManager: { purchaseRequests: 0, receiptAuthorizations: 0 },
-          readyToReceive: { purchaseOrders: 0, receiptAuthorizations: 0 }
-        },
-        awaitingReceipt: 0,
-        awaitingFinance: 0
-      }
+    res.status(503).json({
+      code: 'INVENTORY_DASHBOARD_UNAVAILABLE',
+      message: 'Inventory dashboard is currently unavailable',
     });
   }
 };

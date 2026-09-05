@@ -4,14 +4,22 @@ const mongoose = require('mongoose');
 const connectDB = require('../src/config/db');
 
 const APPLY_TOKEN = '--confirm-indexes=RECONCILE-MANAGER-INVENTORY-INDEXES';
+
+const LEGACY_INDEXES_TO_DROP = [
+  { collection: 'asset_loans', name: 'assetTag_1' },
+];
+
 const DESIRED_INDEXES = [
-  { collection: 'asset_loans', key: { assetTag: 1 }, options: { unique: false, name: 'assetTag_1' } },
   { collection: 'inspection_tickets', key: { ticketRef: 1 }, options: { unique: true, name: 'ticketRef_1', sparse: true } },
   { collection: 'job_material_requests', key: { jobType: 1, jobId: 1 }, options: { unique: true, name: 'jobType_1_jobId_1' } },
   { collection: 'job_material_requests', key: { requestId: 1 }, options: { unique: true, name: 'requestId_1', partialFilterExpression: { requestId: { $type: 'string' } } } },
   { collection: 'warehouse_pick_requests', key: { sourceMaterialRequestId: 1 }, options: { unique: true, name: 'sourceMaterialRequestId_1', partialFilterExpression: { sourceMaterialRequestId: { $type: 'objectId' } } } },
   { collection: 'purchase_requests', key: { activeShortageKey: 1 }, options: { unique: true, name: 'activeShortageKey_1', partialFilterExpression: { activeShortageKey: { $type: 'string' } } } },
   { collection: 'purchase_requests', key: { poNumber: 1 }, options: { unique: true, name: 'poNumber_1', partialFilterExpression: { poNumber: { $type: 'string' } } } },
+  { collection: 'asset_loans', key: { normalizedAssetTag: 1 }, options: { unique: false, name: 'normalizedAssetTag_1', sparse: true } },
+  { collection: 'serialized_assets', key: { normalizedSerial: 1 }, options: { unique: true, name: 'normalizedSerial_1' } },
+  { collection: 'serialized_assets', key: { inventoryId: 1, status: 1 }, options: { unique: false, name: 'inventoryId_1_status_1' } },
+  { collection: 'inventory', key: { sku: 1 }, options: { unique: true, name: 'sku_1' } },
 ];
 
 function stable(value) {
@@ -21,9 +29,11 @@ function stable(value) {
   }
   return JSON.stringify(value);
 }
+
 function matchingIndex(indexes, desired) {
   return indexes.find((index) => stable(index.key) === stable(desired.key));
 }
+
 function indexNeedsReplacement(actual, desired) {
   if (!actual) return false;
   return Boolean(actual.unique) !== Boolean(desired.options.unique)
@@ -47,6 +57,21 @@ async function duplicateKeys(collection, desired) {
 async function reconcileIndexes({ db, apply = false, confirmed = false, logger = console } = {}) {
   if (apply && !confirmed) throw new Error(`Applying index changes requires ${APPLY_TOKEN}`);
   const actions = [];
+
+  for (const legacy of LEGACY_INDEXES_TO_DROP) {
+    const collection = db.collection(legacy.collection);
+    const indexes = await collection.listIndexes().toArray().catch((error) => (
+      error.codeName === 'NamespaceNotFound' ? [] : Promise.reject(error)
+    ));
+    const actual = indexes.find((idx) => idx.name === legacy.name);
+    if (actual) {
+      actions.push({ collection: legacy.collection, index: legacy.name, state: 'drop', duplicateCount: 0 });
+      if (apply) {
+        await collection.dropIndex(legacy.name);
+      }
+    }
+  }
+
   for (const desired of DESIRED_INDEXES) {
     const collection = db.collection(desired.collection);
     const indexes = await collection.listIndexes().toArray().catch((error) => (
@@ -54,8 +79,13 @@ async function reconcileIndexes({ db, apply = false, confirmed = false, logger =
     ));
     const actual = matchingIndex(indexes, desired);
     const replace = indexNeedsReplacement(actual, desired);
-    const duplicates = await duplicateKeys(collection, desired);
-    const action = { collection: desired.collection, index: desired.options.name, state: actual && !replace ? 'current' : replace ? 'replace' : 'create', duplicateCount: duplicates.length };
+    const duplicates = desired.options.unique ? await duplicateKeys(collection, desired) : [];
+    const action = {
+      collection: desired.collection,
+      index: desired.options.name,
+      state: actual && !replace ? 'current' : replace ? 'replace' : 'create',
+      duplicateCount: duplicates.length,
+    };
     actions.push(action);
     if (duplicates.length) throw new Error(`Duplicate values prevent ${desired.collection}.${desired.options.name}`);
     if (apply && action.state !== 'current') {
@@ -82,4 +112,11 @@ if (require.main === module) {
   }).finally(async () => mongoose.disconnect());
 }
 
-module.exports = { APPLY_TOKEN, DESIRED_INDEXES, indexNeedsReplacement, matchingIndex, reconcileIndexes };
+module.exports = {
+  APPLY_TOKEN,
+  LEGACY_INDEXES_TO_DROP,
+  DESIRED_INDEXES,
+  indexNeedsReplacement,
+  matchingIndex,
+  reconcileIndexes,
+};
