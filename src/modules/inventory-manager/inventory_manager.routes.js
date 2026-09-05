@@ -6,7 +6,6 @@ const { authorize } = require("../../middleware/role.middleware");
 router.use(protect);
 router.use(authorize(["INVENTORY", "SUPER_ADMIN"]));
 
-// Add routes here
 // Dashboard data
 router.get("/dashboard", controller.getDashboard);
 // Inventory list
@@ -67,6 +66,7 @@ router.post("/leftover-returns", controller.createLeftoverReturn);
 router.get("/rma-cases", controller.getRmaCases);
 router.post("/rma-cases", controller.createRmaCase);
 router.patch("/rma-cases/:id", controller.updateRmaCase);
+router.post("/rma-cases/:id/replacement", controller.receiveRmaReplacement);
 router.get("/quarantine", controller.getQuarantineItems);
 router.post("/quarantine", controller.createQuarantineItem);
 router.patch("/quarantine/:id/dispose", controller.disposeQuarantineItem);

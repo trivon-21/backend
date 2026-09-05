@@ -100,6 +100,7 @@ const inventoryEndpoints = [
   endpoint('inventory', 'GET', '/rma-cases', 'RMA list', true, 'inventory_manager.service.getRmaCases', ['RmaCase', 'SerializedAsset', 'User']),
   endpoint('inventory', 'POST', '/rma-cases', 'RMA creation', true, 'inventory_manager.service.createRmaCase', ['RmaCase', 'SerializedAsset', 'Inventory', 'Activity', 'User']),
   endpoint('inventory', 'PATCH', '/rma-cases/:id', 'RMA update', true, 'inventory_manager.service.updateRmaCase', ['RmaCase', 'SerializedAsset', 'Activity', 'User']),
+  endpoint('inventory', 'POST', '/rma-cases/:id/replacement', 'RMA replacement receipt', true, 'inventory_manager.service.receiveRmaReplacement', ['RmaCase', 'SerializedAsset', 'Activity', 'User']),
   endpoint('inventory', 'GET', '/quarantine', 'Quarantine list', true, 'inventory_manager.service.getQuarantineItems', ['QuarantineItem', 'User']),
   endpoint('inventory', 'POST', '/quarantine', 'Quarantine creation', true, 'inventory_manager.service.createQuarantineItem', ['QuarantineItem', 'Inventory', 'User']),
   endpoint('inventory', 'PATCH', '/quarantine/:id/dispose', 'Quarantine disposal', true, 'inventory_manager.service.disposeQuarantineItem', ['QuarantineItem', 'User']),

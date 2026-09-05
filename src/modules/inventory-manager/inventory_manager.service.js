@@ -52,6 +52,13 @@ const {
   assertPurchaseStatusVersion,
   savePurchaseRequest,
 } = require('../../utils/purchase-request-concurrency');
+const {
+  RMA_STATUSES,
+  VALID_RMA_TRANSITIONS,
+  dispositionForReturnCondition,
+  assertRmaTransition,
+  assertReplacementSerial,
+} = require('../../utils/rma-workflow');
 
 const MASTER_DATA_FIELDS = [
   'name', 'itemClass', 'subcategory', 'brand', 'manufacturerPartNumber', 'type', 'unit',
@@ -1152,7 +1159,12 @@ exports.getAssetLoans = async () => {
  * Returns serialized HVAC tools with asset tags that are not currently on loan.
  */
 exports.getAvailableTools = async () => {
-  const availableAssets = await SerializedAsset.find({ status: 'available' })
+  const availableAssets = await SerializedAsset.find({
+    status: 'available',
+    currentLoanId: { $in: [null, undefined] },
+    activeRmaCaseId: { $in: [null, undefined] },
+    quarantineId: { $in: [null, undefined] },
+  })
     .select('inventoryId serialNumber')
     .sort({ serialNumber: 1 })
     .lean();
@@ -1260,9 +1272,8 @@ exports.returnTool = async (loanId, user, input = {}) => {
   assertRole(user, ['INVENTORY']);
   assertObjectId(loanId, 'Loan reference is invalid', 'INVALID_LOAN_ID');
   const condition = input.condition || 'good';
-  if (!['good', 'damaged', 'incomplete'].includes(condition)) {
-    throw serviceError('Return condition must be good, damaged, or incomplete', 400, 'INVALID_RETURN_CONDITION');
-  }
+  const disposition = dispositionForReturnCondition(condition);
+
   return mongoose.connection.transaction(async (session) => {
     const loan = await AssetLoan.findById(loanId).session(session);
     if (!loan) throw serviceError('Loan not found', 404, 'LOAN_NOT_FOUND');
@@ -1278,30 +1289,69 @@ exports.returnTool = async (loanId, user, input = {}) => {
     loan.status = 'returned';
     loan.returnedAt = new Date();
     loan.condition = condition;
+    if (input.notes) loan.notes = input.notes;
     await loan.save({ session });
+
     if (condition === 'good') {
       asset.status = 'available';
       asset.quarantineId = undefined;
-    } else {
+    } else if (condition === 'incomplete') {
       const [quarantine] = await QuarantineItem.create([{
         quarantineId: generateId('QZ'),
         itemName: loan.toolName,
         quantity: 1,
         unit: 'unit',
-        reason: `Returned tool marked ${condition}: ${loan.assetTag}`,
+        reason: input.notes
+          ? `Returned tool marked incomplete: ${loan.assetTag} - ${input.notes}`
+          : `Returned tool marked incomplete: ${loan.assetTag}`,
         source: 'manual',
         sourceRefId: String(loan._id),
         inventoryId: loan.toolId,
         serialNumbers: [asset.serialNumber],
       }], { session });
-      asset.status = 'quarantined';
+      asset.status = 'inspection-hold';
+      asset.quarantineId = quarantine._id;
+    } else if (condition === 'damaged') {
+      const [quarantine] = await QuarantineItem.create([{
+        quarantineId: generateId('QZ'),
+        itemName: loan.toolName,
+        quantity: 1,
+        unit: 'unit',
+        reason: input.notes
+          ? `Returned tool marked damaged: ${loan.assetTag} - ${input.notes}`
+          : `Returned tool marked damaged: ${loan.assetTag}`,
+        source: 'manual',
+        sourceRefId: String(loan._id),
+        inventoryId: loan.toolId,
+        serialNumbers: [asset.serialNumber],
+      }], { session });
+
+      const rmaId = generateId('RMA');
+      const inventoryItem = await Inventory.findById(asset.inventoryId).session(session);
+      const [rmaCase] = await RmaCase.create([{
+        rmaId,
+        inventoryId: asset.inventoryId,
+        serializedAssetId: asset._id,
+        serialNumber: asset.serialNumber,
+        itemName: loan.toolName,
+        itemSku: inventoryItem ? inventoryItem.sku : '',
+        faultDescription: input.notes || `Returned tool marked damaged: ${loan.assetTag}`,
+        reportedBy: user?.fullName || 'Inventory Manager',
+        status: 'reported',
+        type: inventoryItem ? inventoryItem.type : 'Single',
+        resolution: '',
+      }], { session });
+
+      asset.status = 'supplier-return-pending';
+      asset.activeRmaCaseId = rmaCase._id;
+      asset.preRmaStatus = 'supplier-return-pending';
       asset.quarantineId = quarantine._id;
     }
     asset.currentLoanId = undefined;
     await asset.save({ session });
     await Activity.create([{
       type: 'return', title: 'Tool Returned',
-      description: `${loan.technicianName} returned ${loan.toolName} (${loan.assetTag})`,
+      description: `${loan.technicianName} returned ${loan.toolName} (${loan.assetTag}) [${condition}]`,
       actionLabel: 'View Log',
     }], { session });
     return loan;
@@ -1782,7 +1832,7 @@ exports.createRmaCase = async (data, user) => {
     if (asset.status === 'rma') {
       throw serviceError('An active RMA case already exists for this serial number', 409, 'ACTIVE_RMA_EXISTS');
     }
-    if (!['available', 'quarantined'].includes(asset.status)) {
+    if (!['available', 'quarantined', 'inspection-hold', 'supplier-return-pending'].includes(asset.status)) {
       throw serviceError('This serialized asset is not eligible for RMA', 409, 'ASSET_NOT_AVAILABLE');
     }
     const inventoryItem = await Inventory.findById(asset.inventoryId).session(session);
@@ -1821,52 +1871,126 @@ exports.createRmaCase = async (data, user) => {
 
 /**
  * Updates an RMA case status with transition validation.
- * Valid transitions: reported → under-review → sent-to-supplier → resolved → closed
+ * Valid transitions: reported → under-review → sent-to-supplier → replacement-pending → resolved → closed
  */
 exports.updateRmaCase = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
-  const validTransitions = {
-    'reported': ['under-review'],
-    'under-review': ['sent-to-supplier', 'resolved'],
-    'sent-to-supplier': ['resolved'],
-    'resolved': ['closed'],
-    'closed': [],
-  };
+
+  if (['sent-to-supplier', 'replacement-pending'].includes(data.status) && data.replacementSerialNumber) {
+    return exports.receiveRmaReplacement(id, data, user);
+  }
 
   return mongoose.connection.transaction(async (session) => {
     const rmaCase = await RmaCase.findOne({ rmaId: id }).session(session);
     if (!rmaCase) throw serviceError('RMA case not found', 404, 'RMA_NOT_FOUND');
     if (data.status && data.status !== rmaCase.status) {
-      const allowed = validTransitions[rmaCase.status] || [];
-      if (!allowed.includes(data.status)) {
-        throw new Error(`Invalid status transition from '${rmaCase.status}' to '${data.status}'`);
-      }
+      assertRmaTransition(rmaCase.status, data.status, data);
       rmaCase.status = data.status;
       if (data.status === 'resolved' || data.status === 'closed') {
         rmaCase.resolvedAt = rmaCase.resolvedAt || new Date();
       }
     }
+    if (data.resolutionType !== undefined) rmaCase.resolutionType = data.resolutionType;
+    if (data.resolutionNote !== undefined) rmaCase.resolutionNote = data.resolutionNote;
     if (data.resolution !== undefined) rmaCase.resolution = data.resolution;
     await rmaCase.save({ session });
 
-    if (['resolved', 'closed'].includes(rmaCase.status)) {
-      const asset = rmaCase.serializedAssetId
-        ? await SerializedAsset.findById(rmaCase.serializedAssetId).session(session)
-        : await SerializedAsset.findOne({ normalizedSerial: normalizeSerialNumber(rmaCase.serialNumber) }).session(session);
-      if (!asset) throw serviceError('Serialized asset registry record not found', 409, 'ASSET_REGISTRY_MISSING');
-      if (asset.status === 'rma' && String(asset.activeRmaCaseId || '') === String(rmaCase._id)) {
-        asset.status = asset.preRmaStatus || 'available';
-        asset.activeRmaCaseId = undefined;
-        asset.preRmaStatus = undefined;
+    const asset = rmaCase.serializedAssetId
+      ? await SerializedAsset.findById(rmaCase.serializedAssetId).session(session)
+      : await SerializedAsset.findOne({ normalizedSerial: normalizeSerialNumber(rmaCase.serialNumber) }).session(session);
+
+    if (asset) {
+      if (data.status === 'sent-to-supplier') {
+        asset.status = 'returned-to-supplier';
         await asset.save({ session });
+        if (asset.quarantineId) {
+          await QuarantineItem.findByIdAndUpdate(asset.quarantineId, { status: 'returned-to-supplier' }).session(session);
+        }
+      } else if (['resolved', 'closed'].includes(rmaCase.status)) {
+        if (asset.status === 'rma' && String(asset.activeRmaCaseId || '') === String(rmaCase._id)) {
+          asset.status = asset.preRmaStatus === 'quarantined' ? 'quarantined' : 'available';
+          asset.activeRmaCaseId = undefined;
+          asset.preRmaStatus = undefined;
+          await asset.save({ session });
+        }
       }
     }
+
     await Activity.create([{
       type: 'return', title: 'RMA Status Updated',
       description: `RMA ${rmaCase.rmaId} status changed to ${rmaCase.status}`,
       actionLabel: 'View RMA',
     }], { session });
     return rmaCase;
+  });
+};
+
+/**
+ * Receives a supplier replacement for an RMA case.
+ * Retires original asset, links replacement lineage, creates new available SerializedAsset,
+ * and advances RMA to resolved.
+ */
+exports.receiveRmaReplacement = async (id, data, user) => {
+  assertRole(user, ['INVENTORY']);
+  const rawSerial = data.serialNumber || data.replacementSerialNumber;
+  const serialNumber = assertReplacementSerial(rawSerial);
+  const normalizedSerial = normalizeSerialNumber(serialNumber);
+
+  return mongoose.connection.transaction(async (session) => {
+    const rmaCase = await RmaCase.findOne({ rmaId: id }).session(session);
+    if (!rmaCase) throw serviceError('RMA case not found', 404, 'RMA_NOT_FOUND');
+    if (!['sent-to-supplier', 'replacement-pending'].includes(rmaCase.status)) {
+      throw serviceError(`Cannot receive replacement for RMA in status '${rmaCase.status}'`, 409, 'INVALID_RMA_STATUS');
+    }
+
+    if (await SerializedAsset.exists({ normalizedSerial }).session(session)) {
+      throw serviceError('Replacement serial number already exists in inventory', 409, 'DUPLICATE_SERIAL');
+    }
+
+    const originalAsset = rmaCase.serializedAssetId
+      ? await SerializedAsset.findById(rmaCase.serializedAssetId).session(session)
+      : await SerializedAsset.findOne({ normalizedSerial: normalizeSerialNumber(rmaCase.serialNumber) }).session(session);
+
+    if (!originalAsset) throw serviceError('Original serialized asset record not found', 404, 'ASSET_NOT_FOUND');
+
+    const [replacementAsset] = await SerializedAsset.create([{
+      inventoryId: originalAsset.inventoryId,
+      serialNumber,
+      normalizedSerial,
+      status: 'available',
+      replacementForAssetId: originalAsset._id,
+      supplierId: originalAsset.supplierId,
+      location: data.location || originalAsset.location || '',
+      binLocation: data.binLocation || originalAsset.binLocation || '',
+      origin: 'receipt',
+    }], { session });
+
+    originalAsset.status = 'retired';
+    originalAsset.retiredAt = new Date();
+    originalAsset.replacedByAssetId = replacementAsset._id;
+    originalAsset.activeRmaCaseId = undefined;
+    await originalAsset.save({ session });
+
+    rmaCase.status = 'resolved';
+    rmaCase.resolutionType = 'supplier-replacement';
+    rmaCase.resolutionNote = data.notes || data.resolution || `Supplier replacement with serial ${serialNumber}`;
+    rmaCase.resolution = rmaCase.resolutionNote;
+    rmaCase.resolvedAt = new Date();
+    rmaCase.replacementSerializedAssetId = replacementAsset._id;
+    await rmaCase.save({ session });
+
+    await Activity.create([{
+      type: 'return',
+      title: 'RMA Supplier Replacement Received',
+      description: `RMA ${rmaCase.rmaId}: Serial ${originalAsset.serialNumber} retired and replaced by ${replacementAsset.serialNumber}`,
+      actionLabel: 'View Asset',
+    }], { session });
+
+    return {
+      rmaCase,
+      replacementAsset,
+      originalAsset,
+    };
   });
 };
 

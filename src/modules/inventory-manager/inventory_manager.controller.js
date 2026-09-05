@@ -509,6 +509,19 @@ exports.updateRmaCase = async (req, res) => {
 };
 
 /**
+ * Receives a supplier replacement for an RMA case.
+ */
+exports.receiveRmaReplacement = async (req, res) => {
+  try {
+    const data = await service.receiveRmaReplacement(req.params.id, req.body, req.user);
+    res.json(data);
+  } catch (error) {
+    console.error('RMA replacement error:', error);
+    res.status(error.statusCode || 400).json({ message: error.message || "Failed to receive RMA replacement", code: error.code });
+  }
+};
+
+/**
  * Retrieves all active quarantine items.
  */
 exports.getQuarantineItems = async (req, res) => {

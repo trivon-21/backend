@@ -14,6 +14,10 @@ const {
 } = require('../../utils/purchase-request-concurrency');
 require('../../models/Inventory');
 require('../../models/Supplier');
+const {
+  sendPurchaseApprovalEmail,
+  sendPurchaseRejectionEmail,
+} = require('../shared/notification/email.service');
 
 function serviceError(statusCode, message, code) {
   const error = new Error(message);
@@ -58,9 +62,26 @@ function purchaseStatusesForFilter(status) {
 function purchaseRequestDto(request) {
   const value = request?.toObject ? request.toObject() : request;
   const status = canonicalPurchaseStatus(value.status);
+  const requestedByEmail = value.requestedByEmail
+    || (typeof value.requestedById === 'object' && value.requestedById !== null ? value.requestedById.email : '')
+    || '';
   return {
     ...value,
     status,
+    totalAmount: value.totalAmount ?? value.totalEstimate ?? 0,
+    totalEstimate: value.totalEstimate ?? value.totalAmount ?? 0,
+    reason: value.reason || value.notes || '',
+    notes: value.notes || value.reason || '',
+    requestedByEmail,
+    items: (value.items || []).map((item) => ({
+      ...item,
+      itemName: item.itemName || item.name || '',
+      name: item.name || item.itemName || '',
+      unitPrice: item.unitPrice ?? item.unitCost ?? 0,
+      unitCost: item.unitCost ?? item.unitPrice ?? 0,
+      total: item.total ?? item.estimatedTotal ?? 0,
+      estimatedTotal: item.estimatedTotal ?? item.total ?? 0,
+    })),
     workflowStages: purchaseRequestWorkflowStages({ ...value, status }),
   };
 }
@@ -74,7 +95,7 @@ function receiptAuthorizationDto(authorization) {
 }
 
 function commentOf(input) {
-  const comment = String(input.comment || input.reason || '').trim();
+  const comment = String(input.comment || input.reason || input.rejectionReason || '').trim();
   if (!comment) throw serviceError(400, 'A decision comment is required', 'COMMENT_REQUIRED');
   return comment;
 }
@@ -89,7 +110,10 @@ exports.listPurchaseRequests = async (user, filters = {}) => {
   assertFinance(user);
   const statuses = purchaseStatusesForFilter(filters.status || 'pending-finance');
   const query = statuses ? { status: { $in: statuses } } : {};
-  const requests = await PurchaseRequest.find(query).sort({ createdAt: 1 }).lean();
+  const requests = await PurchaseRequest.find(query)
+    .populate('requestedById', 'email')
+    .sort({ createdAt: 1 })
+    .lean();
   return requests.map(purchaseRequestDto);
 };
 
@@ -127,7 +151,31 @@ exports.decidePurchaseRequest = async (id, input, user) => {
     title: `Finance ${input.decision === 'approved' ? 'Approved' : 'Rejected'} Purchase Request`,
     description: `${request.requestId}: ${comment}`, actionLabel: 'View Request',
   });
-  return purchaseRequestDto(request);
+
+  await request.populate('requestedById', 'email');
+  const dto = purchaseRequestDto(request);
+
+  if (dto.requestedByEmail) {
+    const requestRef = request.requestId || `PR-${String(request._id).slice(-6).toUpperCase()}`;
+    const amount = dto.totalAmount || 0;
+    if (input.decision === 'approved') {
+      sendPurchaseApprovalEmail(
+        dto.requestedByEmail,
+        request.requestedBy || 'Inventory Manager',
+        requestRef,
+        amount,
+      ).catch(() => {});
+    } else {
+      sendPurchaseRejectionEmail(
+        dto.requestedByEmail,
+        request.requestedBy || 'Inventory Manager',
+        requestRef,
+        comment,
+      ).catch(() => {});
+    }
+  }
+
+  return dto;
 };
 
 exports.listNonPoReceipts = async (user, filters = {}) => {
