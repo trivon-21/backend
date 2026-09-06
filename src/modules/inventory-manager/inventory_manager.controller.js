@@ -10,42 +10,23 @@ exports.getDashboard = async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Dashboard fetch error:', error);
-    res.json({
-      managerName: req.user?.fullName?.split(' ')[0] || 'Manager',
-      currentDate: new Date(),
-      status: 'Offline',
-      stats: {
-        materialReservations: { total: 0, subStats: [] },
-        dispatchQueue: { total: 0, subStats: [] },
-        assetHealth: { total: 0, subStats: [] },
-        stockAlerts: { total: 0, subStats: [] }
-      },
-      recentActivity: [],
-      reorderList: [],
-      logistics: [],
-      procurementWorkflow: {
-        awaitingManager: 0,
-        awaitingFinanceApproval: 0,
-        readyToIssue: 0,
-        readyToReceive: 0,
-        awaitingReceiptReconciliation: 0,
-        breakdown: {
-          awaitingManager: { purchaseRequests: 0, receiptAuthorizations: 0 },
-          readyToReceive: { purchaseOrders: 0, receiptAuthorizations: 0 }
-        },
-        awaitingReceipt: 0,
-        awaitingFinance: 0
-      }
+    res.status(503).json({
+      code: 'INVENTORY_DASHBOARD_UNAVAILABLE',
+      message: 'Inventory dashboard is currently unavailable',
     });
   }
 };
 
 /**
- * Retrieves the full inventory list.
+ * Retrieves the inventory list.
+ * Supports optional server-side pagination, search, and filtering via query params:
+ *   ?page=&pageSize=&search=&itemClass=&subcategory=&supplierId=&sortField=&sortDirection=
+ * When no query params are present the full flat array is returned (backward compatible).
  */
 exports.getInventory = async (req, res) => {
   try {
-    const data = await service.getInventoryList();
+    const params = Object.keys(req.query).length ? req.query : undefined;
+    const data = await service.getInventoryList(params);
     res.json(data);
   } catch (error) {
     console.error('Inventory fetch error:', error);
@@ -108,11 +89,22 @@ exports.receiveInventory = async (req, res) => {
     const data = await service.receiveInventory(req.body, req.user);
     res.status(201).json(data);
   } catch (error) {
-    console.error('Inventory receipt error:', error);
-    res.status(error.statusCode || 500).json({
-      message: error.message || 'Failed to receive inventory',
-      code: error.code || 'RECEIPT_FAILED'
-    });
+    // Translate Mongoose and domain errors to deterministic stable codes (IM-010).
+    if (error.statusCode) {
+      if (error.statusCode >= 500) console.error('Inventory receipt error:', error);
+      return res.status(error.statusCode).json({ message: error.message, code: error.code || 'RECEIPT_FAILED' });
+    }
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid ID format in receipt request', code: 'INVALID_OBJECT_ID' });
+    }
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: 'Invalid receipt input', code: 'INVALID_RECEIPT_CONDITION' });
+    }
+    if (error.code === 11000) {
+      return res.status(409).json({ message: 'Serial number already exists in the registry', code: 'DUPLICATE_SERIAL' });
+    }
+    console.error('Inventory receipt unexpected error:', error);
+    res.status(500).json({ message: 'Failed to receive inventory', code: 'RECEIPT_FAILED' });
   }
 };
 
@@ -173,7 +165,6 @@ exports.getOrders = async (req, res) => {
 exports.updateOrder = async (req, res) => {
   try {
     const data = await service.updateOrder(req.params.id, req.body);
-    if (!data) return res.status(404).json({ message: 'Order not found', code: 'ORDER_NOT_FOUND' });
     res.json(data);
   } catch (error) {
     res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({ message: error.message || "Failed to update order", code: error.code });
@@ -192,16 +183,15 @@ exports.getMaterialRequests = async (req, res) => {
   }
 };
 
-/**
- * Updates a specific material request.
- */
-exports.updateMaterialRequest = async (req, res) => {
+exports.getReceiptDiscrepancies = async (req, res) => {
   try {
-    const data = await service.updateMaterialRequest(req.params.id, req.body);
-    if (!data) return res.status(404).json({ message: 'Material request not found', code: 'MATERIAL_REQUEST_NOT_FOUND' });
+    const data = await service.getReceiptDiscrepancies({ status: req.query.status });
     res.json(data);
   } catch (error) {
-    res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({ message: error.message || "Failed to update material request", code: error.code });
+    res.status(error.statusCode || 500).json({
+      message: error.message || 'Failed to fetch receipt discrepancies',
+      code: error.code,
+    });
   }
 };
 
@@ -352,7 +342,7 @@ exports.updateOrderRequest = async (req, res) => {
 
 exports.submitOrderRequest = async (req, res) => {
   try {
-    res.json(await service.submitOrderRequest(req.params.id, req.user));
+    res.json(await service.submitOrderRequest(req.params.id, req.body || {}, req.user));
   } catch (error) {
     res.status(error.statusCode || 400).json({ message: error.message, code: error.code });
   }
@@ -360,7 +350,7 @@ exports.submitOrderRequest = async (req, res) => {
 
 exports.issuePurchaseOrder = async (req, res) => {
   try {
-    res.json(await service.issuePurchaseOrder(req.params.id, req.user));
+    res.json(await service.issuePurchaseOrder(req.params.id, req.body || {}, req.user));
   } catch (error) {
     res.status(error.statusCode || 400).json({ message: error.message, code: error.code });
   }
@@ -498,6 +488,19 @@ exports.updateRmaCase = async (req, res) => {
 };
 
 /**
+ * Receives a supplier replacement for an RMA case.
+ */
+exports.receiveRmaReplacement = async (req, res) => {
+  try {
+    const data = await service.receiveRmaReplacement(req.params.id, req.body, req.user);
+    res.json(data);
+  } catch (error) {
+    console.error('RMA replacement error:', error);
+    res.status(error.statusCode || 400).json({ message: error.message || "Failed to receive RMA replacement", code: error.code });
+  }
+};
+
+/**
  * Retrieves all active quarantine items.
  */
 exports.getQuarantineItems = async (req, res) => {
@@ -531,8 +534,10 @@ exports.disposeQuarantineItem = async (req, res) => {
     const data = await service.disposeQuarantineItem(req.params.id, req.user);
     res.json(data);
   } catch (error) {
-    console.error('Quarantine dispose error:', error);
-    res.status(error.statusCode || 400).json({ message: error.message || "Failed to dispose quarantine item", code: error.code });
+    if ((error.statusCode || 500) >= 500) {
+      console.error('Quarantine dispose error:', error);
+    }
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to dispose quarantine item", code: error.code });
   }
 };
 

@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 const Inventory = require('../../src/models/Inventory');
+const SerializedAsset = require('../../src/models/SerializedAsset');
 const service = require('../../src/modules/inventory-manager/inventory_manager.service');
 
 function catalogItem() {
@@ -29,10 +30,16 @@ function catalogItem() {
 describe('Inventory catalog updates', () => {
   it('saves the document so model synchronization runs', async () => {
     const originalFindById = Inventory.findById;
+    const originalFindAssets = SerializedAsset.find;
     const item = catalogItem();
     let saved = false;
 
     Inventory.findById = async () => item;
+    SerializedAsset.find = () => ({
+      select() { return this; },
+      sort() { return this; },
+      lean: async () => [],
+    });
     item.save = async function saveWithoutDatabase() {
       await this.validate();
       saved = true;
@@ -66,6 +73,7 @@ describe('Inventory catalog updates', () => {
       assert.equal(result.category, 'Spare Parts');
     } finally {
       Inventory.findById = originalFindById;
+      SerializedAsset.find = originalFindAssets;
     }
   });
 

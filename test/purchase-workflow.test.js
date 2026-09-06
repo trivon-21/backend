@@ -9,10 +9,43 @@ const {
   receiptAuthorizationWorkflowStages,
   summarizeProcurementWorkflow,
 } = require('../src/utils/purchase-workflow');
+const {
+  normalizeReceiptDisposition,
+  nextDiscrepancyState,
+  receiptProgress,
+} = require('../src/modules/inventory-manager/receipt-disposition');
+const {
+  assertPurchaseStatusVersion,
+  savePurchaseRequest,
+} = require('../src/utils/purchase-request-concurrency');
 
 test('legacy pending approval is projected into the Manager stage', () => {
   assert.equal(canonicalPurchaseStatus('pending-approval'), 'pending-manager');
+  assert.equal(canonicalPurchaseStatus('PENDING'), 'pending-finance');
+  assert.equal(canonicalPurchaseStatus('APPROVED'), 'approved');
+  assert.equal(canonicalPurchaseStatus('REJECTED'), 'rejected');
   assert.equal(canonicalPurchaseStatus('approved'), 'approved');
+});
+
+test('purchase mutations require an exact statusVersion and normalize save races', async () => {
+  assert.doesNotThrow(() => assertPurchaseStatusVersion({ statusVersion: 4 }, 4));
+  for (const supplied of [undefined, null, '', 3, 5, 4.5]) {
+    assert.throws(
+      () => assertPurchaseStatusVersion({ statusVersion: 4 }, supplied),
+      (error) => error.statusCode === 409 && error.code === 'STALE_ORDER_REQUEST',
+    );
+  }
+
+  await assert.rejects(
+    () => savePurchaseRequest({
+      async save() {
+        const error = new Error('No matching version');
+        error.name = 'VersionError';
+        throw error;
+      },
+    }),
+    (error) => error.statusCode === 409 && error.code === 'STALE_ORDER_REQUEST',
+  );
 });
 
 test('outstanding quantity and fulfillment status honor partial receipts', () => {
@@ -125,4 +158,67 @@ test('workflow summary keeps Finance approval separate from receipt reconciliati
     awaitingReceipt: 2,
     awaitingFinance: 1,
   });
+});
+
+test('legacy good and damaged receipts map to safe explicit allocations', () => {
+  assert.deepEqual(normalizeReceiptDisposition({ quantity: 3, condition: 'Good' }), {
+    quantity: 3, acceptedQuantity: 3, damagedQuantity: 0, missingQuantity: 0, condition: 'Good',
+  });
+  assert.deepEqual(normalizeReceiptDisposition({ quantity: 2, condition: 'Damaged' }), {
+    quantity: 2, acceptedQuantity: 0, damagedQuantity: 2, missingQuantity: 0, condition: 'Damaged',
+  });
+});
+
+test('incomplete receipts require and preserve accepted and missing quantities', () => {
+  assert.throws(
+    () => normalizeReceiptDisposition({ quantity: 5, condition: 'Incomplete' }),
+    (error) => error.code === 'RECEIPT_BREAKDOWN_REQUIRED' && error.statusCode === 400,
+  );
+  assert.deepEqual(normalizeReceiptDisposition({
+    quantity: 5, condition: 'Incomplete', acceptedQuantity: 3, damagedQuantity: 0, missingQuantity: 2,
+  }), {
+    quantity: 5, acceptedQuantity: 3, damagedQuantity: 0, missingQuantity: 2, condition: 'Incomplete',
+  });
+});
+
+test('receipt allocations reject invalid totals, values, and condition drift', () => {
+  assert.throws(
+    () => normalizeReceiptDisposition({ quantity: 5, acceptedQuantity: 4, damagedQuantity: 0, missingQuantity: 0 }),
+    (error) => error.code === 'INVALID_RECEIPT_BREAKDOWN',
+  );
+  assert.throws(
+    () => normalizeReceiptDisposition({ quantity: 1, acceptedQuantity: 0.5, damagedQuantity: 0, missingQuantity: 0.5 }),
+    (error) => error.code === 'INVALID_RECEIPT_BREAKDOWN',
+  );
+  assert.throws(
+    () => normalizeReceiptDisposition({ quantity: 2, condition: 'Good', acceptedQuantity: 1, damagedQuantity: 1, missingQuantity: 0 }),
+    (error) => error.code === 'RECEIPT_CONDITION_MISMATCH',
+  );
+});
+
+test('only accepted units advance receipt workflow fulfillment', () => {
+  assert.deepEqual(receiptProgress({ orderedQuantity: 10, receivedQuantity: 2 }, 3), {
+    receivedQuantity: 5, outstandingQuantity: 5, status: 'partially-received',
+  });
+  assert.deepEqual(receiptProgress({ orderedQuantity: 10, receivedQuantity: 2 }, 0), {
+    receivedQuantity: 2, outstandingQuantity: 8, status: 'partially-received',
+  });
+  assert.deepEqual(receiptProgress({ orderedQuantity: 10, receivedQuantity: 8 }, 2), {
+    receivedQuantity: 10, outstandingQuantity: 0, status: 'completed',
+  });
+});
+
+test('replacement receipts reduce discrepancies only by accepted units', () => {
+  assert.deepEqual(nextDiscrepancyState({ outstandingQuantity: 4, resolvedQuantity: 0 }, {
+    quantity: 3, acceptedQuantity: 2, damagedQuantity: 0, missingQuantity: 1,
+  }), { outstandingQuantity: 2, resolvedQuantity: 2, status: 'replacement-pending' });
+  assert.deepEqual(nextDiscrepancyState({ outstandingQuantity: 2, resolvedQuantity: 2 }, {
+    quantity: 2, acceptedQuantity: 2, damagedQuantity: 0, missingQuantity: 0,
+  }), { outstandingQuantity: 0, resolvedQuantity: 4, status: 'resolved' });
+  assert.throws(
+    () => nextDiscrepancyState({ outstandingQuantity: 2, resolvedQuantity: 0 }, {
+      quantity: 3, acceptedQuantity: 3, damagedQuantity: 0, missingQuantity: 0,
+    }),
+    (error) => error.code === 'REPLACEMENT_EXCEEDS_DISCREPANCY',
+  );
 });
