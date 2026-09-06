@@ -1120,7 +1120,8 @@ exports.getNewRequests = async (req, res) => {
         const materialWorkflowStatusRegex = [
             new RegExp(`^\\s*${WORKFLOW_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${WORKFLOW_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const toCustomerId = (value) => {
             if (!value) return null;
@@ -1149,7 +1150,8 @@ exports.getNewRequests = async (req, res) => {
         const materialMaintenanceStatusRegex = [
             new RegExp(`^\\s*${MAINTENANCE_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const maintenances = await Maintenance.find({
             status: { $in: materialMaintenanceStatusRegex }
@@ -1260,7 +1262,7 @@ exports.getNewRequests = async (req, res) => {
         const allRequests = [...serviceRequestsFormatted, ...installationsFormatted, ...newRequestsFormatted, ...maintenancesFormatted]
             .filter(req => {
                 const s = (req.status || '').trim().toLowerCase();
-                return ['new', 'pending', 'finance approved', 'finance rejected'].includes(s);
+                return ['new', 'pending', 'finance approved', 'finance rejected', 'sent to im'].includes(s);
             })
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
