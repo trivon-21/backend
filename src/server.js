@@ -11,7 +11,7 @@ require('./modules/shared/L_sellingPrice.model');
 require('./modules/shared/L_serviceReport.model');
 require('./modules/shared/L_bankDetails.model');
 require('./modules/shared/L_repair.model');
-require('./modules/shared/L_purchaseRequest.model');
+require('./models/PurchaseRequest');
 
 const app = require('./app');
 const { connectDb } = require('./config');

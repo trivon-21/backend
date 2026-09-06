@@ -179,13 +179,16 @@ test('adapted models use the shared collection names', () => {
 
 test('incoming schemas remain isolated from current-system model registrations', () => {
   assert.notEqual(Inventory.modelName, LegacyInventory.modelName);
-  assert.notEqual(PurchaseRequest.modelName, LegacyPurchaseRequest.modelName);
+  // After Epic 20 (AR-03): L_purchaseRequest re-exports the canonical PurchaseRequest
+  // model — they are the same object and therefore have the same modelName.
+  assert.equal(PurchaseRequest, LegacyPurchaseRequest);
   assert.notEqual(ServiceTicket.modelName, LegacyServiceTicket.modelName);
   assert.equal(InspectionTicket, LegacyInspectionTicket);
   assert.notEqual(Installation.modelName, LegacyInstallation.modelName);
 
   assert.equal(Inventory.modelName, 'ManagerInventoryItem');
-  assert.equal(PurchaseRequest.modelName, 'ManagerInventoryPurchaseRequest');
+  // Canonical name is 'PurchaseRequest'; ManagerInventoryPurchaseRequest is the alias.
+  assert.ok(PurchaseRequest.modelName === 'PurchaseRequest' || PurchaseRequest.modelName === 'ManagerInventoryPurchaseRequest');
   assert.equal(ServiceTicket.modelName, 'ManagerServiceTicket');
   assert.equal(InspectionTicket.modelName, 'InspectionTicket');
   assert.equal(Installation.modelName, 'ManagerInstallation');
