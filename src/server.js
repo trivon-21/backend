@@ -79,7 +79,7 @@ const runStartupRepair = async () => {
           console.error(`Error repairing installation ${inst._id}:`, err);
         }
       }
-      console.log(`✅ Startup repair complete. Created ${created} missing schedules.`);
+      console.log(`Startup repair complete. Created ${created} missing schedules.`);
     }
   } catch (err) {
     console.error('⚠️ Startup repair encountered an error (non-fatal):', err.message);

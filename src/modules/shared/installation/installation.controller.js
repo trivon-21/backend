@@ -3,7 +3,6 @@ const Installation = require('./installation.model');
 const Customer = require('../../user/user.model');
 const TechTeam = require('../tech-teams/techTeam.model');
 
-// ✅ FIXED PATH: Going up one level to 'shared' and into 'maintenance'
 const MaintenanceSchedule = require('../maintenance/maintenanceSchedule.model');
 
 const { 
@@ -93,7 +92,7 @@ exports.getAllInstallations = async (req, res) => {
         || 'N/A';
 
       // Use orderId as ticketId if ticketId is missing
-      const ticketId = item.ticketId || item.orderId || item._id;
+      const ticketId = item.serviceRequestId || item.serviceRequestRef || item.ticketId || item.orderId || item._id;
 
       return {
         ...item,
@@ -115,7 +114,8 @@ exports.getAllInstallations = async (req, res) => {
 // 2. GET single installation with full customer details
 exports.getInstallationById = async (req, res) => {
   try {
-    const id = req.params.id;
+    let id = req.params.id;
+    if (id && id.startsWith('#')) id = id.substring(1);
     const mongoose = require('mongoose');
     const isValidId = mongoose.Types.ObjectId.isValid(id);
     const installation = await Installation.findOne({
@@ -172,7 +172,8 @@ exports.getInstallationById = async (req, res) => {
 exports.updateInstallationStatus = async (req, res) => {
   try {
     const { status, date } = req.body;
-    const id = req.params.id;
+    let id = req.params.id;
+    if (id && id.startsWith('#')) id = id.substring(1);
     const mongoose = require('mongoose');
     const isValidId = mongoose.Types.ObjectId.isValid(id);
     
@@ -208,7 +209,8 @@ exports.updateInstallationStatus = async (req, res) => {
 // 4. Mark Installation as Completed
 exports.completeInstallation = async (req, res) => {
   try {
-    const { id } = req.params;
+    let { id } = req.params;
+    if (id && id.startsWith('#')) id = id.substring(1);
     const mongoose = require('mongoose');
     const isValidId = mongoose.Types.ObjectId.isValid(id);
     
@@ -291,9 +293,20 @@ exports.repairMissingSchedules = async (req, res) => {
 
         const customer = await Customer.findById(inst.customerId).lean();
 
-        const tsSegment = Date.now().toString(36).toUpperCase();
-        const idSuffix  = String(inst._id).slice(-6).toUpperCase();
-        const ticketId  = `MS-${tsSegment}-${idSuffix}`;
+        const CounterModel = mongoose.model('Counter');
+        let msCounter = await CounterModel.findOneAndUpdate(
+          { _id: 'maintenanceScheduleTicket' },
+          { $inc: { seq: 1 } },
+          { new: true, upsert: true }
+        );
+        if (!msCounter) {
+          await CounterModel.updateOne({ _id: 'maintenanceScheduleTicket' }, { $set: { seq: 1000 } }, { upsert: true });
+          msCounter = { seq: 1000 };
+        } else if (msCounter.seq < 1000) {
+          msCounter = await CounterModel.findOneAndUpdate({ _id: 'maintenanceScheduleTicket' }, { $set: { seq: 1000 } }, { new: true });
+        }
+        
+        const ticketId = `MS-${String(msCounter.seq).padStart(4, '0')}`;
         const installationDate = inst.serviceDate || inst.date || inst.createdAt || new Date();
 
         const schedule = await MaintenanceSchedule.create({

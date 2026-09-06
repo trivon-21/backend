@@ -43,6 +43,7 @@ const servicePaymentRoutes = require('../modules/finance/servicePayment.routes')
 const auditLogRoutes = require('../modules/finance/auditLog.routes');
 const financialReportRoutes = require('../modules/finance/financialReport.routes');
 const purchaseRequestRoutes = require('../modules/finance/purchaseRequest.routes');
+const maintenancePaymentRoutes = require('../modules/finance/maintenancePayment.routes');
 
 const { API_SEGMENTS } = require('../constants/enums');
 
@@ -62,6 +63,7 @@ router.use(API_SEGMENTS.MAINTENANCE, maintenanceRoutes);
 router.get(API_SEGMENTS.TASKS, serviceTeamTaskController.getTasks);
 router.get(API_SEGMENTS.TASKS_BY_ID, serviceTeamTaskController.getTaskById);
 router.patch(API_SEGMENTS.TASKS_STATUS, serviceTeamTaskController.updateTaskStatus);
+router.post('/tasks/:id/additional-service', serviceTeamTaskController.addAdditionalService);
 router.get(API_SEGMENTS.TEAM_DETAILS, serviceTeamMemberController.getTeamDetails);
 router.get(API_SEGMENTS.SERVICE_HISTORY, serviceHistoryController.getCustomerHistory);
 
@@ -93,5 +95,6 @@ router.use('/service-payments', servicePaymentRoutes);
 router.use('/audit-logs', auditLogRoutes);
 router.use('/financial-report', financialReportRoutes);
 router.use('/purchase-requests', purchaseRequestRoutes);
+router.use('/maintenance-payments', maintenancePaymentRoutes);
 
 module.exports = router;

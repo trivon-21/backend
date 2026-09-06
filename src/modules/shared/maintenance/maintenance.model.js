@@ -17,6 +17,8 @@ const maintenanceSchema = new Schema(
     materialList: [{ item: String, quantity: Number, estimatedCost: Number }],
     assignedTeamId: { type: Schema.Types.ObjectId, ref: 'TechTeam' },
     serviceReport: { technicianNotes: String, submittedAt: Date, photos: [String] },
+    paymentSlipUrl: { type: String, default: null },       // ← ADDED
+    paymentAmount: { type: Number, default: 0 },
   },
   { timestamps: true, collection: 'maintenances' }
 );
