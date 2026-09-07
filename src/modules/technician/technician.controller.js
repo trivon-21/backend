@@ -113,6 +113,7 @@ const buildCustomerFromPayload = (body, sourceRecord) => {
   if (body?.customer && typeof body.customer === 'object') {
     return {
       fullName: body.customer.fullName || body.customer.name || 'Unknown Customer',
+      name: body.customer.fullName || body.customer.name || 'Unknown Customer',
       phone: body.customer.phone || '',
       email: body.customer.email || '',
       address: body.customer.address || body.location || '',
@@ -125,6 +126,7 @@ const buildCustomerFromPayload = (body, sourceRecord) => {
 
   return {
     fullName: body?.fullName || body?.name || body?.customerName || 'Unknown Customer',
+    name: body?.fullName || body?.name || body?.customerName || 'Unknown Customer',
     phone: body?.phone || '',
     email: body?.email || '',
     address: body?.address || body?.location || '',
