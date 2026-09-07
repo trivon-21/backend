@@ -79,6 +79,15 @@ exports.listTechnicians = async () => {
 };
 
 exports.updateTicket = async (id, patch) => {
+  // Assignment routing is managed by the Main Technician workflow. The Manager
+  // portal must not set assignedTechnicianId directly.
+  if (patch.assignedTechnicianId !== undefined) {
+    throw serviceError(
+      'Technician assignment is managed by the Main Technician assignment workflow',
+      403,
+      'ASSIGNMENT_MANAGED_BY_MAIN_TECH',
+    );
+  }
   ensureOnline();
   if (!mongoose.isValidObjectId(id)) throw serviceError('Ticket not found', 404, 'TICKET_NOT_FOUND');
   if (patch.sourceType && !['service', 'maintenance'].includes(patch.sourceType)) {
@@ -103,21 +112,8 @@ exports.updateTicket = async (id, patch) => {
     }
     update.priority = patch.priority;
   }
-  if (patch.assignedTechnicianId !== undefined) {
-    if (!patch.assignedTechnicianId) {
-      update.assignedTechnicianId = null;
-    } else {
-      if (!mongoose.isValidObjectId(patch.assignedTechnicianId)) {
-        throw serviceError('Technician not found', 404, 'TECHNICIAN_NOT_FOUND');
-      }
-      const technician = await User.findOne({ _id: patch.assignedTechnicianId, role: { $in: TECHNICIAN_ROLES } });
-      if (!technician) throw serviceError('Technician not found or role is not assignable', 404, 'TECHNICIAN_NOT_FOUND');
-      update.assignedTechnicianId = technician._id;
-      if (patch.status === undefined) update.status = 'Assigned';
-    }
-  }
 
-  const ticket = await ServiceTicket.findByIdAndUpdate(id, update, { new: true, runValidators: true })
+  const ticket = await ServiceTicket.findByIdAndUpdate(id, update, { returnDocument: 'after', runValidators: true })
     .populate('customerId', 'fullName email phoneNumber address')
     .populate('assignedTechnicianId', SAFE_TECHNICIAN_FIELDS)
     .lean();

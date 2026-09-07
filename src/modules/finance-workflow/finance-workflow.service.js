@@ -8,8 +8,16 @@ const {
   purchaseRequestWorkflowStages,
   receiptAuthorizationWorkflowStages,
 } = require('../../utils/purchase-workflow');
+const {
+  assertPurchaseStatusVersion,
+  savePurchaseRequest,
+} = require('../../utils/purchase-request-concurrency');
 require('../../models/Inventory');
 require('../../models/Supplier');
+const {
+  sendPurchaseApprovalEmail,
+  sendPurchaseRejectionEmail,
+} = require('../shared/notification/email.service');
 
 function serviceError(statusCode, message, code) {
   const error = new Error(message);
@@ -19,11 +27,75 @@ function serviceError(statusCode, message, code) {
 }
 
 function assertFinance(user) {
-  if (!user || user.role !== 'FINANCE') throw serviceError(403, 'Finance role is required', 'FINANCE_REQUIRED');
+  if (!user || !['FINANCE', 'SUPER_ADMIN'].includes(user.role)) {
+    throw serviceError(403, 'Finance role is required', 'FINANCE_REQUIRED');
+  }
+}
+
+function actorName(user) {
+  const name = [user?.fullName, user?.lastName]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  return name || String(user?.email || user?._id || 'Authenticated Finance user');
+}
+
+function isRequester(request, user) {
+  if (request.requestedById && user?._id
+    && String(request.requestedById) === String(user._id)) return true;
+  const requesterEmail = String(request.requestedByEmail || '').trim().toLowerCase();
+  const financeEmail = String(user?.email || '').trim().toLowerCase();
+  return Boolean(requesterEmail && financeEmail && requesterEmail === financeEmail);
+}
+
+function purchaseStatusesForFilter(status) {
+  const aliases = {
+    'pending-finance': ['pending-finance', 'PENDING'],
+    approved: ['approved', 'APPROVED'],
+    rejected: ['rejected', 'REJECTED'],
+  };
+  if (status === 'all') return null;
+  if (!aliases[status]) throw serviceError(400, 'Invalid purchase-request status filter', 'INVALID_STATUS');
+  return aliases[status];
+}
+
+function purchaseRequestDto(request) {
+  const value = request?.toObject ? request.toObject() : request;
+  const status = canonicalPurchaseStatus(value.status);
+  const requestedByEmail = value.requestedByEmail
+    || (typeof value.requestedById === 'object' && value.requestedById !== null ? value.requestedById.email : '')
+    || '';
+  return {
+    ...value,
+    status,
+    totalAmount: value.totalAmount ?? value.totalEstimate ?? 0,
+    totalEstimate: value.totalEstimate ?? value.totalAmount ?? 0,
+    reason: value.reason || value.notes || '',
+    notes: value.notes || value.reason || '',
+    requestedByEmail,
+    items: (value.items || []).map((item) => ({
+      ...item,
+      itemName: item.itemName || item.name || '',
+      name: item.name || item.itemName || '',
+      unitPrice: item.unitPrice ?? item.unitCost ?? 0,
+      unitCost: item.unitCost ?? item.unitPrice ?? 0,
+      total: item.total ?? item.estimatedTotal ?? 0,
+      estimatedTotal: item.estimatedTotal ?? item.total ?? 0,
+    })),
+    workflowStages: purchaseRequestWorkflowStages({ ...value, status }),
+  };
+}
+
+function receiptAuthorizationDto(authorization) {
+  const value = authorization?.toObject ? authorization.toObject() : authorization;
+  return {
+    ...value,
+    workflowStages: receiptAuthorizationWorkflowStages(value),
+  };
 }
 
 function commentOf(input) {
-  const comment = String(input.comment || input.reason || '').trim();
+  const comment = String(input.comment || input.reason || input.rejectionReason || '').trim();
   if (!comment) throw serviceError(400, 'A decision comment is required', 'COMMENT_REQUIRED');
   return comment;
 }
@@ -36,14 +108,13 @@ function assertVersion(record, value) {
 
 exports.listPurchaseRequests = async (user, filters = {}) => {
   assertFinance(user);
-  const query = { status: filters.status || 'pending-finance' };
-  if (filters.status === 'all') delete query.status;
-  const requests = await PurchaseRequest.find(query).sort({ createdAt: 1 }).lean();
-  return requests.map((request) => ({
-    ...request,
-    status: canonicalPurchaseStatus(request.status),
-    workflowStages: purchaseRequestWorkflowStages(request),
-  }));
+  const statuses = purchaseStatusesForFilter(filters.status || 'pending-finance');
+  const query = statuses ? { status: { $in: statuses } } : {};
+  const requests = await PurchaseRequest.find(query)
+    .populate('requestedById', 'email')
+    .sort({ createdAt: 1 })
+    .lean();
+  return requests.map(purchaseRequestDto);
 };
 
 exports.decidePurchaseRequest = async (id, input, user) => {
@@ -53,44 +124,74 @@ exports.decidePurchaseRequest = async (id, input, user) => {
   const comment = commentOf(input);
   const request = await PurchaseRequest.findById(id);
   if (!request) throw serviceError(404, 'Purchase request not found', 'ORDER_NOT_FOUND');
-  if (request.status !== 'pending-finance') throw serviceError(409, 'Request is not awaiting Finance', 'INVALID_ORDER_TRANSITION');
-  if (String(request.requestedById || '') === String(user._id)) throw serviceError(403, 'Self-approval is not allowed', 'SELF_APPROVAL');
-  assertVersion(request, input.statusVersion);
+  if (isRequester(request, user)) throw serviceError(403, 'Self-approval is not allowed', 'SELF_APPROVAL');
+  assertPurchaseStatusVersion(request, input.statusVersion);
+  if (canonicalPurchaseStatus(request.status) !== 'pending-finance') {
+    throw serviceError(409, 'Request is not awaiting Finance', 'INVALID_ORDER_TRANSITION');
+  }
   const now = new Date();
+  const performedBy = actorName(user);
   request.financialApproval = {
-    status: input.decision, actorId: user._id, actorName: user.fullName, comment, decidedAt: now,
+    status: input.decision, actorId: user._id, actorName: performedBy, comment, decidedAt: now,
   };
   request.decisionHistory.push({
-    stage: 'finance', decision: input.decision, actorId: user._id, actorName: user.fullName, comment, at: now,
+    stage: 'finance', decision: input.decision, actorId: user._id, actorName: performedBy, comment, at: now,
   });
   request.status = input.decision === 'approved' ? 'approved' : 'rejected';
+  request.approvedBy = input.decision === 'approved' ? performedBy : '';
+  request.approvedAt = input.decision === 'approved' ? now : undefined;
   if (input.decision === 'rejected') {
     request.rejectionReason = comment;
     request.rejectedAt = now;
   }
   request.statusVersion += 1;
-  await request.save();
+  await savePurchaseRequest(request);
   await Activity.create({
     type: input.decision === 'approved' ? 'request' : 'alert',
     title: `Finance ${input.decision === 'approved' ? 'Approved' : 'Rejected'} Purchase Request`,
     description: `${request.requestId}: ${comment}`, actionLabel: 'View Request',
   });
-  return request.toObject();
+
+  await request.populate('requestedById', 'email');
+  const dto = purchaseRequestDto(request);
+
+  if (dto.requestedByEmail) {
+    const requestRef = request.requestId || `PR-${String(request._id).slice(-6).toUpperCase()}`;
+    const amount = dto.totalAmount || 0;
+    if (input.decision === 'approved') {
+      sendPurchaseApprovalEmail(
+        dto.requestedByEmail,
+        request.requestedBy || 'Inventory Manager',
+        requestRef,
+        amount,
+      ).catch(() => {});
+    } else {
+      sendPurchaseRejectionEmail(
+        dto.requestedByEmail,
+        request.requestedBy || 'Inventory Manager',
+        requestRef,
+        comment,
+      ).catch(() => {});
+    }
+  }
+
+  return dto;
 };
 
 exports.listNonPoReceipts = async (user, filters = {}) => {
   assertFinance(user);
-  const query = { financeReviewStatus: filters.status || 'pending', receivedQuantity: { $gt: 0 } };
-  if (filters.status === 'all') delete query.financeReviewStatus;
+  const status = filters.status || 'pending';
+  if (!['pending', 'reconciled', 'rejected', 'all'].includes(status)) {
+    throw serviceError(400, 'Invalid receipt reconciliation status filter', 'INVALID_STATUS');
+  }
+  const query = { receivedQuantity: { $gt: 0 } };
+  if (status !== 'all') query.financeReviewStatus = status;
   const authorizations = await ReceiptAuthorization.find(query)
     .populate('inventoryId', 'name sku')
     .populate('supplierId', 'name')
     .sort({ updatedAt: 1 })
     .lean();
-  return authorizations.map((authorization) => ({
-    ...authorization,
-    workflowStages: receiptAuthorizationWorkflowStages(authorization),
-  }));
+  return authorizations.map(receiptAuthorizationDto);
 };
 
 exports.reconcileNonPoReceipt = async (id, input, user) => {
@@ -119,5 +220,9 @@ exports.reconcileNonPoReceipt = async (id, input, user) => {
     title: `Non-PO Receipt ${input.decision === 'reconciled' ? 'Reconciled' : 'Rejected by Finance'}`,
     description: `${authorization.authorizationNumber}: ${comment}`, actionLabel: 'View Authorization',
   });
-  return authorization.toObject();
+  return receiptAuthorizationDto(authorization);
 };
+
+exports.purchaseRequestDto = purchaseRequestDto;
+exports.receiptAuthorizationDto = receiptAuthorizationDto;
+exports.purchaseStatusesForFilter = purchaseStatusesForFilter;

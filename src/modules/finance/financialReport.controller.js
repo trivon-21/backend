@@ -4,7 +4,7 @@ const getInvoiceModel = () => mongoose.model("Invoice");
 const getOrderModel = () => { try { return mongoose.model("Order"); } catch { return null; } };
 const getTicketModel = () => { try { return mongoose.model("InspectionTicket"); } catch { return null; } };
 const getServiceTicket = () => { try { return mongoose.model("ServiceTicket"); } catch { return null; } };
-const getPurchaseRequestModel = () => { try { return mongoose.model("L_PurchaseRequest"); } catch { return null; } };
+const getPurchaseRequestModel = () => { try { return mongoose.model("PurchaseRequest"); } catch { return null; } };
 
 const getLCharge = async (name) => {
   try {
@@ -481,7 +481,7 @@ for (const m of maints) {
       approvedPurchases.forEach(p => collections.push({
         date:      p.approvedAt || p.updatedAt,
         type:      "Purchase Expense",
-        reference: `PR-${p._id.toString().slice(-6).toUpperCase()}`,
+        reference: p.requestId || (p._id ? `PR-${p._id.toString().slice(-6).toUpperCase()}` : "PR-UNKNOWN"),
         customer:  p.requestedBy || "—",
         amount:    -(p.totalAmount || p.totalEstimate || 0),
         method:    "Bank Transfer",

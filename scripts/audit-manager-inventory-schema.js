@@ -3,6 +3,7 @@ require('dotenv').config();
 const connectDB = require('../src/config/db');
 const { ITEM_CLASSES, ITEM_SUBCATEGORIES, deriveStockStatus } = require('../src/utils/inventory-domain');
 const { PURCHASE_STATUSES, LEGACY_PURCHASE_STATUSES } = require('../src/utils/purchase-workflow');
+const { normalizeSerialNumber } = require('../src/utils/serialized-asset-domain');
 
 function ids(rows) {
   return new Set(rows.map((row) => String(row._id)));
@@ -11,7 +12,7 @@ function ids(rows) {
 async function audit() {
   await connectDB();
   const db = mongoose.connection.db;
-  const [inventory, orders, receipts, authorizations, tickets, inspections, loans, users, suppliers, materials, dispatches] = await Promise.all([
+  const [inventory, orders, receipts, authorizations, tickets, inspections, loans, users, suppliers, materials, dispatches, serializedAssets] = await Promise.all([
     db.collection('inventory').find({}).toArray(),
     db.collection('purchase_requests').find({}).toArray(),
     db.collection('procurements').find({}).toArray(),
@@ -23,22 +24,25 @@ async function audit() {
     db.collection('suppliers').find({}).project({ _id: 1 }).toArray(),
     db.collection('warehouse_pick_requests').find({}).toArray(),
     db.collection('dispatch_orders').find({}).toArray(),
+    db.collection('serialized_assets').find({}).toArray(),
   ]);
 
   const inventoryIds = ids(inventory);
   const supplierIds = ids(suppliers);
   const userIds = ids(users);
-  const serialOwners = new Map();
+  const legacySerialOwners = new Map();
   let duplicateLocalSerials = 0;
   let duplicateGlobalSerials = 0;
   for (const item of inventory) {
     const serials = (item.serialNumbers || []).map(String);
-    duplicateLocalSerials += serials.length - new Set(serials).size;
+    duplicateLocalSerials += serials.length - new Set(serials.map(normalizeSerialNumber)).size;
     for (const serial of new Set(serials)) {
-      if (serialOwners.has(serial) && serialOwners.get(serial) !== String(item._id)) duplicateGlobalSerials += 1;
-      else serialOwners.set(serial, String(item._id));
+      const normalizedSerial = normalizeSerialNumber(serial);
+      if (legacySerialOwners.has(normalizedSerial) && legacySerialOwners.get(normalizedSerial) !== String(item._id)) duplicateGlobalSerials += 1;
+      else legacySerialOwners.set(normalizedSerial, String(item._id));
     }
   }
+  const registrySerials = new Map(serializedAssets.map((asset) => [asset.normalizedSerial, asset]));
 
   const validPurchaseStatuses = new Set([...PURCHASE_STATUSES, ...LEGACY_PURCHASE_STATUSES]);
   const legacyOrUnclassified = inventory.filter((item) => item.itemClass === 'Unclassified' || item.subcategory === 'Unclassified').length;
@@ -60,6 +64,7 @@ async function audit() {
       })[deriveStockStatus(item.available, item.reorderLevel)] !== item.status).length,
       duplicateLocalSerials,
       duplicateGlobalSerials,
+      serializedAssetsMissingFromRegistry: [...legacySerialOwners.keys()].filter((serial) => !registrySerials.has(serial)).length,
       danglingSupplier: inventory.filter((item) => item.supplierId && !supplierIds.has(String(item.supplierId))).length,
     },
     purchaseRequests: {
@@ -110,7 +115,14 @@ async function audit() {
       nonCanonicalTechnician: loans.filter((loan) =>
         !loan.technicianUserId || !userIds.has(String(loan.technicianUserId))).length,
       danglingTool: loans.filter((loan) => !loan.toolId || !inventoryIds.has(String(loan.toolId))).length,
-      unknownAssetTag: loans.filter((loan) => !serialOwners.has(String(loan.assetTag))).length,
+      unknownAssetTag: loans.filter((loan) => !registrySerials.has(normalizeSerialNumber(loan.assetTag))).length,
+      missingRegistryReference: loans.filter((loan) => !loan.serializedAssetId).length,
+    },
+    serializedAssets: {
+      total: serializedAssets.length,
+      danglingInventory: serializedAssets.filter((asset) => !inventoryIds.has(String(asset.inventoryId))).length,
+      missingNormalizedSerial: serializedAssets.filter((asset) => !asset.normalizedSerial).length,
+      duplicateNormalizedSerial: serializedAssets.length - new Set(serializedAssets.map((asset) => asset.normalizedSerial)).size,
     },
     secondary: {
       invalidMaterialQuantities: materials.filter((request) => (request.items || []).some((item) =>

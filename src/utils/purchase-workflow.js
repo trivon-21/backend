@@ -32,7 +32,13 @@ function approvalMode() {
 }
 
 function canonicalPurchaseStatus(status) {
-  return status === 'pending-approval' ? 'pending-manager' : status;
+  const legacyMap = {
+    'pending-approval': 'pending-manager',
+    PENDING: 'pending-finance',
+    APPROVED: 'approved',
+    REJECTED: 'rejected',
+  };
+  return legacyMap[status] || status;
 }
 
 function outstandingQuantity(line) {

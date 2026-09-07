@@ -98,5 +98,11 @@ PurchaseRequestSchema.index({ poNumber: 1 }, {
   partialFilterExpression: { poNumber: { $type: 'string' } },
 });
 
-module.exports = mongoose.models.ManagerInventoryPurchaseRequest
-  || mongoose.model('ManagerInventoryPurchaseRequest', PurchaseRequestSchema);
+const PurchaseRequest = mongoose.models.PurchaseRequest
+  || mongoose.model('PurchaseRequest', PurchaseRequestSchema);
+
+if (!mongoose.models.ManagerInventoryPurchaseRequest) {
+  mongoose.model('ManagerInventoryPurchaseRequest', PurchaseRequestSchema);
+}
+
+module.exports = PurchaseRequest;

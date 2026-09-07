@@ -23,6 +23,14 @@ const ProcurementSchema = new mongoose.Schema({
   subcategory: { type: String, default: 'Unclassified' },
   brand: { type: String, default: '' },
   quantity: { type: Number, required: true, min: 1, validate: Number.isInteger },
+  acceptedQuantity: { type: Number, min: 0, validate: Number.isInteger },
+  damagedQuantity: { type: Number, min: 0, validate: Number.isInteger },
+  missingQuantity: { type: Number, min: 0, validate: Number.isInteger },
+  acceptedTotalCost: { type: Number, min: 0 },
+  disputedTotalCost: { type: Number, min: 0 },
+  discrepancyId: { type: mongoose.Schema.Types.ObjectId, ref: 'ReceiptDiscrepancy' },
+  replacementForDiscrepancyId: { type: mongoose.Schema.Types.ObjectId, ref: 'ReceiptDiscrepancy' },
+  damagedSerialNumbers: { type: [String], default: undefined },
   unit: { type: String, required: true },
   unitCost: { type: Number, default: 0, min: 0 },
   totalCost: { type: Number, default: 0, min: 0 },
@@ -43,6 +51,16 @@ ProcurementSchema.pre('validate', function validateReceiptReference() {
   }
   if (this.receiptMode === 'NON_PO' && !this.receiptAuthorizationId) {
     this.invalidate('receiptAuthorizationId', 'Non-PO receipts require an approved authorization');
+  }
+  const hasBreakdown = [this.acceptedQuantity, this.damagedQuantity, this.missingQuantity]
+    .some((value) => value !== undefined && value !== null);
+  if (hasBreakdown) {
+    const accepted = Number(this.acceptedQuantity || 0);
+    const damaged = Number(this.damagedQuantity || 0);
+    const missing = Number(this.missingQuantity || 0);
+    if (accepted + damaged + missing !== Number(this.quantity)) {
+      this.invalidate('quantity', 'Receipt breakdown must equal expected quantity');
+    }
   }
 });
 
