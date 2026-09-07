@@ -47,6 +47,7 @@ exports.getAllSchedules = async (req, res) => {
       
       const mapped = {
         ...sched,
+        sentToCustomerAt: sched.sentToCustomerAt || (sched.status === 'Sent to Customer' ? sched.updatedAt : null),
         customerName: customer.fullName || 'Unknown Customer',
         customerEmail: customer.email || '-',
         customerPhone: customer.phoneNumber || '-',
