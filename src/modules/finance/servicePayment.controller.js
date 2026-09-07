@@ -4,7 +4,7 @@ const { sendServiceApprovalEmail, sendServiceRejectionEmail } = require("../shar
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
-// ── Model loader — strict:false lets us add payment fields to team's documents ─
+// ── Model loader — strict:false  ─
 const getServiceTicketModel = () => {
   try { return mongoose.model("ServiceTicket"); }
   catch {
