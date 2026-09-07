@@ -692,14 +692,23 @@ exports.listServiceRequests = async (options = {}) => {
     ];
   }
 
-  const [requests, total] = await Promise.all([
+  const [rawRequests, total] = await Promise.all([
     ServiceRequest.find(query)
+      .populate("customerId", "fullName email phoneNumber address")
       .populate("customer", "fullName email phoneNumber address")
       .skip(skip)
       .limit(limitNum)
       .sort({ createdAt: -1 }),
     ServiceRequest.countDocuments(query)
   ]);
+
+  const requests = rawRequests.map((doc) => {
+    const item = doc.toObject ? doc.toObject() : { ...doc };
+    if (!item.customer && item.customerId && typeof item.customerId === "object") {
+      item.customer = item.customerId;
+    }
+    return item;
+  });
 
   return {
     data: requests,
