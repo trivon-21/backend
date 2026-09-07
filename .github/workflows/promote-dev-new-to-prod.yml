@@ -1,0 +1,52 @@
+name: Promote dev-new to prod
+
+on:
+  push:
+    branches:
+      - dev-new
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: promote-dev-new-to-prod
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create and merge promotion PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const head = `${owner}:dev-new`;
+            const base = 'prod';
+
+            const { data: openPullRequests } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              head,
+              base
+            });
+
+            const pullRequest = openPullRequests[0] || (await github.rest.pulls.create({
+              owner,
+              repo,
+              title: 'Promote dev-new to prod',
+              head: 'dev-new',
+              base,
+              body: 'Automatically promotes the latest dev-new changes to prod.'
+            })).data;
+
+            await github.rest.pulls.merge({
+              owner,
+              repo,
+              pull_number: pullRequest.number,
+              merge_method: 'merge'
+            });
