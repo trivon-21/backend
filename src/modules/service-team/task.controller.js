@@ -177,13 +177,11 @@ exports.getTasks = async (req, res) => {
       Maintenance.find(query).populate('customerId', 'fullName address phoneNumber email').lean()
     ]);
 
-    const filtered = [...installations, ...requests, ...maintenances];
+    const formattedInstallations = installations.map(job => formatTask(job, 'installation'));
+    const formattedRequests = requests.map(job => formatTask(job, 'service'));
+    const formattedMaintenances = maintenances.map(job => formatTask(job, 'maintenance'));
 
-    const formatted = filtered.map((job) => {
-      if (job.units !== undefined) return formatTask(job, 'installation');
-      if (job.ticketId && String(job.ticketId).includes('-ACT')) return formatTask(job, 'maintenance');
-      return formatTask(job, 'service');
-    });
+    const formatted = [...formattedInstallations, ...formattedRequests, ...formattedMaintenances];
 
     res.json(formatted.sort((a, b) => new Date(b.scheduledDate || 0) - new Date(a.scheduledDate || 0)));
   } catch (err) {
