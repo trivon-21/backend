@@ -15,7 +15,7 @@ router.get("/repair/paid",           controller.getRepairPaidInvoices);
 router.get("/repair/auto-cancelled", controller.getRepairAutoCancelledInvoices);
 router.get("/repair/dashboard",      controller.getRepairDashboardStats);
 
-// ── INSTALLATION invoice routes (existing — unchanged) ─────────────────────────
+// ── INSTALLATION invoice routes ─────────────────────────
 router.get("/queue",                 controller.getInvoiceQueue);
 router.get("/queue/:reportId",       controller.getInvoiceQueueDetails);
 router.post("/generate/:reportId",   controller.generateInvoice);
