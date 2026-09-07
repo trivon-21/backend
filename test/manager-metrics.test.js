@@ -59,6 +59,55 @@ test('buildAnalytics reports real PO and Non-PO controls', () => {
   assert.equal(result.procurementSignals.awaitingFinance, 1);
 });
 
+test('financial analytics reconcile collected revenue, received spend, and current exposure', () => {
+  const now = new Date('2026-08-15T12:00:00.000Z');
+  const tickets = [
+    { sourceType: 'service', paymentStatus: 'APPROVED', serviceFee: 200, approvedAt: '2026-08-14T09:00:00.000Z' },
+    { sourceType: 'inspection-ticket', sourceStatus: 'INSPECTION_SCHEDULED', inspectionFee: 50, approvedAt: '2026-08-14T10:00:00.000Z' },
+    { sourceType: 'maintenance', paymentStatus: 'UNDER_REVIEW', serviceFee: 75 },
+  ];
+  const purchaseOrders = [{
+    status: 'partially-received', totalEstimate: 500,
+    items: [{ orderedQuantity: 5, receivedQuantity: 2, unitCost: 100 }],
+  }];
+  const procurements = [{
+    receiptMode: 'PO', receivedDate: '2026-08-14T11:00:00.000Z', totalCost: 400,
+  }];
+  const authorizations = [{
+    status: 'completed', financeReviewStatus: 'pending', receivedQuantity: 2, unitCost: 25,
+  }];
+  const customerOrders = [
+    { _id: 'order-standalone', paymentStatus: 'Approved', amount: 500, approvedAt: '2026-08-14T12:00:00.000Z' },
+    { _id: 'order-invoiced', paymentStatus: 'Approved', amount: 1000, approvedAt: '2026-08-14T12:30:00.000Z' },
+    { paymentStatus: 'Under Review', total: 300 },
+  ];
+  const invoices = [
+    { status: 'PAID', orderId: 'order-invoiced', grandTotal: 1000, paidAt: '2026-08-14T13:00:00.000Z' },
+    { status: 'ACCEPTED', grandTotal: 600 },
+  ];
+
+  const result = buildAnalytics(
+    tickets, purchaseOrders, '7d', now, procurements, authorizations, [], 0, customerOrders, invoices,
+  );
+
+  assert.equal(result.financial.collectedRevenue.current, 1750);
+  assert.equal(result.financial.procurementSpend.current, 400);
+  assert.equal(result.financial.operatingContribution.current, 1350);
+  assert.deepEqual(
+    { count: result.financial.outstandingReceivables.count, value: result.financial.outstandingReceivables.value },
+    { count: 3, value: 975 },
+  );
+  assert.deepEqual(
+    { count: result.financial.pendingPaymentReview.count, value: result.financial.pendingPaymentReview.value },
+    { count: 2, value: 375 },
+  );
+  assert.equal(result.financial.purchaseCommitments.value, 300);
+  assert.equal(result.financial.unreconciledNonPo.value, 50);
+  assert.equal(result.financial.trend.collectedRevenue.reduce((total, value) => total + value, 0), 1750);
+  assert.equal(result.financial.basis, 'cash-collected-vs-goods-received');
+  assert.ok(result.dataCoverage.some((item) => item.key === 'financial-margin' && item.status === 'unavailable'));
+});
+
 test('period windows are adjacent and do not double count the current boundary', () => {
   const now = new Date('2026-08-15T12:00:00.000Z');
   const window = periodWindow('7d', now);

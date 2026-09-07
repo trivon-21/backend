@@ -7,8 +7,12 @@ const QuarantineItemSchema = new mongoose.Schema({
   unit: { type: String, default: 'units' },
   reason: { type: String, required: true },
   location: { type: String, default: '' },
-  source: { type: String, enum: ['leftover-return', 'rma', 'manual'], default: 'manual' },
+  source: { type: String, enum: ['leftover-return', 'rma', 'receipt', 'manual'], default: 'manual' },
   sourceRefId: { type: String, default: '' },
+  inventoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'ManagerInventoryItem' },
+  procurementId: { type: mongoose.Schema.Types.ObjectId, ref: 'Procurement' },
+  supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
+  serialNumbers: { type: [String], default: undefined },
   status: { 
     type: String, 
     enum: ['quarantined', 'disposed', 'returned-to-supplier'], 

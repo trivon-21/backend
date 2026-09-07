@@ -6,11 +6,12 @@ const { authorize } = require("../../middleware/role.middleware");
 router.use(protect);
 router.use(authorize(["INVENTORY", "SUPER_ADMIN"]));
 
-// Add routes here
 // Dashboard data
 router.get("/dashboard", controller.getDashboard);
 // Inventory list
 router.get("/list", controller.getInventory);
+// Fixed warehouse and placement-area catalog
+router.get("/locations", controller.getLocations);
 // Single item
 router.get("/item/:id", controller.getItem);
 // Update item
@@ -24,6 +25,7 @@ router.get("/suppliers", controller.getSuppliers);
 router.post("/suppliers", controller.createSupplier);
 // Procurements
 router.get("/procurements", controller.getProcurements);
+router.get("/receipt-discrepancies", controller.getReceiptDiscrepancies);
 router.get("/receipt-authorizations", controller.getReceiptAuthorizations);
 router.post("/receipt-authorizations", controller.createReceiptAuthorization);
 
@@ -64,6 +66,7 @@ router.post("/leftover-returns", controller.createLeftoverReturn);
 router.get("/rma-cases", controller.getRmaCases);
 router.post("/rma-cases", controller.createRmaCase);
 router.patch("/rma-cases/:id", controller.updateRmaCase);
+router.post("/rma-cases/:id/replacement", controller.receiveRmaReplacement);
 router.get("/quarantine", controller.getQuarantineItems);
 router.post("/quarantine", controller.createQuarantineItem);
 router.patch("/quarantine/:id/dispose", controller.disposeQuarantineItem);

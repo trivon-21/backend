@@ -30,6 +30,7 @@ const inspectionReportSchema = new mongoose.Schema(
     ticketId: { type: mongoose.Schema.Types.ObjectId, ref: "InspectionTicket", required: true },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
     inspectorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
     // Section 1
     customerName: String, contactNumber: String,
@@ -51,13 +52,37 @@ const inspectionReportSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: ["DRAFT", "RECORDED", "SUBMITTED"],
+      enum: ["DRAFT", "RECORDED", "SUBMITTED", "Approved", "Rejected"],
       default: "DRAFT"
     },
     submittedAt: Date,
     recordedAt: Date,
+    reportId: { type: String, unique: true, sparse: true }
   },
   { timestamps: true }
 );
+
+inspectionReportSchema.pre('save', async function (next) {
+  if (this.isNew && !this.reportId) {
+    try {
+      const CounterModel = mongoose.model('Counter');
+      let counter = await CounterModel.findOneAndUpdate(
+        { _id: 'inspectionReportId' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      if (!counter) {
+        await CounterModel.updateOne({ _id: 'inspectionReportId' }, { $set: { seq: 1000 } }, { upsert: true });
+        counter = { seq: 1000 };
+      } else if (counter.seq < 1000) {
+        counter = await CounterModel.findOneAndUpdate({ _id: 'inspectionReportId' }, { $set: { seq: 1000 } }, { new: true });
+      }
+      this.reportId = `IREP-${String(counter.seq).padStart(4, '0')}`;
+    } catch (err) {
+      return next(err);
+    }
+  }
+  next();
+});
 
 module.exports = mongoose.models.InspectionReport || mongoose.model("InspectionReport", inspectionReportSchema);

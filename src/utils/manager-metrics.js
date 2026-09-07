@@ -72,6 +72,8 @@ function buildBuckets(period, now) {
         : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       created: 0,
       resolved: 0,
+      revenue: 0,
+      spend: 0,
     });
   }
   return buckets;
@@ -113,6 +115,92 @@ function snapshotMetric(value, asOf) {
 
 function sum(items, selector) {
   return items.reduce((total, item) => total + Number(selector(item) || 0), 0);
+}
+
+function orderAmount(order) {
+  const declared = Number(order.total ?? order.amount ?? order.subtotal ?? 0);
+  if (declared > 0) return declared;
+  return sum(order.items || [], (item) => Number(item.price ?? item.unitPrice ?? 0) * Number(item.quantity || 1));
+}
+
+function currentPurchaseCommitment(orders) {
+  return sum(
+    orders.filter((order) => ['approved', 'ordered', 'partially-received'].includes(order.status)),
+    (order) => {
+      if (!(order.items || []).length) return Number(order.totalEstimate || 0);
+      return sum(order.items, (line) => {
+        const ordered = Number(line.orderedQuantity ?? line.quantity ?? 0);
+        const received = Number(line.receivedQuantity || 0);
+        return Math.max(0, ordered - received) * Number(line.unitCost || 0);
+      });
+    },
+  );
+}
+
+function financialRevenueEntries(tickets, customerOrders, invoices) {
+  const entries = [];
+  const paidInvoiceOrderIds = new Set(
+    invoices.filter((invoice) => invoice.status === 'PAID' && invoice.orderId).map((invoice) => String(invoice.orderId)),
+  );
+  for (const invoice of invoices) {
+    if (invoice.status !== 'PAID') continue;
+    entries.push({ source: 'Paid invoices', value: Number(invoice.grandTotal || 0), at: invoice.paidAt || invoice.updatedAt, fallbackDate: !invoice.paidAt });
+  }
+  for (const order of customerOrders) {
+    if (!['Approved', 'Confirmed'].includes(order.paymentStatus) && !['Confirmed', 'Payment Confirmed'].includes(order.status)) continue;
+    if (paidInvoiceOrderIds.has(String(order._id || ''))) continue;
+    entries.push({ source: 'Product order payments', value: orderAmount(order), at: order.approvedAt || order.updatedAt, fallbackDate: !order.approvedAt });
+  }
+  for (const ticket of tickets) {
+    if (['service', 'maintenance'].includes(ticket.sourceType) && ticket.paymentStatus === 'APPROVED') {
+      entries.push({ source: 'Service payments', value: Number(ticket.serviceFee || 0), at: ticket.approvedAt || ticket.updatedAt, fallbackDate: !ticket.approvedAt });
+    }
+    if (ticket.sourceType === 'inspection-ticket'
+      && ['PAYMENT_CONFIRMED', 'INSPECTION_SCHEDULED', 'ONGOING', 'REPORT_RECORDED', 'INSPECTED'].includes(ticket.sourceStatus)) {
+      entries.push({ source: 'Inspection payments', value: Number(ticket.inspectionFee || 0), at: ticket.approvedAt || ticket.updatedAt, fallbackDate: !ticket.approvedAt });
+    }
+  }
+  return entries.filter((entry) => entry.value > 0 && validDate(entry.at));
+}
+
+function outstandingReceivables(tickets, customerOrders, invoices) {
+  const entries = [];
+  const outstandingInvoiceOrderIds = new Set(
+    invoices.filter((invoice) => ['ACCEPTED', 'PAYMENT_UNDER_REVIEW'].includes(invoice.status) && invoice.orderId)
+      .map((invoice) => String(invoice.orderId)),
+  );
+  for (const invoice of invoices) {
+    if (['ACCEPTED', 'PAYMENT_UNDER_REVIEW'].includes(invoice.status)) entries.push(Number(invoice.grandTotal || 0));
+  }
+  for (const order of customerOrders) {
+    if (outstandingInvoiceOrderIds.has(String(order._id || ''))) continue;
+    if (['Pending Payment', 'Under Review'].includes(order.paymentStatus)
+      || ['Pending Payment', 'Under Review (Finance)'].includes(order.status)) entries.push(orderAmount(order));
+  }
+  for (const ticket of tickets) {
+    if (['service', 'maintenance'].includes(ticket.sourceType)
+      && ['PENDING_PAYMENT', 'UNDER_REVIEW'].includes(ticket.paymentStatus)) entries.push(Number(ticket.serviceFee || 0));
+    if (ticket.sourceType === 'inspection-ticket'
+      && ['PENDING_PAYMENT', 'PAYMENT_UNDER_REVIEW'].includes(ticket.sourceStatus)) entries.push(Number(ticket.inspectionFee || 0));
+  }
+  return { count: entries.length, value: sum(entries, (value) => value) };
+}
+
+function pendingPaymentReview(tickets, customerOrders, invoices) {
+  const entries = [];
+  const reviewingInvoiceOrderIds = new Set(
+    invoices.filter((invoice) => invoice.status === 'PAYMENT_UNDER_REVIEW' && invoice.orderId)
+      .map((invoice) => String(invoice.orderId)),
+  );
+  invoices.filter((invoice) => invoice.status === 'PAYMENT_UNDER_REVIEW').forEach((invoice) => entries.push(Number(invoice.grandTotal || 0)));
+  customerOrders.filter((order) => !reviewingInvoiceOrderIds.has(String(order._id || ''))
+    && (order.paymentStatus === 'Under Review' || order.status === 'Under Review (Finance)'))
+    .forEach((order) => entries.push(orderAmount(order)));
+  tickets.filter((ticket) => ['service', 'maintenance'].includes(ticket.sourceType) && ticket.paymentStatus === 'UNDER_REVIEW')
+    .forEach((ticket) => entries.push(Number(ticket.serviceFee || 0)));
+  tickets.filter((ticket) => ticket.sourceType === 'inspection-ticket' && ticket.sourceStatus === 'PAYMENT_UNDER_REVIEW')
+    .forEach((ticket) => entries.push(Number(ticket.inspectionFee || 0)));
+  return { count: entries.length, value: sum(entries, (value) => value) };
 }
 
 function average(values) {
@@ -226,6 +314,8 @@ function buildAnalytics(
   authorizations = [],
   inventory = [],
   pendingMaterialRequests = 0,
+  customerOrders = [],
+  invoices = [],
 ) {
   const window = periodWindow(periodKey, now);
   const { period, currentStart, currentEnd, previousStart, previousEnd } = window;
@@ -237,6 +327,11 @@ function buildAnalytics(
   const previousSubmissions = orders.filter((order) => inWindow(orderSubmissionAt(order), previousStart, previousEnd));
   const currentDecisions = decisionEvents(orders, currentStart, currentEnd);
   const previousDecisions = decisionEvents(orders, previousStart, previousEnd);
+  const revenueEntries = financialRevenueEntries(tickets, customerOrders, invoices);
+  const currentRevenueEntries = revenueEntries.filter((entry) => inWindow(entry.at, currentStart, currentEnd, true));
+  const previousRevenueEntries = revenueEntries.filter((entry) => inWindow(entry.at, previousStart, previousEnd));
+  const currentProcurements = procurements.filter((receipt) => inWindow(receipt.receivedDate || receipt.createdAt, currentStart, currentEnd, true));
+  const previousProcurements = procurements.filter((receipt) => inWindow(receipt.receivedDate || receipt.createdAt, previousStart, previousEnd));
 
   const resolutionAverage = (items) => average(items.map((ticket) => {
     const resolved = validDate(ticket.resolvedAt);
@@ -248,6 +343,12 @@ function buildAnalytics(
   const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
   currentTickets.forEach((ticket) => { const bucket = byKey.get(bucketKey(ticket.createdAt, period)); if (bucket) bucket.created += 1; });
   currentResolved.forEach((ticket) => { const bucket = byKey.get(bucketKey(ticket.resolvedAt, period)); if (bucket) bucket.resolved += 1; });
+  currentRevenueEntries.forEach((entry) => { const bucket = byKey.get(bucketKey(entry.at, period)); if (bucket) bucket.revenue += entry.value; });
+  currentProcurements.forEach((receipt) => {
+    const at = receipt.receivedDate || receipt.createdAt;
+    const bucket = byKey.get(bucketKey(at, period));
+    if (bucket) bucket.spend += Number(receipt.totalCost || 0);
+  });
 
   const activeTickets = tickets.filter((ticket) => ACTIVE_TICKET_STATUSES.includes(ticket.status));
   const unassignedTickets = activeTickets.filter((ticket) => !assigneeName(ticket));
@@ -266,12 +367,37 @@ function buildAnalytics(
   const orderedValue = sum(orders, (order) => sum(order.items || [], (line) => Number((line.orderedQuantity ?? line.quantity) || 0) * Number(line.unitCost || 0)));
   const receivedValue = sum(orders, (order) => sum(order.items || [], (line) => Number(line.receivedQuantity || 0) * Number(line.unitCost || 0)));
 
-  const periodProcurements = procurements.filter((receipt) => inWindow(receipt.receivedDate || receipt.createdAt, currentStart, currentEnd, true));
+  const periodProcurements = currentProcurements;
   const periodAuthorizations = authorizations.filter((authorization) => inWindow(authorization.createdAt, currentStart, currentEnd, true));
   const nonPo = periodProcurements.filter((receipt) => receipt.receiptMode === 'NON_PO');
   const emergency = nonPo.filter((receipt) => receipt.nonPoReason === 'EMERGENCY_REPAIR');
   const totalProcurementValue = sum(periodProcurements, (receipt) => receipt.totalCost);
   const nonPoValue = sum(nonPo, (receipt) => receipt.totalCost);
+  const previousProcurementValue = sum(previousProcurements, (receipt) => receipt.totalCost);
+  const collectedRevenue = sum(currentRevenueEntries, (entry) => entry.value);
+  const previousCollectedRevenue = sum(previousRevenueEntries, (entry) => entry.value);
+  const contribution = collectedRevenue - totalProcurementValue;
+  const previousContribution = previousCollectedRevenue - previousProcurementValue;
+  const revenueSourceMap = new Map();
+  for (const entry of currentRevenueEntries) {
+    const row = revenueSourceMap.get(entry.source) || { label: entry.source, count: 0, value: 0 };
+    row.count += 1;
+    row.value += entry.value;
+    revenueSourceMap.set(entry.source, row);
+  }
+  const spendModeMap = new Map();
+  for (const receipt of periodProcurements) {
+    const label = receipt.receiptMode === 'NON_PO' ? 'Non-PO receipts' : 'Purchase-order receipts';
+    const row = spendModeMap.get(label) || { label, count: 0, value: 0 };
+    row.count += 1;
+    row.value += Number(receipt.totalCost || 0);
+    spendModeMap.set(label, row);
+  }
+  const receivables = outstandingReceivables(tickets, customerOrders, invoices);
+  const paymentReview = pendingPaymentReview(tickets, customerOrders, invoices);
+  const financeSnapshot = (item) => ({ ...item, scope: 'current-snapshot', asOf: new Date(now) });
+  const unreconciledNonPo = authorizations.filter((item) =>
+    Number(item.receivedQuantity || 0) > 0 && item.financeReviewStatus === 'pending');
   const reasonMap = new Map();
   const supplierMap = new Map();
   const skuCounts = new Map();
@@ -305,6 +431,7 @@ function buildAnalytics(
     { key: 'assignment-history', status: 'unavailable', message: 'Historical assignment changes are not recorded; period completions use the current assignee snapshot.' },
     { key: 'technician-capacity', status: 'unavailable', message: 'Capacity and utilization require technician schedules or working-hour data.' },
     { key: 'service-outcomes', status: 'unavailable', message: 'First-time-fix and callback rates require technician outcome records.' },
+    { key: 'financial-margin', status: 'unavailable', message: 'Gross profit and margin are not reported because overhead and cost-of-goods allocation are not recorded against revenue transactions.' },
   ];
   if (legacySubmissionCount) coverage.push({
     key: 'purchase-submission-history', status: 'partial',
@@ -313,6 +440,12 @@ function buildAnalytics(
   if (receivedEmergencyAuthorizations.length && protectedJobs === 0) coverage.push({
     key: 'sla-protection', status: 'partial',
     message: 'Emergency receipts exist, but no linked ticket with SLA data was available to verify delay prevention.',
+  });
+  const revenueFallbackDates = currentRevenueEntries.filter((entry) => entry.fallbackDate).length;
+  if (revenueFallbackDates) coverage.push({
+    key: 'financial-event-timestamps',
+    status: 'partial',
+    message: `${revenueFallbackDates} collected revenue record(s) use their last-updated time because a payment event timestamp is unavailable.`,
   });
 
   const oldestPendingDate = pendingOrders
@@ -353,6 +486,26 @@ function buildAnalytics(
     pendingApprovalValue: snapshotMetric(sum(pendingOrders, (order) => order.totalEstimate), now),
     oldestPendingAgeHours: oldestPendingDate ? round((new Date(now) - oldestPendingDate) / 3600000) : 0,
   };
+  const financial = {
+    collectedRevenue: comparisonMetric(collectedRevenue, previousCollectedRevenue, 'higher-is-better'),
+    procurementSpend: comparisonMetric(totalProcurementValue, previousProcurementValue),
+    operatingContribution: comparisonMetric(contribution, previousContribution, 'higher-is-better'),
+    outstandingReceivables: financeSnapshot(receivables),
+    pendingPaymentReview: financeSnapshot(paymentReview),
+    purchaseCommitments: snapshotMetric(currentPurchaseCommitment(orders), now),
+    unreconciledNonPo: financeSnapshot({
+      count: unreconciledNonPo.length,
+      value: sum(unreconciledNonPo, (item) => Number(item.receivedQuantity || 0) * Number(item.unitCost || 0)),
+    }),
+    revenueBySource: [...revenueSourceMap.values()].sort((left, right) => right.value - left.value),
+    spendByMode: [...spendModeMap.values()].sort((left, right) => right.value - left.value),
+    trend: {
+      labels: buckets.map((bucket) => bucket.label),
+      collectedRevenue: buckets.map((bucket) => round(bucket.revenue, 2)),
+      procurementSpend: buckets.map((bucket) => round(bucket.spend, 2)),
+    },
+    basis: 'cash-collected-vs-goods-received',
+  };
   const inventoryRisk = {
     lowStockItems: snapshotMetric(lowStock.length, now),
     outOfStockItems: snapshotMetric(outOfStock.length, now),
@@ -386,6 +539,7 @@ function buildAnalytics(
     serviceOperations,
     workforce,
     purchasing,
+    financial,
     inventoryRisk,
     exceptions,
     dataCoverage: coverage,

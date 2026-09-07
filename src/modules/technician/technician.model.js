@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const { EXECUTION_STATUS } = require('../../constants/enums');
 
 const serviceReportSchema = new mongoose.Schema({
+  serviceReportId: { type: String, unique: true },
   // Dynamic linking to the original job source
   serviceRequestId: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -31,5 +32,27 @@ const serviceReportSchema = new mongoose.Schema({
   finalStatus: { type: String, default: EXECUTION_STATUS.COMPLETED },        
   submittedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
+
+serviceReportSchema.pre('save', async function (next) {
+  if (this.isNew && !this.serviceReportId) {
+    try {
+      const CounterModel = mongoose.model('Counter');
+      let counter = await CounterModel.findOneAndUpdate(
+        { _id: 'serviceReportId' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      if (!counter) {
+        counter = await CounterModel.updateOne({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { upsert: true });
+      } else if (counter.seq < 1000) {
+        counter = await CounterModel.findOneAndUpdate({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { new: true });
+      }
+      this.serviceReportId = `REP-${counter.seq}`;
+    } catch (err) {
+      return next(err);
+    }
+  }
+  next();
+});
 
 module.exports = mongoose.model('service_reports', serviceReportSchema, 'service_reports');

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const InstallationSchema = new mongoose.Schema({
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'InstallationOrder' },
-  inspectionTicketId: { type: mongoose.Schema.Types.ObjectId, ref: 'ManagerInspectionTicket' },
+  inspectionTicketId: { type: mongoose.Schema.Types.ObjectId, ref: 'InspectionTicket' },
   assignedTeamId: { type: mongoose.Schema.Types.ObjectId, ref: 'TechTeam' },
   assignedTeamName: { type: String },
   location: { type: String },

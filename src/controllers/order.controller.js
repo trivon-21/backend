@@ -83,6 +83,33 @@ exports.reuploadPayment = async (req, res) => {
 
     const { paymentSlipUrl, paymentSlip, slip } = req.body;
     const slipData = paymentSlipUrl || paymentSlip || slip || "";
+
+    if (!slipData) {
+      return res.status(400).json({ message: "Payment slip is required" });
+    }
+
+    // Verify slip with Layer 1 (magic bytes) and Layer 2 (OCR content)
+    let fileBuffer = null;
+    let declaredMime = null;
+    if (typeof slipData === 'string' && slipData.startsWith('data:')) {
+      const matches = slipData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        declaredMime = matches[1];
+        fileBuffer = Buffer.from(matches[2], 'base64');
+      }
+    }
+
+    if (fileBuffer) {
+      const validation = await validatePaymentSlip(fileBuffer, declaredMime);
+      if (!validation.isValid) {
+        return res.status(422).json({
+          success: false,
+          layer: validation.layer,
+          message: validation.error
+        });
+      }
+    }
+
     order.paymentSlipUrl = slipData;
     order.paymentSlip = slipData;
     order.paymentStatus = "Under Review";
@@ -120,9 +147,11 @@ function formatOrder(o) {
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const mongoose = require('mongoose');
 const InstallationOrder = require('../models/installationOrder.model');
 const Cart = require('../models/cart.model');
 const Counter = require('../models/counter.model');
+const { validatePaymentSlip } = require('../services/slipValidation.service');
 
 // ── Multer setup (In-Memory for MongoDB Base64 storage) ───────────────────────
 const storage = multer.memoryStorage();
@@ -212,10 +241,13 @@ async function performInitialization(req, res, Model, prefix, purchaseType, coun
     const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
     const total = subtotal;
 
+    const ownerFields = Model === Order
+      ? { userId: String(userId), ...(mongoose.Types.ObjectId.isValid(String(userId)) ? { customer: userId } : {}) }
+      : { userId };
     const order = new Model({
       orderReference,
       orderId: orderReference,
-      userId,
+      ...ownerFields,
       items,
       subtotal,
       total,
@@ -257,14 +289,38 @@ exports.submitPayment = async (req, res) => {
     const isBuyOnly = isBO;
 
     let slipData = null;
+    let fileBuffer = null;
+    let declaredMime = null;
+
     if (req.file) {
+      fileBuffer = req.file.buffer;
+      declaredMime = req.file.mimetype;
       slipData = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     } else if (paymentSlipUrl || slip) {
       slipData = paymentSlipUrl || slip;
+      if (typeof slipData === 'string' && slipData.startsWith('data:')) {
+        const matches = slipData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          declaredMime = matches[1];
+          fileBuffer = Buffer.from(matches[2], 'base64');
+        }
+      }
     }
 
     if (isBuyOnly && !slipData) {
       throw new Error('Payment slip is required for Buy Only orders');
+    }
+
+    // Verify slip with Layer 1 (magic bytes) and Layer 2 (OCR content)
+    if (fileBuffer) {
+      const validation = await validatePaymentSlip(fileBuffer, declaredMime);
+      if (!validation.isValid) {
+        return res.status(422).json({
+          success: false,
+          layer: validation.layer,
+          message: validation.error
+        });
+      }
     }
 
     if (slipData) {
@@ -318,7 +374,7 @@ exports.submitPayment = async (req, res) => {
 // ── Other Helpers ────────────────────────────────────────────────────────────
 exports.getOrdersByUser = async (req, res) => {
   try {
-    const orders = await Order.find({ userId: req.params.userId });
+    const orders = await Order.find(Order.ownerCompatibilityFilter(req.params.userId));
     const installationOrders = await InstallationOrder.find({ userId: req.params.userId });
 
     // Combine and sort by date
