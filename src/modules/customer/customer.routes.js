@@ -15,6 +15,7 @@ const notificationRoutes = require("./notifications/notifications.routes");
 // Import shared routes (these should be available at /api/customer/*)
 const serviceRequestRoutes = require("../../routes/service-request.routes");
 const inquiryRoutes = require("../../routes/inquiry.routes");
+const feedbackRoutes = require("../../routes/feedback.routes");
 
 // All customer routes require authentication
 router.use(protect);
@@ -25,6 +26,7 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/orders", orderRoutes);
 router.use("/service-requests", serviceRequestRoutes);
 router.use("/inquiries", inquiryRoutes);
+router.use("/feedback", feedbackRoutes);
 router.use("/notifications", notificationRoutes);
 
 module.exports = router;
