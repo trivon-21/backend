@@ -327,11 +327,19 @@ exports.submitServiceReport = async (req, res) => {
       submittedAt: req.body.submittedAt || new Date(),
     };
 
-    const updatedReport = await ServiceReport.findOneAndUpdate(
-      { serviceRequestId, onModel },
-      { $set: reportPayload },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    ).lean();
+    // Find existing or create new — use explicit create so the pre-save hook fires for SREP- ID generation
+    let existingReport = await ServiceReport.findOne({ serviceRequestId, onModel });
+    let updatedReport;
+
+    if (existingReport) {
+      // Update in-place so the ID is preserved
+      Object.assign(existingReport, reportPayload);
+      updatedReport = (await existingReport.save()).toObject();
+    } else {
+      // New report — pre-save hook will generate SREP-xxxx
+      const newReport = new ServiceReport(reportPayload);
+      updatedReport = (await newReport.save()).toObject();
+    }
 
     if (sourceRecord) {
       const sourceModel = onModel === 'Installation' ? Installation : ServiceRequest;
@@ -351,6 +359,7 @@ exports.submitServiceReport = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
 
 // 4. Update an existing service report
 exports.updateServiceReport = async (req, res) => {
