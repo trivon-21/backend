@@ -21,6 +21,11 @@ const loadSourceRecord = async (serviceRequestId, onModel) => {
     return Installation.findById(serviceRequestId).populate('customerId', 'fullName name email phoneNumber contactNo address').lean();
   }
 
+  if (onModel === 'Maintenance') {
+    const Maintenance = require('../shared/maintenance/maintenance.model');
+    return Maintenance.findById(serviceRequestId).populate('customerId', 'fullName name email phoneNumber contactNo address').lean();
+  }
+
   return ServiceRequest.findById(serviceRequestId).populate('customerId', 'fullName name email phoneNumber contactNo address').lean();
 };
 
@@ -298,8 +303,8 @@ exports.submitServiceReport = async (req, res) => {
       return res.status(400).json({ success: false, message: 'serviceRequestId is required' });
     }
 
-    if (onModel !== 'ServiceRequest' && onModel !== 'Installation') {
-      return res.status(400).json({ success: false, message: 'onModel must be ServiceRequest or Installation' });
+    if (onModel !== 'ServiceRequest' && onModel !== 'Installation' && onModel !== 'Maintenance') {
+      return res.status(400).json({ success: false, message: 'onModel must be ServiceRequest, Installation, or Maintenance' });
     }
 
     const sourceRecord = await loadSourceRecord(serviceRequestId, onModel);
@@ -342,7 +347,11 @@ exports.submitServiceReport = async (req, res) => {
     }
 
     if (sourceRecord) {
-      const sourceModel = onModel === 'Installation' ? Installation : ServiceRequest;
+      let sourceModel;
+      if (onModel === 'Installation') sourceModel = Installation;
+      else if (onModel === 'Maintenance') sourceModel = require('../shared/maintenance/maintenance.model');
+      else sourceModel = ServiceRequest;
+
       await sourceModel.findByIdAndUpdate(serviceRequestId, {
         status: EXECUTION_STATUS.COMPLETED,
         notesFromTechnician: reportPayload.notesFromMainTechnician,

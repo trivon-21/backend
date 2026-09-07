@@ -700,15 +700,27 @@ exports.sendToInventoryManager = async (req, res) => {
     };
     const validJobType = jobTypeMapping[requestType] || 'Repair';
 
-    await JobMaterialRequest.findOneAndUpdate(
+    const WarehousePickRequest = require('../../../models/WarehousePickRequest');
+    
+    const warehousePickItems = items.map(item => ({
+      lineId: item.lineId,
+      inventoryId: item.inventoryId,
+      name: item.itemName,
+      qty: item.quantity,
+      sku: item.sku
+    }));
+
+    await WarehousePickRequest.findOneAndUpdate(
       { jobId: sourceRecord._id, jobType: validJobType },
       {
         $set: {
-          requestId: 'JMR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
-          requestedBy: req.user ? req.user._id : new mongoose.Types.ObjectId(),
-          requesterName: req.user ? (req.user.fullName || 'System') : 'System',
-          items: items,
-          status: 'PENDING'
+          requestId: 'WPR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
+          requesterId: req.user ? req.user._id : new mongoose.Types.ObjectId(),
+          requester: req.user ? (req.user.fullName || 'System') : 'System',
+          date: new Date().toISOString().split('T')[0],
+          location: location || sourceRecord.location || 'Unknown Location',
+          items: warehousePickItems,
+          status: 'pending'
         }
       },
       { upsert: true, new: true }

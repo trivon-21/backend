@@ -27,7 +27,8 @@ const toCustomer = (customerDoc, job, fallbackAddress = '-') => ({
 const formatTask = (job, source) => {
   const customerDoc = job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
   const customer = toCustomer(customerDoc, job, job.location || '-');
-  const ticketId = job.ticketId != null && job.ticketId !== '' ? String(job.ticketId) : String(job._id);
+  const uniqueRef = job.serviceRequestRef || job.ticketId || job.maintenanceId || job.installationId || job.orderId || job.referenceNo || '';
+  const ticketId = uniqueRef != null && uniqueRef !== '' ? String(uniqueRef) : String(job._id);
   const serviceType = source === REQUEST_TYPES.INSTALLATION.toLowerCase()
     ? `${job.productType || job.acUnitModel || 'Installation'}${job.units ? ` - ${job.units} Units` : ''}`
     : source === 'maintenance'
@@ -79,6 +80,10 @@ const findTaskRecord = async (id) => {
   // Also match by the string ID like SRQ-1000
   queryParts.push({ serviceRequestRef: normalizedId });
   queryParts.push({ ticketId: normalizedId }); // if ticketId is stored as string in some collections
+  queryParts.push({ maintenanceId: normalizedId });
+  queryParts.push({ installationId: normalizedId });
+  queryParts.push({ orderId: normalizedId });
+  queryParts.push({ referenceNo: normalizedId });
 
   const query = { $or: queryParts };
 
