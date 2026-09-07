@@ -34,26 +34,24 @@ const serviceReportSchema = new mongoose.Schema({
   submittedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 
-serviceReportSchema.pre('save', async function (next) {
+serviceReportSchema.pre('save', async function () {
   if (this.isNew && !this.serviceReportId) {
-    try {
-      const CounterModel = mongoose.model('Counter');
-      let counter = await CounterModel.findOneAndUpdate(
+    const CounterModel = mongoose.model('Counter');
+    let counter = await CounterModel.findOneAndUpdate(
+      { _id: 'serviceReportId' },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    if (!counter || counter.seq < 1000) {
+      counter = await CounterModel.findOneAndUpdate(
         { _id: 'serviceReportId' },
-        { $inc: { seq: 1 } },
+        { $set: { seq: 1000 } },
         { new: true, upsert: true }
       );
-      if (!counter) {
-        counter = await CounterModel.updateOne({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { upsert: true });
-      } else if (counter.seq < 1000) {
-        counter = await CounterModel.findOneAndUpdate({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { new: true });
-      }
-      this.serviceReportId = `SREP-${String(counter.seq).padStart(4, '0')}`;
-    } catch (err) {
-      return next(err);
     }
+    this.serviceReportId = `SREP-${String(counter.seq).padStart(4, '0')}`;
   }
-  next();
 });
+
 
 module.exports = mongoose.model('service_reports', serviceReportSchema, 'service_reports');

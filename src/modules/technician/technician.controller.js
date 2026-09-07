@@ -31,9 +31,11 @@ const loadSourceRecord = async (serviceRequestId, onModel) => {
 
 const buildCustomerSnapshot = (record) => {
   const customer = record?.customerId && typeof record.customerId === 'object' ? record.customerId : null;
+  const resolvedName = stripTestPrefix(customer?.fullName) || stripTestPrefix(record?.fullName) || stripTestPrefix(record?.customerName) || 'Unknown Customer';
 
   return {
-    fullName: stripTestPrefix(customer?.fullName) || stripTestPrefix(record?.fullName) || stripTestPrefix(record?.customerName) || 'Unknown Customer',
+    name: resolvedName,
+    fullName: resolvedName,
     phone: customer?.phoneNumber || record?.phone || '',
     email: customer?.email || record?.email || '',
     address: stripTestPrefix(customer?.address) || stripTestPrefix(record?.location) || '',
@@ -71,12 +73,14 @@ const loadCustomerFromRecord = async (record) => {
   return Customer.findById(customerId).select('fullName name email phoneNumber contactNo address').lean();
 };
 
-const buildCustomerFromSource = async (sourceRecord, reportCustomer) => { console.log("sourceRecord:", sourceRecord); console.log("reportCustomer:", reportCustomer);
+const buildCustomerFromSource = async (sourceRecord, reportCustomer) => {
   const customerDoc = await loadCustomerFromRecord(sourceRecord);
 
   if (customerDoc) {
+    const resolvedName = stripTestPrefix(customerDoc.fullName) || stripTestPrefix(reportCustomer?.fullName) || stripTestPrefix(reportCustomer?.name) || 'Unknown Customer';
     return {
-      fullName: stripTestPrefix(customerDoc.fullName) || stripTestPrefix(reportCustomer?.fullName) || stripTestPrefix(reportCustomer?.name) || 'Unknown Customer',
+      name: resolvedName,
+      fullName: resolvedName,
       phone: customerDoc.phoneNumber || customerDoc.contactNo || reportCustomer?.phone || '-',
       email: customerDoc.email || reportCustomer?.email || '-',
       address: stripTestPrefix(customerDoc.address) || stripTestPrefix(reportCustomer?.address) || stripTestPrefix(sourceRecord?.location) || '-',
@@ -84,8 +88,10 @@ const buildCustomerFromSource = async (sourceRecord, reportCustomer) => { consol
   }
 
   if (reportCustomer) {
+    const resolvedName = stripTestPrefix(reportCustomer.fullName) || stripTestPrefix(reportCustomer.name) || 'Unknown Customer';
     return {
-      fullName: stripTestPrefix(reportCustomer.fullName) || stripTestPrefix(reportCustomer.name) || 'Unknown Customer',
+      name: resolvedName,
+      fullName: resolvedName,
       phone: reportCustomer.phone || '-',
       email: reportCustomer.email || '-',
       address: stripTestPrefix(reportCustomer.address) || stripTestPrefix(sourceRecord?.location) || '-',
@@ -354,11 +360,13 @@ exports.submitServiceReport = async (req, res) => {
       else if (onModel === 'Maintenance') sourceModel = require('../shared/maintenance/maintenance.model');
       else sourceModel = ServiceRequest;
 
-      await sourceModel.findByIdAndUpdate(serviceRequestId, {
-        status: EXECUTION_STATUS.COMPLETED,
-        notesFromTechnician: reportPayload.notesFromMainTechnician,
-        reviewNotes: reportPayload.reviewNotes,
-      });
+      const doc = await sourceModel.findById(serviceRequestId);
+      if (doc) {
+        doc.status = EXECUTION_STATUS.COMPLETED;
+        doc.notesFromTechnician = reportPayload.notesFromMainTechnician;
+        doc.reviewNotes = reportPayload.reviewNotes;
+        await doc.save({ validateModifiedOnly: true });
+      }
     }
 
     res.status(201).json({

@@ -225,19 +225,19 @@ exports.updateTaskStatus = async (req, res) => {
       const doc = await Installation.findById(task.record._id);
       if (doc) {
         doc.status = normalizedStatus;
-        updated = await doc.save();
+        updated = await doc.save({ validateModifiedOnly: true });
       }
     } else if (task.source === 'maintenance') {
       const doc = await Maintenance.findById(task.record._id);
       if (doc) {
         doc.status = normalizedStatus;
-        updated = await doc.save();
+        updated = await doc.save({ validateModifiedOnly: true });
       }
     } else {
       const doc = await ServiceRequest.findById(task.record._id);
       if (doc) {
         doc.status = normalizedStatus;
-        updated = await doc.save();
+        updated = await doc.save({ validateModifiedOnly: true });
       }
     }
 
