@@ -1,5 +1,6 @@
 const SystemConfig = require('../../../models/SystemConfig');
 const AuditLog = require('../../../models/AuditLog');
+const Charge = require('../../shared/L_charges.model');
 const { clearCache } = require('../../../utils/config-cache');
 const maintenanceNotificationService = require('../../../services/maintenance-notification.service');
 
@@ -14,6 +15,39 @@ class SystemConfigService {
       // Create default config if it doesn't exist
       config = await SystemConfig.create({});
       config = await config.populate('updatedBy', 'fullName email');
+    }
+
+    // Sync standard service fees from charges collection
+    try {
+      const charges = await Charge.find({}).lean();
+      const maintenanceCharge = charges.find(c => /maintenance/i.test(c.name));
+      const repairCharge = charges.find(c => /repair/i.test(c.name));
+      const siteInspectionCharge = charges.find(c => /site inspection/i.test(c.name));
+
+      let needsSave = false;
+      if (maintenanceCharge && config.businessRules) {
+        if (config.businessRules.standardMaintenanceFee !== maintenanceCharge.amount) {
+          config.businessRules.standardMaintenanceFee = maintenanceCharge.amount;
+          needsSave = true;
+        }
+      }
+      if (repairCharge && config.businessRules) {
+        if (config.businessRules.standardRepairFee !== repairCharge.amount) {
+          config.businessRules.standardRepairFee = repairCharge.amount;
+          needsSave = true;
+        }
+      }
+      if (siteInspectionCharge && config.businessRules) {
+        if (config.businessRules.standardSiteInspectionFee !== siteInspectionCharge.amount) {
+          config.businessRules.standardSiteInspectionFee = siteInspectionCharge.amount;
+          needsSave = true;
+        }
+      }
+      if (needsSave) {
+        await config.save();
+      }
+    } catch (err) {
+      console.error('Error syncing charges in getSystemConfig:', err);
     }
 
     return config;
@@ -35,8 +69,56 @@ class SystemConfigService {
         throw new Error(`Invalid business rule field: ${key}`);
       }
 
-      // Validation
-      if (key === 'quotationApprovalThreshold') {
+      // Validation and charges sync
+      if (key === 'standardMaintenanceFee') {
+        if (typeof value !== 'number' || value < 0) {
+          throw new Error('Standard Maintenance Service Fee must be a number greater than or equal to 0');
+        }
+        await Charge.findOneAndUpdate(
+          { name: { $regex: /^standard maintenance/i } },
+          {
+            $set: {
+              name: 'Standard Maintenance Service Fee',
+              amount: value,
+              type: 'FIXED',
+              description: 'Charged for scheduled/routine maintenance visits',
+            },
+          },
+          { upsert: true, returnDocument: 'after' }
+        );
+      } else if (key === 'standardRepairFee') {
+        if (typeof value !== 'number' || value < 0) {
+          throw new Error('Standard Repair Service Fee must be a number greater than or equal to 0');
+        }
+        await Charge.findOneAndUpdate(
+          { name: { $regex: /^standard repair/i } },
+          {
+            $set: {
+              name: 'Standard Repair Service Fee',
+              amount: value,
+              type: 'FIXED',
+              description: 'Charged for standard repair service call-outs',
+            },
+          },
+          { upsert: true, returnDocument: 'after' }
+        );
+      } else if (key === 'standardSiteInspectionFee') {
+        if (typeof value !== 'number' || value < 0) {
+          throw new Error('Standard Site Inspection Fee must be a number greater than or equal to 0');
+        }
+        await Charge.findOneAndUpdate(
+          { name: { $regex: /^standard site inspection/i } },
+          {
+            $set: {
+              name: 'Standard Site Inspection Fee',
+              amount: value,
+              type: 'FIXED',
+              description: 'Charged for pre-installation site inspections',
+            },
+          },
+          { upsert: true, returnDocument: 'after' }
+        );
+      } else if (key === 'quotationApprovalThreshold') {
         if (value < 0 || value > 10000000) {
           throw new Error('Quotation approval threshold must be between 0 and 10,000,000');
         }

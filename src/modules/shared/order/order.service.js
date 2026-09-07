@@ -126,7 +126,7 @@ exports.getAllOrders = async (filters = {}, pagination = {}) => {
 exports.checkQuotationApprovalRequired = async (amount) => {
   try {
     const rules = await configCache.getBusinessRules();
-    return amount > rules.quotationApprovalThreshold;
+    return amount > (rules?.quotationApprovalThreshold ?? 1000000);
   } catch (err) {
     console.error('Error checking quotation approval:', err);
     return false;
