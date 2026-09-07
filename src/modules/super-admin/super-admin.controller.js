@@ -456,4 +456,81 @@ exports.updateOrderStatus = async (req, res) => {
   }
 };
 
+/**
+ * Create / Schedule Global Notification
+ * POST /api/super-admin/global-notifications
+ */
+exports.createGlobalNotification = async (req, res) => {
+  try {
+    const notification = await service.createGlobalNotification(req.body, req.user?._id);
+    return res.status(201).json({
+      message: notification.isScheduled ? "Notification scheduled successfully" : "Notification broadcasted successfully",
+      data: notification
+    });
+  } catch (err) {
+    return res.status(400).json({ message: err.message });
+  }
+};
+
+/**
+ * List Global Notifications
+ * GET /api/super-admin/global-notifications
+ */
+exports.listGlobalNotifications = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status, type, search } = req.query;
+    const result = await service.listGlobalNotifications({
+      page,
+      limit,
+      status: status || null,
+      type: type || null,
+      search: search || null
+    });
+    return res.json({
+      message: "Global notifications retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Cancel Scheduled Global Notification
+ * PATCH /api/super-admin/global-notifications/:id/cancel
+ */
+exports.cancelGlobalNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const notification = await service.cancelGlobalNotification(id);
+    return res.json({
+      message: "Scheduled notification cancelled successfully",
+      data: notification
+    });
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    return res.status(400).json({ message: err.message });
+  }
+};
+
+/**
+ * Delete Global Notification
+ * DELETE /api/super-admin/global-notifications/:id
+ */
+exports.deleteGlobalNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await service.deleteGlobalNotification(id);
+    return res.json(result);
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+
 

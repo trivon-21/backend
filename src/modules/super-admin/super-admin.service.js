@@ -5,6 +5,7 @@ const User = require("../../models/User");
 const Order = require("../../models/Order");
 const Inquiry = require("../../models/Inquiry");
 const ServiceRequest = require("../../models/ServiceRequest");
+const GlobalNotification = require("../../models/GlobalNotification");
 
 // Email transporter setup
 const transporter = nodemailer.createTransport({
@@ -780,8 +781,168 @@ exports.updateOrderStatus = async (orderId, data) => {
 };
 
 /**
+ * Internal helper to dispatch a broadcast notification to target users
+ */
+async function dispatchNotification(broadcast) {
+  let userQuery = { isActive: true };
+  if (!broadcast.targetRoles.includes("ALL") && broadcast.targetRoles.length > 0) {
+    userQuery.role = { $in: broadcast.targetRoles };
+  }
+
+  const matchingCount = await User.countDocuments(userQuery);
+
+  const notifObj = {
+    type: broadcast.type || "general",
+    title: broadcast.title,
+    message: broadcast.message,
+    actionUrl: broadcast.actionUrl || "",
+    read: false,
+    createdAt: new Date()
+  };
+
+  if (matchingCount > 0) {
+    await User.updateMany(userQuery, {
+      $push: {
+        notifications: {
+          $each: [notifObj],
+          $position: 0,
+          $slice: 200
+        }
+      }
+    });
+  }
+
+  broadcast.status = "Sent";
+  broadcast.sentAt = new Date();
+  broadcast.recipientCount = matchingCount;
+  await broadcast.save();
+  return broadcast;
+}
+
+/**
+ * Create / Schedule a Global Notification
+ */
+exports.createGlobalNotification = async (data, creatorUserId) => {
+  const { title, message, type = "general", priority = "normal", actionUrl = "", targetRoles = ["ALL"], isScheduled = false, scheduledFor } = data;
+
+  if (!title || !message) {
+    throw new Error("Title and message are required");
+  }
+
+  const roles = Array.isArray(targetRoles) && targetRoles.length > 0 ? targetRoles : ["ALL"];
+  const shouldSchedule = Boolean(isScheduled && scheduledFor && new Date(scheduledFor) > new Date());
+
+  const broadcast = new GlobalNotification({
+    title: title.trim(),
+    message: message.trim(),
+    type,
+    priority,
+    actionUrl: actionUrl ? actionUrl.trim() : "",
+    targetRoles: roles,
+    isScheduled: shouldSchedule,
+    scheduledFor: shouldSchedule ? new Date(scheduledFor) : null,
+    status: shouldSchedule ? "Scheduled" : "Draft",
+    createdBy: creatorUserId || null
+  });
+
+  await broadcast.save();
+
+  if (!shouldSchedule) {
+    await dispatchNotification(broadcast);
+  }
+
+  return broadcast;
+};
+
+/**
+ * List global notifications with filters and pagination
+ */
+exports.listGlobalNotifications = async (options = {}) => {
+  const { page = 1, limit = 10, status, type, search } = options;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  let query = {};
+  if (status) query.status = status;
+  if (type) query.type = type;
+  if (search) {
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { title: searchRegex },
+      { message: searchRegex },
+      { targetRoles: searchRegex }
+    ];
+  }
+
+  const [notifications, total] = await Promise.all([
+    GlobalNotification.find(query)
+      .populate("createdBy", "fullName email role")
+      .skip(skip)
+      .limit(limitNum)
+      .sort({ createdAt: -1 }),
+    GlobalNotification.countDocuments(query)
+  ]);
+
+  return {
+    data: notifications,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum)
+    }
+  };
+};
+
+/**
+ * Cancel a scheduled global notification
+ */
+exports.cancelGlobalNotification = async (notificationId) => {
+  const broadcast = await GlobalNotification.findById(notificationId);
+  if (!broadcast) throw new Error("Broadcast notification not found");
+  if (broadcast.status !== "Scheduled") {
+    throw new Error(`Cannot cancel notification with status '${broadcast.status}'`);
+  }
+  broadcast.status = "Cancelled";
+  await broadcast.save();
+  return broadcast;
+};
+
+/**
+ * Delete a global notification
+ */
+exports.deleteGlobalNotification = async (notificationId) => {
+  const broadcast = await GlobalNotification.findByIdAndDelete(notificationId);
+  if (!broadcast) throw new Error("Broadcast notification not found");
+  return { message: "Global notification deleted successfully" };
+};
+
+/**
+ * Background worker task: Process due scheduled notifications
+ */
+exports.processScheduledNotifications = async () => {
+  try {
+    const now = new Date();
+    const dueNotifications = await GlobalNotification.find({
+      status: "Scheduled",
+      scheduledFor: { $lte: now }
+    });
+
+    for (const notif of dueNotifications) {
+      await dispatchNotification(notif);
+    }
+    return dueNotifications.length;
+  } catch (err) {
+    console.error("Error processing scheduled notifications:", err.message);
+    return 0;
+  }
+};
+
+/**
  * Export formatUserResponse to be accessible as exports.formatUserResponse
  */
 exports.formatUserResponse = formatUserResponse;
+
 
 

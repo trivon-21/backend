@@ -99,6 +99,20 @@ function scheduleScheduledMaintenanceStartWatcher() {
   setInterval(runCheck, 60 * 1000);
 }
 
+function scheduleGlobalNotificationWatcher() {
+  const superAdminService = require('./modules/super-admin/super-admin.service');
+  const runCheck = async () => {
+    try {
+      await superAdminService.processScheduledNotifications();
+    } catch (error) {
+      console.error('Scheduled global notification watcher failed:', error.message);
+    }
+  };
+
+  runCheck();
+  setInterval(runCheck, 30 * 1000);
+}
+
 const startServer = async () => {
   try {
     await connectDb();
@@ -110,6 +124,7 @@ const startServer = async () => {
     try {
       schedulePaymentAutoCancelJob();
       scheduleScheduledMaintenanceStartWatcher();
+      scheduleGlobalNotificationWatcher();
       console.log('Background jobs scheduled successfully');
     } catch (err) {
       console.warn('Warning: Could not schedule background jobs:', err.message);

@@ -84,6 +84,21 @@ router.get("/orders", controller.listOrders);
 router.patch("/orders/:id/status", controller.updateOrderStatus);
 
 /**
+ * Global Notifications Management Routes
+ */
+// POST /api/super-admin/global-notifications
+router.post("/global-notifications", controller.createGlobalNotification);
+
+// GET /api/super-admin/global-notifications
+router.get("/global-notifications", controller.listGlobalNotifications);
+
+// PATCH /api/super-admin/global-notifications/:id/cancel
+router.patch("/global-notifications/:id/cancel", controller.cancelGlobalNotification);
+
+// DELETE /api/super-admin/global-notifications/:id
+router.delete("/global-notifications/:id", controller.deleteGlobalNotification);
+
+/**
  * System Configuration Routes
  */
 router.use("/system-config", systemConfigRoutes);
