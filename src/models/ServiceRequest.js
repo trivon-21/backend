@@ -47,8 +47,15 @@ const serviceRequestSchema = new mongoose.Schema(
       default: "New"
     }
   },
-  { timestamps: true, collection: "service_tickets" }
+  { timestamps: true, collection: "service_tickets", toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+serviceRequestSchema.virtual("customer", {
+  ref: "User",
+  localField: "customerId",
+  foreignField: "_id",
+  justOne: true
+});
 
 serviceRequestSchema.pre('save', async function () {
   const doc = this;
