@@ -2,6 +2,7 @@ const Maintenance = require('./maintenance.model');
 const MaintenanceSchedule = require('./maintenanceSchedule.model');
 const Installation = require('../installation/installation.model');
 const ServiceRequest = require('../repair/repair.model');
+const mongoose = require('mongoose');
 const { 
   MAINTENANCE_SCHEDULE_STATUS, 
   MAINTENANCE_STATUS,
@@ -258,8 +259,12 @@ exports.getMaintenanceById = async (req, res) => {
   try {
     const { maintenanceId } = req.params;
     
+    const query = mongoose.Types.ObjectId.isValid(maintenanceId) 
+      ? { $or: [{ _id: maintenanceId }, { ticketId: maintenanceId }] }
+      : { ticketId: maintenanceId };
+
     // First try Maintenance collection
-    let ticket = await Maintenance.findById(maintenanceId)
+    let ticket = await Maintenance.findOne(query)
       .populate('customerId')
       .populate('assignedTeamId')
       .lean();

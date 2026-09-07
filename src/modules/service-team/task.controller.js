@@ -16,22 +16,23 @@ const {
 
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
-const toCustomer = (customerDoc, fallbackAddress = '-') => ({
-  fullName: customerDoc?.fullName || customerDoc?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
-  address: customerDoc?.address || fallbackAddress,
-  phone: customerDoc?.phone || null,
-  email: customerDoc?.email || null,
+const toCustomer = (customerDoc, job, fallbackAddress = '-') => ({
+  name: customerDoc?.fullName || customerDoc?.name || job?.fullName || job?.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+  fullName: customerDoc?.fullName || customerDoc?.name || job?.fullName || job?.customerName || DEFAULTS.UNKNOWN_CUSTOMER,
+  address: customerDoc?.address || job?.address || job?.location || fallbackAddress,
+  phone: customerDoc?.phoneNumber || customerDoc?.phone || job?.phoneNumber || job?.contactNo || job?.phone || null,
+  email: customerDoc?.email || job?.email || null,
 });
 
 const formatTask = (job, source) => {
   const customerDoc = job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
-  const customer = toCustomer(customerDoc, job.location || '-');
+  const customer = toCustomer(customerDoc, job, job.location || '-');
   const ticketId = job.ticketId != null && job.ticketId !== '' ? String(job.ticketId) : String(job._id);
   const serviceType = source === REQUEST_TYPES.INSTALLATION.toLowerCase()
-    ? `${job.productType || 'Installation'}${job.units ? ` - ${job.units} Units` : ''}`
+    ? `${job.productType || job.acUnitModel || 'Installation'}${job.units ? ` - ${job.units} Units` : ''}`
     : source === 'maintenance'
       ? String(job.scheduledServiceType || 'Maintenance')
-      : String(job.productType || job.serviceDescription || 'Service Request');
+      : String(job.productType || job.acUnitModel || job.category || job.repairType || 'Service Request');
 
   return {
     id: ticketId,
@@ -42,8 +43,8 @@ const formatTask = (job, source) => {
     serviceType,
     status: job.status || WORKFLOW_STATUS.PENDING,
     scheduledDate: job.serviceDate || job.date || job.createdAt || null,
-    detailedProductType: job.productType || '',
-    description: job.serviceDescription || job.scheduledServiceType || '',
+    detailedProductType: job.productType || job.acUnitModel || job.category || job.repairType || '',
+    description: job.description || job.serviceDescription || job.scheduledServiceType || '',
     notesFromTechnician: job.notesFromTechnician || job.reviewNotes || '',
     materials: Array.isArray(job.materials) ? job.materials : Array.isArray(job.materialList) ? job.materialList : []
   };
@@ -51,9 +52,9 @@ const formatTask = (job, source) => {
 
 const loadTaskCandidates = async () => {
   const [installations, requests, maintenances] = await Promise.all([
-    Installation.find({}).populate('customerId', 'fullName fullName address phone email').lean(),
-    ServiceRequest.find({}).populate('customerId', 'fullName fullName address phone email').lean(),
-    Maintenance.find({}).populate('customerId', 'fullName fullName address phone email').lean()
+    Installation.find({}).populate('customerId', 'fullName address phoneNumber email').lean(),
+    ServiceRequest.find({}).populate('customerId', 'fullName address phoneNumber email').lean(),
+    Maintenance.find({}).populate('customerId', 'fullName address phoneNumber email').lean()
   ]);
 
   return { installations, requests, maintenances };
@@ -75,12 +76,16 @@ const findTaskRecord = async (id) => {
     queryParts.push({ _id: new mongoose.Types.ObjectId(normalizedId) });
   }
 
+  // Also match by the string ID like SRQ-1000
+  queryParts.push({ serviceRequestRef: normalizedId });
+  queryParts.push({ ticketId: normalizedId }); // if ticketId is stored as string in some collections
+
   const query = { $or: queryParts };
 
   const [installation, request, maintenance] = await Promise.all([
-    Installation.findOne(query).populate('customerId', 'fullName fullName address phone email').lean(),
-    ServiceRequest.findOne(query).populate('customerId', 'fullName fullName address phone email').lean(),
-    Maintenance.findOne(query).populate('customerId', 'fullName fullName address phone email').lean(),
+    Installation.findOne(query).populate('customerId', 'fullName address phoneNumber email').lean(),
+    ServiceRequest.findOne(query).populate('customerId', 'fullName address phoneNumber email').lean(),
+    Maintenance.findOne(query).populate('customerId', 'fullName address phoneNumber email').lean(),
   ]);
 
   if (installation) {
@@ -100,7 +105,7 @@ const findTaskRecord = async (id) => {
     if (report) {
       const linkedModel = report.onModel === 'Installation' ? Installation : ServiceRequest;
       const linkedRecord = await linkedModel.findById(report.serviceRequestId)
-        .populate('customerId', 'fullName fullName address phone email')
+        .populate('customerId', 'fullName address phoneNumber email')
         .lean();
 
       if (linkedRecord) {
@@ -123,14 +128,51 @@ const findTaskRecord = async (id) => {
 };
 
 /**
- * Returns jobs assigned to Service Team B in a normalized task shape.
+ * Returns jobs assigned to the requested Service Team in a normalized task shape.
  */
 exports.getTasks = async (req, res) => {
   try {
     const requestedTeamName = getRequestedTeamName(req, DEFAULT_TEAM_NAME);
-    const { installations, requests, maintenances } = await loadTaskCandidates();
+    
+    const { resolveTeam, normalizeTeamName } = require('../../utils/team.utils');
+    const team = await resolveTeam(requestedTeamName);
 
-    const filtered = [...installations, ...requests, ...maintenances].filter((job) => matchesJobTeam(job, requestedTeamName));
+    if (!team) {
+      return res.json([]);
+    }
+
+    const normalized = normalizeTeamName(requestedTeamName);
+
+    const teamIdStr = String(team._id);
+    const mongoose = require('mongoose');
+    const teamIdObj = mongoose.Types.ObjectId.isValid(teamIdStr) ? new mongoose.Types.ObjectId(teamIdStr) : teamIdStr;
+    const teamNamePattern = new RegExp(`^${normalized}$`, 'i');
+    const fullNamePattern = new RegExp(`^${team.fullName?.trim()?.toLowerCase()}$`, 'i');
+
+    const query = {
+      $or: [
+        { assignedTeamId: teamIdObj },
+        { assignedTeamId: teamIdStr },
+        { assignedTeamName: { $regex: teamNamePattern } },
+        { assignedTeam: { $regex: teamNamePattern } },
+        { teamName: { $regex: teamNamePattern } },
+        { assignedTo: { $regex: teamNamePattern } },
+        ...(team.fullName ? [
+          { assignedTeamName: { $regex: fullNamePattern } },
+          { assignedTeam: { $regex: fullNamePattern } },
+          { teamName: { $regex: fullNamePattern } },
+          { assignedTo: { $regex: fullNamePattern } }
+        ] : [])
+      ]
+    };
+
+    const [installations, requests, maintenances] = await Promise.all([
+      Installation.find(query).populate('customerId', 'fullName address phoneNumber email').lean(),
+      ServiceRequest.find(query).populate('customerId', 'fullName address phoneNumber email').lean(),
+      Maintenance.find(query).populate('customerId', 'fullName address phoneNumber email').lean()
+    ]);
+
+    const filtered = [...installations, ...requests, ...maintenances];
 
     const formatted = filtered.map((job) => {
       if (job.units !== undefined) return formatTask(job, 'installation');
@@ -177,11 +219,23 @@ exports.updateTaskStatus = async (req, res) => {
 
     let updated;
     if (task.source === 'installation') {
-      updated = await Installation.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+      const doc = await Installation.findById(task.record._id);
+      if (doc) {
+        doc.status = normalizedStatus;
+        updated = await doc.save();
+      }
     } else if (task.source === 'maintenance') {
-      updated = await Maintenance.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+      const doc = await Maintenance.findById(task.record._id);
+      if (doc) {
+        doc.status = normalizedStatus;
+        updated = await doc.save();
+      }
     } else {
-      updated = await ServiceRequest.findByIdAndUpdate(task.record._id, { status: normalizedStatus }, { new: true }).lean();
+      const doc = await ServiceRequest.findById(task.record._id);
+      if (doc) {
+        doc.status = normalizedStatus;
+        updated = await doc.save();
+      }
     }
 
     if (task.serviceReport) {
@@ -201,3 +255,47 @@ exports.updateTaskStatus = async (req, res) => {
   }
 };
 
+exports.addAdditionalService = async (req, res) => {
+  try {
+    const { description } = req.body;
+    if (!description) {
+      return res.status(400).json({ success: false, message: 'Description is required' });
+    }
+    const task = await findTaskRecord(req.params.id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    require('../../models/counter.model');
+    const CounterModel = mongoose.model('Counter');
+    let counter = await CounterModel.findOneAndUpdate(
+      { _id: 'serviceTicket' },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    if (!counter) {
+      counter = { seq: 1000 };
+      await CounterModel.updateOne({ _id: 'serviceTicket' }, { $set: { seq: 1000 } }, { upsert: true });
+    } else if (counter.seq < 1000) {
+      counter = await CounterModel.findOneAndUpdate({ _id: 'serviceTicket' }, { $set: { seq: 1000 } }, { new: true });
+    }
+    
+    const serviceRequestRef = `SRQ-${counter.seq}`;
+
+    const ServiceTicket = require('../shared/serviceTicket/serviceTicket.model');
+    const newService = new ServiceTicket({
+      customerId: task.record.customerId?._id || task.record.customerId,
+      description: description,
+      requestType: 'Repair',
+      category: 'repair',
+      status: 'New',
+      preferredDate: new Date(),
+      serviceRequestRef: serviceRequestRef
+    });
+
+    await newService.save();
+    res.json({ success: true, data: newService });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};

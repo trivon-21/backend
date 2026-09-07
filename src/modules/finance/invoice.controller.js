@@ -960,6 +960,49 @@ const getLRepairModel = () => {
     return mongoose.model("L_Repair", s, "repairs");
   }
 };
+//----------------------------------
+// ── Model loaders for status sync (Finance Approved / Finance Rejected) ───────
+const getInstallationModelForSync = () => {
+  try { return mongoose.model("Installation"); }
+  catch {
+    const s = new mongoose.Schema({
+      orderId: mongoose.Schema.Types.ObjectId,
+      inspectionTicketId: mongoose.Schema.Types.ObjectId,
+      status: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("Installation", s, "installations");
+  }
+};
+
+const getRepairModelForSync = () => {
+  try { return mongoose.model("Repair"); }
+  catch {
+    const s = new mongoose.Schema({
+      status: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("Repair", s, "repairs");
+  }
+};
+
+// ── Sync the Installation/Repair record's status after a finance decision ─────
+async function syncFinanceStatus(invoice, newStatus) {
+  try {
+    if (invoice.invoiceType === "REPAIR" && invoice.repairId) {
+      const Repair = getRepairModelForSync();
+      await Repair.findByIdAndUpdate(invoice.repairId, { status: newStatus });
+    } else if (invoice.invoiceType !== "REPAIR" && invoice.orderId) {
+      const Installation = getInstallationModelForSync();
+      await Installation.findOneAndUpdate(
+        { orderId: invoice.orderId },
+        { status: newStatus }
+      );
+    }
+  } catch (e) {
+    console.error("syncFinanceStatus error (non-blocking):", e.message);
+  }
+}
+
+//----------------------------
 
 // ── GET repair invoice queue ──────────────────────────────────────────────────
 exports.getRepairInvoiceQueue = async (req, res) => {
@@ -1230,7 +1273,9 @@ exports.approveInvoicePayment = async (req, res) => {
     invoice.status = "PAID";
     invoice.paidAt = new Date();
     await invoice.save();
-
+//-------------------------------------
+await syncFinanceStatus(invoice, "Finance Approved");
+//-----------------------------------
     await createLog({
       eventType: "INVOICE_PAID",
       paymentType: "INVOICE",
@@ -1277,7 +1322,9 @@ exports.rejectInvoicePayment = async (req, res) => {
     invoice.paymentRejectionReason = reason;
     invoice.paymentSlipUrl = null;
     await invoice.save();
-
+//----------------------------------------
+await syncFinanceStatus(invoice, "Finance Rejected");
+//----------------------------------------
     await createLog({
       eventType: "PAYMENT_REJECTED",
       paymentType: "INVOICE",

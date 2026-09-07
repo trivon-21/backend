@@ -5,6 +5,7 @@ const Inventory = require('../src/models/Inventory');
 const Supplier = require('../src/models/Supplier');
 const {
   LEGACY_CLASS_MAP,
+  INVENTORY_LOCATIONS,
   classifyLegacyItem,
   legacyStockStatus
 } = require('../src/utils/inventory-domain');
@@ -28,7 +29,8 @@ async function migrate() {
       subcategory: item.subcategory || 'Unclassified',
       type: item.type || 'Single',
       unit: item.unit || 'units',
-      location: item.location || 'Warehouse',
+      location: item.location || INVENTORY_LOCATIONS[0].warehouse,
+      binLocation: item.binLocation || INVENTORY_LOCATIONS[0].placementAreas[0],
       maxStockLevel: item.maxStockLevel ?? Math.max(100, Number(item.reorderLevel || 0)),
       status: legacyStockStatus(item.available, item.reorderLevel)
     };

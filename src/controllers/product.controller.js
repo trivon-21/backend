@@ -1,4 +1,67 @@
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
 const Product = require('../models/product.model');
+const Order = require('../models/Order');
+const InstallationOrder = require('../models/installationOrder.model');
+const User = require('../models/User');
+
+// Helper: check if a user is a verified buyer of a specific product (Strict Production Mode)
+async function isVerifiedBuyerForProduct(userId, productId) {
+    if (!userId || !productId) return false;
+    const strUserId = String(userId).trim();
+    const strProdId = String(productId).trim();
+
+    const objectIdUser = mongoose.Types.ObjectId.isValid(strUserId)
+        ? new mongoose.Types.ObjectId(strUserId)
+        : null;
+
+    const objectIdProd = mongoose.Types.ObjectId.isValid(strProdId)
+        ? new mongoose.Types.ObjectId(strProdId)
+        : null;
+
+    const productMatchClause = [
+        { "items.productId": strProdId },
+        { "items.product": strProdId },
+        { $expr: { $in: [strProdId, { $map: { input: "$items", as: "i", in: { $toString: { $ifNull: ["$$i.productId", "$$i.product"] } } } }] } }
+    ];
+
+    // 1. Check Buy Only orders (confirmed / approved by Finance)
+    const buyOnlyOrder = await Order.findOne({
+        $and: [
+            Order.ownerCompatibilityFilter(strUserId),
+            { $or: productMatchClause },
+            {
+                $or: [
+                    { paymentStatus: { $in: ['Approved', 'Confirmed'] } },
+                    { status: { $in: ['Payment Confirmed', 'Confirmed', 'Shipped', 'Delivered', 'Completed'] } }
+                ]
+            }
+        ]
+    }).lean();
+
+    if (buyOnlyOrder) return true;
+
+    // 2. Check Buy & Install orders (confirmed)
+    const buyInstallOrder = await InstallationOrder.findOne({
+        $and: [
+            {
+                $or: [
+                    { userId: strUserId },
+                    { $expr: { $eq: [{ $toString: "$userId" }, strUserId] } }
+                ]
+            },
+            { $or: productMatchClause },
+            {
+                $or: [
+                    { status: { $in: ['Confirmed', 'Installation Scheduled', 'Installation Completed', 'Completed'] } },
+                    { paymentStatus: { $in: ['Approved', 'Confirmed', 'Paid'] } }
+                ]
+            }
+        ]
+    }).lean();
+
+    return !!buyInstallOrder;
+}
 
 // GET /api/products — Fetch all products with filtering and pagination
 const getAllProducts = async (req, res) => {
@@ -142,11 +205,56 @@ const getProductById = async (req, res) => {
     }
 };
 
-// POST /api/products/:id/reviews — Add a new review
+// GET /api/products/:id/review-eligibility — Check if user is eligible to review
+const checkReviewEligibility = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({ success: false, message: 'Invalid product ID' });
+        }
+
+        let user = null;
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            try {
+                const token = authHeader.split(' ')[1];
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                user = await User.findById(decoded.id).select('-passwordHash');
+            } catch (err) {
+                // Token invalid or expired
+            }
+        }
+
+        if (!user) {
+            return res.json({
+                success: true,
+                isEligible: false,
+                isVerifiedBuyer: false,
+                reason: 'NOT_LOGGED_IN'
+            });
+        }
+
+        const isBuyer = await isVerifiedBuyerForProduct(user._id, id);
+        const displayName = [user.fullName, user.lastName].filter(Boolean).join(' ').trim() || user.fullName;
+
+        return res.json({
+            success: true,
+            isEligible: isBuyer,
+            isVerifiedBuyer: isBuyer,
+            userName: displayName,
+            reason: isBuyer ? 'ELIGIBLE' : 'NOT_A_BUYER'
+        });
+    } catch (error) {
+        console.error('checkReviewEligibility error:', error);
+        res.status(500).json({ success: false, message: 'Server error checking review eligibility' });
+    }
+};
+
+// POST /api/products/:id/reviews — Add a new review (Protected + Verified Buyer Only)
 const addProductReview = async (req, res) => {
     try {
         const { id } = req.params;
-        const { userName, rating, comment } = req.body;
+        const { rating, comment, userName } = req.body;
 
         if (!id.match(/^[0-9a-fA-F]{24}$/)) {
             return res.status(400).json({ success: false, message: 'Invalid product ID format' });
@@ -157,10 +265,36 @@ const addProductReview = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Product not found' });
         }
 
+        // Strict Mode Check: Must be a verified buyer of this product
+        const isBuyer = await isVerifiedBuyerForProduct(req.user._id, id);
+        if (!isBuyer) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only verified buyers who have a confirmed order for this product can leave a review.'
+            });
+        }
+
+        const userDisplayName = [req.user.fullName, req.user.lastName].filter(Boolean).join(' ').trim() || req.user.fullName || userName || 'Verified Customer';
+
+        // Prevent duplicate reviews from the same customer
+        const alreadyReviewed = product.reviews.some(r =>
+            (r.userId && r.userId.toString() === req.user._id.toString()) ||
+            (!r.userId && r.userName === userDisplayName)
+        );
+
+        if (alreadyReviewed) {
+            return res.status(400).json({
+                success: false,
+                message: 'You have already submitted a review for this product. You can edit your existing review.'
+            });
+        }
+
         const newReview = {
-            userName,
+            userId: req.user._id,
+            userName: userDisplayName,
             rating: Number(rating),
-            comment,
+            comment: comment ? String(comment).trim() : '',
+            isVerifiedBuyer: true,
             date: new Date()
         };
 
@@ -184,9 +318,119 @@ const addProductReview = async (req, res) => {
     }
 };
 
+// PUT /api/products/:id/reviews/:reviewId — Update review (Author only)
+const updateProductReview = async (req, res) => {
+    try {
+        const { id, reviewId } = req.params;
+        const { rating, comment } = req.body;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/) || !reviewId.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({ success: false, message: 'Invalid product or review ID format' });
+        }
+
+        const product = await Product.findById(id);
+        if (!product) {
+            return res.status(404).json({ success: false, message: 'Product not found' });
+        }
+
+        const review = product.reviews.id(reviewId);
+        if (!review) {
+            return res.status(404).json({ success: false, message: 'Review not found' });
+        }
+
+        // Author ownership check
+        const userDisplayName = [req.user.fullName, req.user.lastName].filter(Boolean).join(' ').trim() || req.user.fullName;
+        const isAuthor = (review.userId && review.userId.toString() === req.user._id.toString()) ||
+                         (!review.userId && review.userName === userDisplayName);
+
+        if (!isAuthor && req.user.role !== 'admin' && req.user.role !== 'super-admin') {
+            return res.status(403).json({ success: false, message: 'You are not authorized to edit this review' });
+        }
+
+        if (rating !== undefined) {
+            const numRating = Number(rating);
+            if (numRating >= 1 && numRating <= 5) {
+                review.rating = numRating;
+            }
+        }
+
+        if (comment !== undefined) {
+            if (!String(comment).trim()) {
+                return res.status(400).json({ success: false, message: 'Review comment cannot be empty' });
+            }
+            review.comment = String(comment).trim();
+        }
+
+        // Save will re-trigger pre('save') to recalculate averageRating
+        await product.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Review updated successfully',
+            data: {
+                averageRating: product.averageRating,
+                reviewCount: product.reviewCount,
+                reviews: product.reviews
+            }
+        });
+    } catch (error) {
+        console.error('updateProductReview error:', error);
+        res.status(500).json({ success: false, message: 'Server error while updating review' });
+    }
+};
+
+// DELETE /api/products/:id/reviews/:reviewId — Delete review (Author only)
+const deleteProductReview = async (req, res) => {
+    try {
+        const { id, reviewId } = req.params;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/) || !reviewId.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({ success: false, message: 'Invalid product or review ID format' });
+        }
+
+        const product = await Product.findById(id);
+        if (!product) {
+            return res.status(404).json({ success: false, message: 'Product not found' });
+        }
+
+        const review = product.reviews.id(reviewId);
+        if (!review) {
+            return res.status(404).json({ success: false, message: 'Review not found' });
+        }
+
+        // Author ownership check
+        const userDisplayName = [req.user.fullName, req.user.lastName].filter(Boolean).join(' ').trim() || req.user.fullName;
+        const isAuthor = (review.userId && review.userId.toString() === req.user._id.toString()) ||
+                         (!review.userId && review.userName === userDisplayName);
+
+        if (!isAuthor && req.user.role !== 'admin' && req.user.role !== 'super-admin') {
+            return res.status(403).json({ success: false, message: 'You are not authorized to delete this review' });
+        }
+
+        product.reviews.pull(reviewId);
+        await product.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Review deleted successfully',
+            data: {
+                averageRating: product.averageRating,
+                reviewCount: product.reviewCount,
+                reviews: product.reviews
+            }
+        });
+    } catch (error) {
+        console.error('deleteProductReview error:', error);
+        res.status(500).json({ success: false, message: 'Server error while deleting review' });
+    }
+};
+
 module.exports = {
     getAllProducts,
     getFilterOptions,
     getProductById,
-    addProductReview
+    checkReviewEligibility,
+    addProductReview,
+    updateProductReview,
+    deleteProductReview
 };

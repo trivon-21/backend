@@ -11,7 +11,7 @@ require('./modules/shared/L_sellingPrice.model');
 require('./modules/shared/L_serviceReport.model');
 require('./modules/shared/L_bankDetails.model');
 require('./modules/shared/L_repair.model');
-require('./modules/shared/L_purchaseRequest.model');
+require('./models/PurchaseRequest');
 
 const app = require('./app');
 const { connectDb } = require('./config');
@@ -79,7 +79,7 @@ const runStartupRepair = async () => {
           console.error(`Error repairing installation ${inst._id}:`, err);
         }
       }
-      console.log(`✅ Startup repair complete. Created ${created} missing schedules.`);
+      console.log(`Startup repair complete. Created ${created} missing schedules.`);
     }
   } catch (err) {
     console.error('⚠️ Startup repair encountered an error (non-fatal):', err.message);

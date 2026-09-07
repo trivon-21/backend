@@ -23,7 +23,7 @@ const {
 const activeStatuses = STATUS_GROUPS.ACTIVE_WORKLOAD;
 const inProgressStatus = EXECUTION_STATUS.IN_PROGRESS;
 
-const { calculateAvailableSlots } = require('../../utils/availability.utils');
+const { calculateAvailableTimeSlots, calculateAvailableSlots } = require('../../utils/availability.utils');
 
 const toCustomerId = (value) => {
   if (!value) return null;
@@ -48,13 +48,13 @@ const normalizeTicketId = (value) => {
 };
 
 const mapTeamMembers = (members) => members.map((member) => ({
-  fullName: member.fullName || 'Unknown Member',
+  name: member.name || member.fullName || 'Unknown Member',
   role: member.role || 'Technician'
 }));
 
 const mapActiveJob = (item, type) => ({
   id: item._id,
-  ticketId: normalizeTicketId(item.ticketId || String(item._id).slice(-4).toUpperCase()),
+  ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || String(item._id).slice(-4).toUpperCase()),
   fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
   location: item.customerId?.address || item.location || '-',
   type,
@@ -124,7 +124,7 @@ exports.getAllTeamsWithMembers = async (req, res) => {
         accumulator.set(key, []);
       }
       accumulator.get(key).push({
-        fullName: member.fullName || 'Unknown Member',
+        name: member.name || member.fullName || 'Unknown Member',
         role: member.role || 'Technician'
       });
       return accumulator;
@@ -243,22 +243,20 @@ exports.getAllTeamsWithMembers = async (req, res) => {
     const data = teams.map((team) => {
       const teamMembers = membersByTeamId.get(String(team._id)) || [];
       const activeJobs = jobsByTeamId.get(String(team._id)) || [];
-      const teamWorkload = team.teamType === 'Inspection Team'
+      const teamWorkload = (team.teamType === 'Inspection Team' || team.teamName?.toLowerCase().includes('inspection'))
         ? (inspectionWorkloadByTeamId.get(String(team._id)) || [])
         : (serviceInstallWorkloadByTeamId.get(String(team._id)) || []);
-      const availableSlots = (team.teamType === 'Service Team' || team.teamType === 'Inspection Team')
-        ? calculateAvailableSlots(teamWorkload, { maxSlots: 4, includeToday: false })
-        : [];
+      const availableSlots = calculateAvailableTimeSlots(teamWorkload, { maxSlots: 4, includeToday: false });
       const inProgressCount = activeJobs.length;
       const derivedStatus = inProgressCount > 0 ? TEAM_STATUS.BUSY : TEAM_STATUS.AVAILABLE;
 
       return {
         _id: team._id,
         teamName: team.teamName,
-        teamType: team.teamType,
+        teamType: team.teamType || (team.specialization === 'Installations' ? 'Service Team' : 'Service Team'),
         status: derivedStatus,
         activeJobsCount: inProgressCount,
-        availableSlots: availableSlots.map((slot) => slot.toISOString()),
+        availableSlots: availableSlots,
         members: teamMembers,
         activeJobs
       };
@@ -277,17 +275,17 @@ exports.getAllTeamsWithMembers = async (req, res) => {
 exports.getPendingAssignments = async (req, res) => {
   try {
     const [serviceRequests, installations, inspections, maintenances] = await Promise.all([
-      ServiceRequest.find({ status: WORKFLOW_STATUS.MATERIALS_READY })
+      ServiceRequest.find({ status: { $in: [WORKFLOW_STATUS.MATERIALS_READY, WORKFLOW_STATUS.SENT_TO_IM] } })
         .populate('customerId', 'fullName name address')
         .lean(),
-      Installation.find({ status: WORKFLOW_STATUS.MATERIALS_READY })
+      Installation.find({ status: { $in: [WORKFLOW_STATUS.MATERIALS_READY, WORKFLOW_STATUS.SENT_TO_IM] } })
         .populate('customerId', 'fullName name address')
         .lean(),
       // Include inspections that have been approved by Finance and are pending assignment
       Inspection.find({ status: WORKFLOW_STATUS.FINANCE_APPROVED })
         .populate('customerId', 'fullName name address')
         .lean(),
-      Maintenance.find({ status: MAINTENANCE_STATUS.MATERIALS_READY })
+      Maintenance.find({ status: { $in: [MAINTENANCE_STATUS.MATERIALS_READY, MAINTENANCE_STATUS.SENT_TO_IM] } })
         .populate('customerId', 'fullName name address')
         .lean()
     ]);
@@ -300,41 +298,41 @@ exports.getPendingAssignments = async (req, res) => {
     const warehouseByJob = new Map(reservedRequests.map(request => [String(request.jobId), request]));
 
     const data = [
-      ...serviceRequests.filter(item => warehouseByJob.has(String(item._id))).map((item) => ({
+      ...serviceRequests.filter(item => item.status === WORKFLOW_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
-        ticketId: normalizeTicketId(item.ticketId || item._id),
+        ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.SERVICE,
         productType: item.productType || '-',
-        warehouseStatusVersion: warehouseByJob.get(String(item._id)).statusVersion,
+        warehouseStatusVersion: warehouseByJob.has(String(item._id)) ? warehouseByJob.get(String(item._id)).statusVersion : 0,
       })),
-      ...installations.filter(item => warehouseByJob.has(String(item._id))).map((item) => ({
+      ...installations.filter(item => item.status === WORKFLOW_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
-        ticketId: normalizeTicketId(item.ticketId || item._id),
+        ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.INSTALLATION,
         productType: item.productType || '-',
-        warehouseStatusVersion: warehouseByJob.get(String(item._id)).statusVersion,
+        warehouseStatusVersion: warehouseByJob.has(String(item._id)) ? warehouseByJob.get(String(item._id)).statusVersion : 0,
       })),
       // Treat inspections as a pending job type so they appear in the assign modal
       ...inspections.map((item) => ({
         _id: item._id,
-        ticketId: normalizeTicketId(item.ticketId || item._id),
+        ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: REQUEST_TYPES.INSPECTION,
         productType: item.productType || '-'
       })),
-      ...maintenances.filter(item => warehouseByJob.has(String(item._id))).map((item) => ({
+      ...maintenances.filter(item => item.status === MAINTENANCE_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
-        ticketId: normalizeTicketId(item.ticketId || item._id),
+        ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: 'Maintenance',
         productType: item.productType || 'Customer Initiated',
-        warehouseStatusVersion: warehouseByJob.get(String(item._id)).statusVersion,
+        warehouseStatusVersion: warehouseByJob.has(String(item._id)) ? warehouseByJob.get(String(item._id)).statusVersion : 0,
       }))
     ];
 
@@ -391,13 +389,21 @@ exports.assignServiceRequestToTeam = async (req, res) => {
     // should be set. Only set `assignedTeam` when the provided `teamId` is a
     // 24-character hex string (typical Mongo ObjectId). This avoids trying to
     // write numeric IDs into ObjectId fields (which causes BSON cast errors).
+    const existingDoc = await Model.findById(resolvedServiceRequestId).lean();
+    if (!existingDoc) {
+      const notFoundType = isInstallation ? 'Installation' : isMaintenance ? 'Maintenance' : isInspection ? 'Inspection' : 'Service request';
+      return res.status(404).json({ success: false, error: `${notFoundType} not found.` });
+    }
+
     const isObjectIdHex = /^[a-fA-F0-9]{24}$/.test(String(resolvedTeamIdStr));
     const assignedTeamFieldName = isInstallation ? 'assignedTeamRef' : 'assignedTeam';
     const updatePayload = {
-      ...(isObjectIdHex ? { [assignedTeamFieldName]: mongoose.Types.ObjectId(String(resolvedTeamIdStr)) } : {}),
+      ...(isObjectIdHex ? { [assignedTeamFieldName]: new mongoose.Types.ObjectId(String(resolvedTeamIdStr)) } : {}),
       assignedTeamId: team._id,
       assignedTeamName: team.teamName,
-      status: targetStatus
+      status: targetStatus,
+      serviceDate: existingDoc.preferredDate || new Date(),
+      timeSlot: existingDoc.preferredTimeSlot || "9:00 AM - 11:00 AM"
     };
 
     const warehouseJobType = isInstallation ? 'Installation' : isMaintenance ? 'Maintenance' : 'Repair';
@@ -406,14 +412,17 @@ exports.assignServiceRequestToTeam = async (req, res) => {
       jobType: warehouseJobType,
       status: 'reserved',
     });
-    if (!isInspection && !warehouseRequest) {
+    
+    const isSentToIM = existingDoc.status === WORKFLOW_STATUS.SENT_TO_IM || existingDoc.status === MAINTENANCE_STATUS.SENT_TO_IM || existingDoc.status === 'Sent to IM';
+    
+    if (!isInspection && !isSentToIM && !warehouseRequest) {
       return res.status(409).json({
         success: false,
         code: 'MATERIALS_NOT_RESERVED',
-        error: 'The complete material kit must be reserved before assigning a service team.',
+        error: 'The complete material kit must be reserved before assigning a service team (unless status is Sent to IM).',
       });
     }
-    if (warehouseRequest && warehouseStatusVersion !== undefined
+    if (!isSentToIM && warehouseRequest && warehouseStatusVersion !== undefined
       && Number(warehouseStatusVersion) !== Number(warehouseRequest.statusVersion)) {
       return res.status(409).json({
         success: false,
@@ -430,10 +439,18 @@ exports.assignServiceRequestToTeam = async (req, res) => {
       // Use the raw collection update to avoid Mongoose casting errors when
       // document schemas expect ObjectId but the environment stores numeric
       // team IDs. This performs a direct MongoDB update.
-      const filter = { _id: mongoose.Types.ObjectId(resolvedServiceRequestId) };
+      const filter = { _id: new mongoose.Types.ObjectId(resolvedServiceRequestId) };
       await mongoose.connection.transaction(async session => {
-        const currentStatus = isInspection ? WORKFLOW_STATUS.FINANCE_APPROVED : WORKFLOW_STATUS.MATERIALS_READY;
-        const resUpdate = await Model.collection.updateOne({ ...filter, status: currentStatus }, { $set: updatePayload }, { session });
+        let allowedStatuses = [];
+        if (isInspection) {
+            allowedStatuses = [WORKFLOW_STATUS.FINANCE_APPROVED];
+        } else if (isInstallation || !isMaintenance) {
+            allowedStatuses = [WORKFLOW_STATUS.MATERIALS_READY, WORKFLOW_STATUS.SENT_TO_IM];
+        } else {
+            allowedStatuses = [MAINTENANCE_STATUS.MATERIALS_READY, MAINTENANCE_STATUS.SENT_TO_IM];
+        }
+        
+        const resUpdate = await Model.collection.updateOne({ ...filter, status: { $in: allowedStatuses } }, { $set: updatePayload }, { session });
         if (resUpdate.matchedCount === 0) {
           const error = new Error('The job is no longer ready for team assignment.');
           error.statusCode = 409;
@@ -539,7 +556,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
 
       activeJobs = inspections.map((item) => ({
         id: item._id,
-        ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
+        ticketId: item.serviceRequestRef || item.ticketId || `#${String(item._id).slice(-4).toUpperCase()}`,
         fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         type: REQUEST_TYPES.INSPECTION,
@@ -575,7 +592,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
       activeJobs = [
         ...services.map((item) => ({
           id: item._id,
-          ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
+          ticketId: item.serviceRequestRef || item.ticketId || `#${String(item._id).slice(-4).toUpperCase()}`,
           fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
           type: REQUEST_TYPES.SERVICE,
@@ -583,7 +600,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
         })),
         ...installations.map((item) => ({
           id: item._id,
-          ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
+          ticketId: item.serviceRequestRef || item.ticketId || `#${String(item._id).slice(-4).toUpperCase()}`,
           fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
           type: REQUEST_TYPES.INSTALLATION,
@@ -591,7 +608,7 @@ exports.getTeamScheduleDetails = async (req, res) => {
         })),
         ...maintenances.map((item) => ({
           id: item._id,
-          ticketId: `#${String(item._id).slice(-4).toUpperCase()}`,
+          ticketId: item.serviceRequestRef || item.ticketId || `#${String(item._id).slice(-4).toUpperCase()}`,
           fullName: item.customerId?.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
           location: item.customerId?.address || item.location || '-',
           type: 'Maintenance',

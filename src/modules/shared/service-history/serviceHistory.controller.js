@@ -122,6 +122,12 @@ const findTaskRecord = async (Model, id) => {
   if (mongoose.Types.ObjectId.isValid(normalizedId)) {
     orFilters.push({ _id: new mongoose.Types.ObjectId(normalizedId) });
   }
+  orFilters.push({ ticketId: normalizedId });
+  orFilters.push({ ticketRef: normalizedId });
+  orFilters.push({ serviceRequestRef: normalizedId });
+  orFilters.push({ serviceRequestId: normalizedId });
+
+  if (orFilters.length === 0) return null;
 
   return Model.findOne({ $or: orFilters }).lean();
 };
@@ -189,7 +195,8 @@ exports.getCustomerHistory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No record found for the provided source and id.' });
     }
 
-    const anchorCustomerIdStr = toCustomerIdString(anchor.customerId);
+    const rawAnchorCustomer = anchor.customerId || anchor.customer || anchor.userId;
+    const anchorCustomerIdStr = toCustomerIdString(rawAnchorCustomer);
     const anchorCustomerId = anchorCustomerIdStr;
 
     const customerDoc = await resolveCustomerById(anchorCustomerId);
@@ -204,26 +211,35 @@ exports.getCustomerHistory = async (req, res) => {
       customerIdCandidates.push(new mongoose.Types.ObjectId(anchorCustomerIdStr));
     }
 
-    const customerIdQuery = { customerId: { $in: customerIdCandidates } };
+    const customerQuery = {
+      $or: [
+        { customerId: { $in: customerIdCandidates } },
+        { customer: { $in: customerIdCandidates } },
+        { userId: { $in: customerIdCandidates } }
+      ]
+    };
 
     /**
      * Filters records to the same anchor customer regardless of source schema.
      */
-    const isSameCustomer = (item) => toCustomerIdString(item?.customerId) === anchorCustomerIdStr;
+    const isSameCustomer = (item) => {
+      const itemCustomer = item?.customerId || item?.customer || item?.userId;
+      return toCustomerIdString(itemCustomer) === anchorCustomerIdStr;
+    };
 
     const [services, installations, inspections] = await Promise.all([
       ServiceRequest.find({
-        ...customerIdQuery,
+        ...customerQuery,
         status: { $in: visibleStatuses }
       }).populate('assignedTeam', 'teamName').lean(),
       Installation.find({
-        ...customerIdQuery,
+        ...customerQuery,
         status: { $in: visibleStatuses }
       }).populate('assignedTeam', 'teamName').lean(),
       Inspection.find({
-        ...customerIdQuery,
+        ...customerQuery,
         status: { $in: visibleStatuses }
-      }).populate('assignedTeam', 'teamName').lean(),
+      }).populate('assignedTeam', 'teamName').lean()
     ]);
 
     const filteredServices = services.filter(isSameCustomer);
@@ -247,11 +263,12 @@ exports.getCustomerHistory = async (req, res) => {
         [EXECUTION_STATUS.IN_PROGRESS.toLowerCase()]: EXECUTION_STATUS.IN_PROGRESS,
         [EXECUTION_STATUS.SCHEDULED.toLowerCase()]: EXECUTION_STATUS.SCHEDULED,
         [EXECUTION_STATUS.ON_HOLD.toLowerCase()]: EXECUTION_STATUS.ON_HOLD,
+        'inspected': EXECUTION_STATUS.COMPLETED,
       };
       const normalizedStatus = statusMap[normalizedKey] || EXECUTION_STATUS.SCHEDULED;
 
       return {
-        ticketId: `#${String(item._id)}`,
+        ticketId: item.serviceRequestId || item.serviceRequestRef || item.ticketId || item.ticketRef || `#${String(item._id)}`,
         serviceType: type,
         productType: item.productType || 'N/A',
         date: normalizedStatus === EXECUTION_STATUS.ASSIGNED ? null : (item.scheduledDate || item.serviceDate || item.date || item.createdAt || null),
@@ -262,7 +279,7 @@ exports.getCustomerHistory = async (req, res) => {
         warrantyStatus: type === REQUEST_TYPES.INSPECTION
           ? 'Warranty Period not started yet'
           : type === REQUEST_TYPES.INSTALLATION
-            ? 'Warranty Activated'
+            ? (normalizedStatus === EXECUTION_STATUS.COMPLETED ? 'Warranty Activated' : 'Warranty Period not started yet')
             : (item.isUnderWarranty ? 'Warranty Claimed' : 'Warranty Not Claimed')
       };
     };
@@ -279,14 +296,14 @@ exports.getCustomerHistory = async (req, res) => {
 
     const latestInstallation = teamFilteredInstallations
       .slice()
-      .sort((a, b) => new Date(b.date || b.serviceDate || b.createdAt || 0).getTime() - new Date(a.date || a.serviceDate || a.createdAt || 0).getTime())[0];
+      .sort((a, b) => new Date(b.serviceDate || b.date || b.createdAt || 0).getTime() - new Date(a.serviceDate || a.date || a.createdAt || 0).getTime())[0];
 
     res.json({
       success: true,
       data: {
         customerId: anchorCustomerIdStr,
         summary: {
-          fullName,
+          customerName: fullName,
           location: customerAddress,
           productType: anchor.productType || latestInstallation?.productType || 'N/A',
           installationDate: anchor.serviceDate || anchor.date || latestInstallation?.serviceDate || latestInstallation?.date || null

@@ -158,7 +158,14 @@ exports.getAllInspections = async (req, res) => {
 exports.getInspectionById = async (req, res) => {
   try {
     const InspectionTicket = getTicketModel();
-    const ticket = await InspectionTicket.findById(req.params.id)
+    const id = req.params.id;
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+    const ticket = await InspectionTicket.findOne({
+      $or: [
+        { _id: isValidId ? id : null },
+        { ticketRef: id }
+      ]
+    })
       .populate("customerId", "name fullName email address phoneNumber")
       .populate("orderId", "itemName productType location")
       .lean();
@@ -196,8 +203,15 @@ exports.updateInspectionStatus = async (req, res) => {
     }
 
     const InspectionTicket = getTicketModel();
-    const updated = await InspectionTicket.findByIdAndUpdate(
-      req.params.id,
+    const id = req.params.id;
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+    const updated = await InspectionTicket.findOneAndUpdate(
+      {
+        $or: [
+          { _id: isValidId ? id : null },
+          { ticketRef: id }
+        ]
+      },
       { status },
       { new: true }
     );
