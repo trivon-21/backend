@@ -292,3 +292,245 @@ exports.submitReactivationRequest = async (req, res) => {
     return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
+/**
+ * List inquiries
+ * GET /api/super-admin/inquiries
+ */
+exports.listInquiries = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, inquiryType, status, search } = req.query;
+    const result = await service.listInquiries({
+      page,
+      limit,
+      inquiryType: inquiryType || null,
+      status: status || null,
+      search: search || null
+    });
+    return res.json({
+      message: "Inquiries retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Update inquiry status
+ * PATCH /api/super-admin/inquiries/:id/status
+ */
+exports.updateInquiryStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+    const inquiry = await service.updateInquiryStatus(id, status);
+    return res.json({
+      message: "Inquiry status updated successfully",
+      data: inquiry
+    });
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Reply to inquiry
+ * POST /api/super-admin/inquiries/:id/reply
+ */
+exports.replyInquiry = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    if (!message || message.trim().length === 0) {
+      return res.status(400).json({ message: "Message is required" });
+    }
+    const inquiry = await service.replyInquiry(id, message.trim());
+    return res.json({
+      message: "Reply added successfully",
+      data: inquiry
+    });
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * List service requests
+ * GET /api/super-admin/service-requests
+ */
+exports.listServiceRequests = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, serviceType, status, search } = req.query;
+    const result = await service.listServiceRequests({
+      page,
+      limit,
+      serviceType: serviceType || null,
+      status: status || null,
+      search: search || null
+    });
+    return res.json({
+      message: "Service requests retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Update service request status
+ * PATCH /api/super-admin/service-requests/:id/status
+ */
+exports.updateServiceRequestStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+    const serviceRequest = await service.updateServiceRequestStatus(id, status);
+    return res.json({
+      message: "Service request status updated successfully",
+      data: serviceRequest
+    });
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * List orders
+ * GET /api/super-admin/orders
+ */
+exports.listOrders = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, orderType, status, paymentStatus, search } = req.query;
+    const result = await service.listOrders({
+      page,
+      limit,
+      orderType: orderType || null,
+      status: status || null,
+      paymentStatus: paymentStatus || null,
+      search: search || null
+    });
+    return res.json({
+      message: "Orders retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Update order status
+ * PATCH /api/super-admin/orders/:id/status
+ */
+exports.updateOrderStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, paymentStatus, orderStatus } = req.body;
+    const order = await service.updateOrderStatus(id, { status, paymentStatus, orderStatus });
+    return res.json({
+      message: "Order status updated successfully",
+      data: order
+    });
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Create / Schedule Global Notification
+ * POST /api/super-admin/global-notifications
+ */
+exports.createGlobalNotification = async (req, res) => {
+  try {
+    const notification = await service.createGlobalNotification(req.body, req.user?._id);
+    return res.status(201).json({
+      message: notification.isScheduled ? "Notification scheduled successfully" : "Notification broadcasted successfully",
+      data: notification
+    });
+  } catch (err) {
+    return res.status(400).json({ message: err.message });
+  }
+};
+
+/**
+ * List Global Notifications
+ * GET /api/super-admin/global-notifications
+ */
+exports.listGlobalNotifications = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status, type, search } = req.query;
+    const result = await service.listGlobalNotifications({
+      page,
+      limit,
+      status: status || null,
+      type: type || null,
+      search: search || null
+    });
+    return res.json({
+      message: "Global notifications retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/**
+ * Cancel Scheduled Global Notification
+ * PATCH /api/super-admin/global-notifications/:id/cancel
+ */
+exports.cancelGlobalNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const notification = await service.cancelGlobalNotification(id);
+    return res.json({
+      message: "Scheduled notification cancelled successfully",
+      data: notification
+    });
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    return res.status(400).json({ message: err.message });
+  }
+};
+
+/**
+ * Delete Global Notification
+ * DELETE /api/super-admin/global-notifications/:id
+ */
+exports.deleteGlobalNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await service.deleteGlobalNotification(id);
+    return res.json(result);
+  } catch (err) {
+    if (err.message.includes("not found")) {
+      return res.status(404).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+
+

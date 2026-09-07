@@ -5,6 +5,7 @@ const User = require("../../models/User");
 const Order = require("../../models/Order");
 const Inquiry = require("../../models/Inquiry");
 const ServiceRequest = require("../../models/ServiceRequest");
+const GlobalNotification = require("../../models/GlobalNotification");
 
 // Email transporter setup
 const transporter = nodemailer.createTransport({
@@ -598,6 +599,350 @@ function formatUserResponse(user) {
 }
 
 /**
+ * List inquiries with pagination, filtering, and search
+ */
+exports.listInquiries = async (options = {}) => {
+  const { page = 1, limit = 10, inquiryType, status, search } = options;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  let query = {};
+  if (inquiryType) query.inquiryType = inquiryType;
+  if (status) query.status = status;
+  if (search) {
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { inquiryRef: searchRegex },
+      { name: searchRegex },
+      { email: searchRegex },
+      { phone: searchRegex },
+      { subject: searchRegex },
+      { message: searchRegex }
+    ];
+  }
+
+  const [inquiries, total] = await Promise.all([
+    Inquiry.find(query)
+      .populate("customer", "fullName email phoneNumber role")
+      .skip(skip)
+      .limit(limitNum)
+      .sort({ createdAt: -1 }),
+    Inquiry.countDocuments(query)
+  ]);
+
+  return {
+    data: inquiries,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum)
+    }
+  };
+};
+
+/**
+ * Update inquiry status
+ */
+exports.updateInquiryStatus = async (inquiryId, status) => {
+  const inquiry = await Inquiry.findById(inquiryId);
+  if (!inquiry) throw new Error("Inquiry not found");
+  inquiry.status = status;
+  await inquiry.save();
+  return inquiry;
+};
+
+/**
+ * Reply to inquiry
+ */
+exports.replyInquiry = async (inquiryId, message) => {
+  const inquiry = await Inquiry.findById(inquiryId);
+  if (!inquiry) throw new Error("Inquiry not found");
+  inquiry.thread.push({
+    sender: "Support",
+    message
+  });
+  if (inquiry.status === "Ongoing") {
+    inquiry.status = "Addressed";
+  }
+  await inquiry.save();
+  return inquiry;
+};
+
+/**
+ * List service requests with pagination, filtering, and search
+ */
+exports.listServiceRequests = async (options = {}) => {
+  const { page = 1, limit = 10, serviceType, status, search } = options;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  let query = {};
+  if (serviceType) query.serviceType = serviceType;
+  if (status) query.status = status;
+  if (search) {
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { serviceRequestRef: searchRegex },
+      { acUnitModel: searchRegex },
+      { acUnitSerial: searchRegex },
+      { problemDescription: searchRegex }
+    ];
+  }
+
+  const [requests, total] = await Promise.all([
+    ServiceRequest.find(query)
+      .populate("customer", "fullName email phoneNumber address")
+      .skip(skip)
+      .limit(limitNum)
+      .sort({ createdAt: -1 }),
+    ServiceRequest.countDocuments(query)
+  ]);
+
+  return {
+    data: requests,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum)
+    }
+  };
+};
+
+/**
+ * Update service request status
+ */
+exports.updateServiceRequestStatus = async (requestId, status) => {
+  const req = await ServiceRequest.findById(requestId);
+  if (!req) throw new Error("Service request not found");
+  req.status = status;
+  await req.save();
+  return req;
+};
+
+/**
+ * List orders with pagination, filtering, and search
+ */
+exports.listOrders = async (options = {}) => {
+  const { page = 1, limit = 10, orderType, status, paymentStatus, search } = options;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  let query = {};
+  if (orderType) query.orderType = orderType;
+  if (status) query.status = status;
+  if (paymentStatus) query.paymentStatus = paymentStatus;
+  if (search) {
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { orderRef: searchRegex },
+      { orderNumber: searchRegex },
+      { itemName: searchRegex },
+      { "customerInfo.fullName": searchRegex },
+      { "customerInfo.email": searchRegex }
+    ];
+  }
+
+  const [orders, total] = await Promise.all([
+    Order.find(query)
+      .populate("customer", "fullName email phoneNumber address")
+      .skip(skip)
+      .limit(limitNum)
+      .sort({ createdAt: -1 }),
+    Order.countDocuments(query)
+  ]);
+
+  return {
+    data: orders,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum)
+    }
+  };
+};
+
+/**
+ * Update order status
+ */
+exports.updateOrderStatus = async (orderId, data) => {
+  const order = await Order.findById(orderId);
+  if (!order) throw new Error("Order not found");
+  if (data.status) order.status = data.status;
+  if (data.paymentStatus) order.paymentStatus = data.paymentStatus;
+  if (data.orderStatus) order.orderStatus = data.orderStatus;
+  await order.save();
+  return order;
+};
+
+/**
+ * Internal helper to dispatch a broadcast notification to target users
+ */
+async function dispatchNotification(broadcast) {
+  let userQuery = { isActive: true };
+  if (!broadcast.targetRoles.includes("ALL") && broadcast.targetRoles.length > 0) {
+    userQuery.role = { $in: broadcast.targetRoles };
+  }
+
+  const matchingCount = await User.countDocuments(userQuery);
+
+  const notifObj = {
+    type: broadcast.type || "general",
+    title: broadcast.title,
+    message: broadcast.message,
+    actionUrl: broadcast.actionUrl || "",
+    read: false,
+    createdAt: new Date()
+  };
+
+  if (matchingCount > 0) {
+    await User.updateMany(userQuery, {
+      $push: {
+        notifications: {
+          $each: [notifObj],
+          $position: 0,
+          $slice: 200
+        }
+      }
+    });
+  }
+
+  broadcast.status = "Sent";
+  broadcast.sentAt = new Date();
+  broadcast.recipientCount = matchingCount;
+  await broadcast.save();
+  return broadcast;
+}
+
+/**
+ * Create / Schedule a Global Notification
+ */
+exports.createGlobalNotification = async (data, creatorUserId) => {
+  const { title, message, type = "general", priority = "normal", actionUrl = "", targetRoles = ["ALL"], isScheduled = false, scheduledFor } = data;
+
+  if (!title || !message) {
+    throw new Error("Title and message are required");
+  }
+
+  const roles = Array.isArray(targetRoles) && targetRoles.length > 0 ? targetRoles : ["ALL"];
+  const shouldSchedule = Boolean(isScheduled && scheduledFor && new Date(scheduledFor) > new Date());
+
+  const broadcast = new GlobalNotification({
+    title: title.trim(),
+    message: message.trim(),
+    type,
+    priority,
+    actionUrl: actionUrl ? actionUrl.trim() : "",
+    targetRoles: roles,
+    isScheduled: shouldSchedule,
+    scheduledFor: shouldSchedule ? new Date(scheduledFor) : null,
+    status: shouldSchedule ? "Scheduled" : "Draft",
+    createdBy: creatorUserId || null
+  });
+
+  await broadcast.save();
+
+  if (!shouldSchedule) {
+    await dispatchNotification(broadcast);
+  }
+
+  return broadcast;
+};
+
+/**
+ * List global notifications with filters and pagination
+ */
+exports.listGlobalNotifications = async (options = {}) => {
+  const { page = 1, limit = 10, status, type, search } = options;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  let query = {};
+  if (status) query.status = status;
+  if (type) query.type = type;
+  if (search) {
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { title: searchRegex },
+      { message: searchRegex },
+      { targetRoles: searchRegex }
+    ];
+  }
+
+  const [notifications, total] = await Promise.all([
+    GlobalNotification.find(query)
+      .populate("createdBy", "fullName email role")
+      .skip(skip)
+      .limit(limitNum)
+      .sort({ createdAt: -1 }),
+    GlobalNotification.countDocuments(query)
+  ]);
+
+  return {
+    data: notifications,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum)
+    }
+  };
+};
+
+/**
+ * Cancel a scheduled global notification
+ */
+exports.cancelGlobalNotification = async (notificationId) => {
+  const broadcast = await GlobalNotification.findById(notificationId);
+  if (!broadcast) throw new Error("Broadcast notification not found");
+  if (broadcast.status !== "Scheduled") {
+    throw new Error(`Cannot cancel notification with status '${broadcast.status}'`);
+  }
+  broadcast.status = "Cancelled";
+  await broadcast.save();
+  return broadcast;
+};
+
+/**
+ * Delete a global notification
+ */
+exports.deleteGlobalNotification = async (notificationId) => {
+  const broadcast = await GlobalNotification.findByIdAndDelete(notificationId);
+  if (!broadcast) throw new Error("Broadcast notification not found");
+  return { message: "Global notification deleted successfully" };
+};
+
+/**
+ * Background worker task: Process due scheduled notifications
+ */
+exports.processScheduledNotifications = async () => {
+  try {
+    const now = new Date();
+    const dueNotifications = await GlobalNotification.find({
+      status: "Scheduled",
+      scheduledFor: { $lte: now }
+    });
+
+    for (const notif of dueNotifications) {
+      await dispatchNotification(notif);
+    }
+    return dueNotifications.length;
+  } catch (err) {
+    console.error("Error processing scheduled notifications:", err.message);
+    return 0;
+  }
+};
+
+/**
  * Export formatUserResponse to be accessible as exports.formatUserResponse
  */
 exports.formatUserResponse = formatUserResponse;
+
+
+
