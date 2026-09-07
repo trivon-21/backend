@@ -274,18 +274,23 @@ exports.getAllTeamsWithMembers = async (req, res) => {
 
 exports.getPendingAssignments = async (req, res) => {
   try {
+    const materialsReadyRegex = new RegExp(`^\\s*${WORKFLOW_STATUS.MATERIALS_READY}\\s*$`, 'i');
+    const sentToImRegex = new RegExp(`^\\s*${WORKFLOW_STATUS.SENT_TO_IM}\\s*$`, 'i');
+    const maintMaterialsReadyRegex = new RegExp(`^\\s*${MAINTENANCE_STATUS.MATERIALS_READY}\\s*$`, 'i');
+    const maintSentToImRegex = new RegExp(`^\\s*${MAINTENANCE_STATUS.SENT_TO_IM}\\s*$`, 'i');
+
     const [serviceRequests, installations, inspections, maintenances] = await Promise.all([
-      ServiceRequest.find({ status: { $in: [WORKFLOW_STATUS.MATERIALS_READY, WORKFLOW_STATUS.SENT_TO_IM] } })
+      ServiceRequest.find({ status: { $in: [materialsReadyRegex, sentToImRegex] } })
         .populate('customerId', 'fullName name address')
         .lean(),
-      Installation.find({ status: { $in: [WORKFLOW_STATUS.MATERIALS_READY, WORKFLOW_STATUS.SENT_TO_IM] } })
+      Installation.find({ status: { $in: [materialsReadyRegex, sentToImRegex] } })
         .populate('customerId', 'fullName name address')
         .lean(),
       // Include inspections that have been approved by Finance and are pending assignment
-      Inspection.find({ status: WORKFLOW_STATUS.FINANCE_APPROVED })
+      Inspection.find({ status: new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_APPROVED}\\s*$`, 'i') })
         .populate('customerId', 'fullName name address')
         .lean(),
-      Maintenance.find({ status: { $in: [MAINTENANCE_STATUS.MATERIALS_READY, MAINTENANCE_STATUS.SENT_TO_IM] } })
+      Maintenance.find({ status: { $in: [maintMaterialsReadyRegex, maintSentToImRegex] } })
         .populate('customerId', 'fullName name address')
         .lean()
     ]);
@@ -298,7 +303,7 @@ exports.getPendingAssignments = async (req, res) => {
     const warehouseByJob = new Map(reservedRequests.map(request => [String(request.jobId), request]));
 
     const data = [
-      ...serviceRequests.filter(item => item.status === WORKFLOW_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
+      ...serviceRequests.filter(item => sentToImRegex.test(item.status || '') || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
@@ -307,7 +312,7 @@ exports.getPendingAssignments = async (req, res) => {
         productType: item.productType || '-',
         warehouseStatusVersion: warehouseByJob.has(String(item._id)) ? warehouseByJob.get(String(item._id)).statusVersion : 0,
       })),
-      ...installations.filter(item => item.status === WORKFLOW_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
+      ...installations.filter(item => sentToImRegex.test(item.status || '') || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
@@ -325,13 +330,13 @@ exports.getPendingAssignments = async (req, res) => {
         requestType: REQUEST_TYPES.INSPECTION,
         productType: item.productType || '-'
       })),
-      ...maintenances.filter(item => item.status === MAINTENANCE_STATUS.SENT_TO_IM || warehouseByJob.has(String(item._id))).map((item) => ({
+      ...maintenances.filter(item => maintSentToImRegex.test(item.status || '') || warehouseByJob.has(String(item._id))).map((item) => ({
         _id: item._id,
         ticketId: normalizeTicketId(item.serviceRequestId || item.serviceRequestRef || item.ticketId || item._id),
         fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
         location: item.customerId?.address || item.location || '-',
         requestType: 'Maintenance',
-        productType: item.productType || 'Customer Initiated',
+        productType: item.maintenanceType === 'Company Initiated' ? 'Company Initiated' : 'Customer Initiated',
         warehouseStatusVersion: warehouseByJob.has(String(item._id)) ? warehouseByJob.get(String(item._id)).statusVersion : 0,
       }))
     ];

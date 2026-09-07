@@ -643,7 +643,13 @@ exports.sendToInventoryManager = async (req, res) => {
         if (req.body.isFreeOfCharge !== undefined) docObj.isFreeOfCharge = req.body.isFreeOfCharge;
         
         if (requestType === 'Maintenance') {
-          newEntry = new Maintenance({ ...docObj, materialList: materials || newReq.materials || [], totalEstimatedCost: 0 });
+          newEntry = new Maintenance({ 
+            ...docObj, 
+            ticketId: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId || `MS-${String(docObj._id).slice(-8).toUpperCase()}`,
+            maintenanceType: 'Customer Initiated',
+            materialList: materials || newReq.materials || [], 
+            totalEstimatedCost: 0 
+          });
         } else if (requestType === REQUEST_TYPES.INSTALLATION) {
           newEntry = new Installation(docObj);
         } else {

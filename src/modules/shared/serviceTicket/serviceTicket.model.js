@@ -82,6 +82,7 @@ serviceTicketSchema.post('findOneAndUpdate', async function(doc) {
       const maintenanceEntry = new Maintenance({
         ...docObj,
         ticketId: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId,
+        maintenanceType: 'Customer Initiated',
         materialList: doc.materials || [],
         totalEstimatedCost: 0
       });

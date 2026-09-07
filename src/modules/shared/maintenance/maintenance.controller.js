@@ -245,7 +245,9 @@ exports.getAllMaintenance = async (req, res) => {
     const mappedTickets = tickets.map(ticket => ({
       ...ticket,
       isCustomerInitiated: ticket.maintenanceType === 'Customer Initiated' || ticket.isCustomerInitiated || false,
-      maintenanceType: ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated')
+      maintenanceType: ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated'),
+      productType: ticket.productType || ticket.acUnitModel || ticket.category || ticket.repairType || '-',
+      assignedTeam: ticket.assignedTeamName || ticket.assignedTeam || (ticket.assignedTeamId ? ticket.assignedTeamId.teamName : 'Not Assigned')
     }));
 
     res.json({ success: true, count: mappedTickets.length, data: mappedTickets });
@@ -272,6 +274,8 @@ exports.getMaintenanceById = async (req, res) => {
     if (ticket) {
       ticket.isCustomerInitiated = ticket.maintenanceType === 'Customer Initiated' || ticket.isCustomerInitiated || false;
       ticket.maintenanceType = ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated');
+      ticket.productType = ticket.productType || ticket.acUnitModel || ticket.category || ticket.repairType || '-';
+      ticket.assignedTeam = ticket.assignedTeamName || ticket.assignedTeam || (ticket.assignedTeamId ? ticket.assignedTeamId.teamName : 'Not Assigned');
       return res.json({ success: true, data: ticket });
     }
 

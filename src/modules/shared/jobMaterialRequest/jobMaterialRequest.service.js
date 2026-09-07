@@ -112,8 +112,9 @@ async function ensureJob(jobId, lines, session) {
   const isMaintenance = String(ticket.requestType || ticket.serviceType || '').toLowerCase().includes('maintenance');
   if (isMaintenance) {
     const [job] = await Maintenance.create([{
+      ...ticket.toObject(),
       _id: ticket._id,
-      ticketId: `MS-${String(ticket._id).slice(-8).toUpperCase()}`,
+      ticketId: ticket.serviceRequestId || ticket.ticketId || `MS-${String(ticket._id).slice(-8).toUpperCase()}`,
       maintenanceType: 'Customer Initiated',
       customerId: ticket.customerId,
       date: ticket.createdAt || new Date(),
