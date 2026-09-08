@@ -1,6 +1,7 @@
 const ServiceRequest = require('./repair.model');
 const Installation = require('../installation/installation.model');
 const Inspection = require('../inspection/inspectionTicket.model');
+const Maintenance = require('../maintenance/maintenance.model');
 const Customer = require('../../user/user.model');
 const mongoose = require('mongoose');
 const {
@@ -86,7 +87,9 @@ exports.getCustomerHistory = async (req, res) => {
       ? Installation
       : source === REQUEST_TYPES.INSPECTION.toLowerCase()
         ? Inspection
-        : ServiceRequest;
+        : source === REQUEST_TYPES.MAINTENANCE.toLowerCase()
+          ? Maintenance
+          : ServiceRequest;
 
     const buildFilters = () => {
       const orFilters = [];
@@ -111,13 +114,14 @@ exports.getCustomerHistory = async (req, res) => {
 
     const loadFromAnyCollection = async () => {
       const filters = buildFilters();
-      const [serviceAnchor, installationAnchor, inspectionAnchor] = await Promise.all([
+      const [serviceAnchor, installationAnchor, inspectionAnchor, maintenanceAnchor] = await Promise.all([
         ServiceRequest.findOne({ $or: filters }).lean(),
         Installation.findOne({ $or: filters }).lean(),
-        Inspection.findOne({ $or: filters }).lean()
+        Inspection.findOne({ $or: filters }).lean(),
+        Maintenance.findOne({ $or: filters }).lean()
       ]);
 
-      return serviceAnchor || installationAnchor || inspectionAnchor || null;
+      return serviceAnchor || installationAnchor || inspectionAnchor || maintenanceAnchor || null;
     };
 
     const anchor = (await loadBySource()) || (await loadFromAnyCollection());
@@ -178,16 +182,18 @@ exports.getCustomerHistory = async (req, res) => {
       ]
     };
 
-    const [services, installations, inspections, customer] = await Promise.all([
+    const [services, installations, inspections, maintenances, customer] = await Promise.all([
       ServiceRequest.find(customerQuery).lean(),
       Installation.find(customerQuery).lean(),
       Inspection.find(customerQuery).lean(),
+      Maintenance.find(customerQuery).lean(),
       Customer.findById(mongoose.Types.ObjectId.isValid(anchorCustomerIdStr) ? anchorCustomerIdStr : null).lean()
     ]);
 
     const filteredServices = services.filter(isSameCustomer);
     const filteredInstallations = installations.filter(isSameCustomer);
     const filteredInspections = inspections.filter(isSameCustomer);
+    const filteredMaintenances = maintenances.filter(isSameCustomer);
 
     const toHistoryItem = (item, type) => {
       const rawStatus = String(item.status || EXECUTION_STATUS.SCHEDULED);
@@ -220,6 +226,7 @@ exports.getCustomerHistory = async (req, res) => {
       ...filteredServices.map((item) => toHistoryItem(item, REQUEST_TYPES.SERVICE)),
       ...filteredInstallations.map((item) => toHistoryItem(item, REQUEST_TYPES.INSTALLATION)),
       ...filteredInspections.map((item) => toHistoryItem(item, REQUEST_TYPES.INSPECTION)),
+      ...filteredMaintenances.map((item) => toHistoryItem(item, REQUEST_TYPES.MAINTENANCE)),
     ].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
     const latestInstallation = filteredInstallations
