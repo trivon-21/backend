@@ -27,7 +27,8 @@ const toCustomer = (customerDoc, job, fallbackAddress = '-') => ({
 const formatTask = (job, source) => {
   const customerDoc = job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
   const customer = toCustomer(customerDoc, job, job.location || '-');
-  const ticketId = job.ticketId != null && job.ticketId !== '' ? String(job.ticketId) : String(job._id);
+  const uniqueRef = job.serviceRequestRef || job.ticketId || job.maintenanceId || job.installationId || job.orderId || job.referenceNo || '';
+  const ticketId = uniqueRef != null && uniqueRef !== '' ? String(uniqueRef) : String(job._id);
   const serviceType = source === REQUEST_TYPES.INSTALLATION.toLowerCase()
     ? `${job.productType || job.acUnitModel || 'Installation'}${job.units ? ` - ${job.units} Units` : ''}`
     : source === 'maintenance'
@@ -79,6 +80,10 @@ const findTaskRecord = async (id) => {
   // Also match by the string ID like SRQ-1000
   queryParts.push({ serviceRequestRef: normalizedId });
   queryParts.push({ ticketId: normalizedId }); // if ticketId is stored as string in some collections
+  queryParts.push({ maintenanceId: normalizedId });
+  queryParts.push({ installationId: normalizedId });
+  queryParts.push({ orderId: normalizedId });
+  queryParts.push({ referenceNo: normalizedId });
 
   const query = { $or: queryParts };
 
@@ -172,13 +177,11 @@ exports.getTasks = async (req, res) => {
       Maintenance.find(query).populate('customerId', 'fullName address phoneNumber email').lean()
     ]);
 
-    const filtered = [...installations, ...requests, ...maintenances];
+    const formattedInstallations = installations.map(job => formatTask(job, 'installation'));
+    const formattedRequests = requests.map(job => formatTask(job, 'service'));
+    const formattedMaintenances = maintenances.map(job => formatTask(job, 'maintenance'));
 
-    const formatted = filtered.map((job) => {
-      if (job.units !== undefined) return formatTask(job, 'installation');
-      if (job.ticketId && String(job.ticketId).includes('-ACT')) return formatTask(job, 'maintenance');
-      return formatTask(job, 'service');
-    });
+    const formatted = [...formattedInstallations, ...formattedRequests, ...formattedMaintenances];
 
     res.json(formatted.sort((a, b) => new Date(b.scheduledDate || 0) - new Date(a.scheduledDate || 0)));
   } catch (err) {
@@ -222,19 +225,19 @@ exports.updateTaskStatus = async (req, res) => {
       const doc = await Installation.findById(task.record._id);
       if (doc) {
         doc.status = normalizedStatus;
-        updated = await doc.save();
+        updated = await doc.save({ validateModifiedOnly: true });
       }
     } else if (task.source === 'maintenance') {
       const doc = await Maintenance.findById(task.record._id);
       if (doc) {
         doc.status = normalizedStatus;
-        updated = await doc.save();
+        updated = await doc.save({ validateModifiedOnly: true });
       }
     } else {
       const doc = await ServiceRequest.findById(task.record._id);
       if (doc) {
         doc.status = normalizedStatus;
-        updated = await doc.save();
+        updated = await doc.save({ validateModifiedOnly: true });
       }
     }
 

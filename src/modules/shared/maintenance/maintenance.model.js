@@ -19,8 +19,11 @@ const maintenanceSchema = new Schema(
     serviceReport: { technicianNotes: String, submittedAt: Date, photos: [String] },
     paymentSlipUrl: { type: String, default: null },       // ← ADDED
     paymentAmount: { type: Number, default: 0 },
+    description: String,
+    acUnitModel: String,
+    productType: String,
   },
-  { timestamps: true, collection: 'maintenances' }
+  { timestamps: true, collection: 'maintenances', strict: false }
 );
 
 module.exports = mongoose.model('Maintenance', maintenanceSchema);

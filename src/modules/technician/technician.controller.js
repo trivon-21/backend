@@ -21,14 +21,21 @@ const loadSourceRecord = async (serviceRequestId, onModel) => {
     return Installation.findById(serviceRequestId).populate('customerId', 'fullName name email phoneNumber contactNo address').lean();
   }
 
+  if (onModel === 'Maintenance') {
+    const Maintenance = require('../shared/maintenance/maintenance.model');
+    return Maintenance.findById(serviceRequestId).populate('customerId', 'fullName name email phoneNumber contactNo address').lean();
+  }
+
   return ServiceRequest.findById(serviceRequestId).populate('customerId', 'fullName name email phoneNumber contactNo address').lean();
 };
 
 const buildCustomerSnapshot = (record) => {
   const customer = record?.customerId && typeof record.customerId === 'object' ? record.customerId : null;
+  const resolvedName = stripTestPrefix(customer?.fullName) || stripTestPrefix(record?.fullName) || stripTestPrefix(record?.customerName) || 'Unknown Customer';
 
   return {
-    fullName: stripTestPrefix(customer?.fullName) || stripTestPrefix(record?.fullName) || stripTestPrefix(record?.customerName) || 'Unknown Customer',
+    name: resolvedName,
+    fullName: resolvedName,
     phone: customer?.phoneNumber || record?.phone || '',
     email: customer?.email || record?.email || '',
     address: stripTestPrefix(customer?.address) || stripTestPrefix(record?.location) || '',
@@ -66,12 +73,14 @@ const loadCustomerFromRecord = async (record) => {
   return Customer.findById(customerId).select('fullName name email phoneNumber contactNo address').lean();
 };
 
-const buildCustomerFromSource = async (sourceRecord, reportCustomer) => { console.log("sourceRecord:", sourceRecord); console.log("reportCustomer:", reportCustomer);
+const buildCustomerFromSource = async (sourceRecord, reportCustomer) => {
   const customerDoc = await loadCustomerFromRecord(sourceRecord);
 
   if (customerDoc) {
+    const resolvedName = stripTestPrefix(customerDoc.fullName) || stripTestPrefix(reportCustomer?.fullName) || stripTestPrefix(reportCustomer?.name) || 'Unknown Customer';
     return {
-      fullName: stripTestPrefix(customerDoc.fullName) || stripTestPrefix(reportCustomer?.fullName) || stripTestPrefix(reportCustomer?.name) || 'Unknown Customer',
+      name: resolvedName,
+      fullName: resolvedName,
       phone: customerDoc.phoneNumber || customerDoc.contactNo || reportCustomer?.phone || '-',
       email: customerDoc.email || reportCustomer?.email || '-',
       address: stripTestPrefix(customerDoc.address) || stripTestPrefix(reportCustomer?.address) || stripTestPrefix(sourceRecord?.location) || '-',
@@ -79,8 +88,10 @@ const buildCustomerFromSource = async (sourceRecord, reportCustomer) => { consol
   }
 
   if (reportCustomer) {
+    const resolvedName = stripTestPrefix(reportCustomer.fullName) || stripTestPrefix(reportCustomer.name) || 'Unknown Customer';
     return {
-      fullName: stripTestPrefix(reportCustomer.fullName) || stripTestPrefix(reportCustomer.name) || 'Unknown Customer',
+      name: resolvedName,
+      fullName: resolvedName,
       phone: reportCustomer.phone || '-',
       email: reportCustomer.email || '-',
       address: stripTestPrefix(reportCustomer.address) || stripTestPrefix(sourceRecord?.location) || '-',
@@ -108,6 +119,7 @@ const buildCustomerFromPayload = (body, sourceRecord) => {
   if (body?.customer && typeof body.customer === 'object') {
     return {
       fullName: body.customer.fullName || body.customer.name || 'Unknown Customer',
+      name: body.customer.fullName || body.customer.name || 'Unknown Customer',
       phone: body.customer.phone || '',
       email: body.customer.email || '',
       address: body.customer.address || body.location || '',
@@ -120,6 +132,7 @@ const buildCustomerFromPayload = (body, sourceRecord) => {
 
   return {
     fullName: body?.fullName || body?.name || body?.customerName || 'Unknown Customer',
+    name: body?.fullName || body?.name || body?.customerName || 'Unknown Customer',
     phone: body?.phone || '',
     email: body?.email || '',
     address: body?.address || body?.location || '',
@@ -298,8 +311,8 @@ exports.submitServiceReport = async (req, res) => {
       return res.status(400).json({ success: false, message: 'serviceRequestId is required' });
     }
 
-    if (onModel !== 'ServiceRequest' && onModel !== 'Installation') {
-      return res.status(400).json({ success: false, message: 'onModel must be ServiceRequest or Installation' });
+    if (onModel !== 'ServiceRequest' && onModel !== 'Installation' && onModel !== 'Maintenance') {
+      return res.status(400).json({ success: false, message: 'onModel must be ServiceRequest, Installation, or Maintenance' });
     }
 
     const sourceRecord = await loadSourceRecord(serviceRequestId, onModel);
@@ -327,19 +340,33 @@ exports.submitServiceReport = async (req, res) => {
       submittedAt: req.body.submittedAt || new Date(),
     };
 
-    const updatedReport = await ServiceReport.findOneAndUpdate(
-      { serviceRequestId, onModel },
-      { $set: reportPayload },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    ).lean();
+    // Find existing or create new — use explicit create so the pre-save hook fires for SREP- ID generation
+    let existingReport = await ServiceReport.findOne({ serviceRequestId, onModel });
+    let updatedReport;
+
+    if (existingReport) {
+      // Update in-place so the ID is preserved
+      Object.assign(existingReport, reportPayload);
+      updatedReport = (await existingReport.save()).toObject();
+    } else {
+      // New report — pre-save hook will generate SREP-xxxx
+      const newReport = new ServiceReport(reportPayload);
+      updatedReport = (await newReport.save()).toObject();
+    }
 
     if (sourceRecord) {
-      const sourceModel = onModel === 'Installation' ? Installation : ServiceRequest;
-      await sourceModel.findByIdAndUpdate(serviceRequestId, {
-        status: EXECUTION_STATUS.COMPLETED,
-        notesFromTechnician: reportPayload.notesFromMainTechnician,
-        reviewNotes: reportPayload.reviewNotes,
-      });
+      let sourceModel;
+      if (onModel === 'Installation') sourceModel = Installation;
+      else if (onModel === 'Maintenance') sourceModel = require('../shared/maintenance/maintenance.model');
+      else sourceModel = ServiceRequest;
+
+      const doc = await sourceModel.findById(serviceRequestId);
+      if (doc) {
+        doc.status = EXECUTION_STATUS.COMPLETED;
+        doc.notesFromTechnician = reportPayload.notesFromMainTechnician;
+        doc.reviewNotes = reportPayload.reviewNotes;
+        await doc.save({ validateModifiedOnly: true });
+      }
     }
 
     res.status(201).json({
@@ -351,6 +378,7 @@ exports.submitServiceReport = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
 
 // 4. Update an existing service report
 exports.updateServiceReport = async (req, res) => {

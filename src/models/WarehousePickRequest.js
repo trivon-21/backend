@@ -12,7 +12,7 @@ const WarehousePickItemSchema = new mongoose.Schema({
 
 const WarehousePickRequestSchema = new mongoose.Schema({
   requestId: { type: String, required: true, unique: true },
-  sourceMaterialRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'JobMaterialRequest', required: true },
+  sourceMaterialRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'JobMaterialRequest' },
   jobId: { type: mongoose.Schema.Types.ObjectId, required: true },
   jobType: { type: String, enum: ['Repair', 'Installation', 'Maintenance'], required: true },
   requesterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
