@@ -184,11 +184,14 @@ exports.createSupplier = async (name) => {
  */
 exports.getSuggestedOrders = async () => {
   const [items, incomingOrders] = await Promise.all([
+    // Mirrors utils/inventory-domain.js's isLowStock/deriveStockStatus
+    // (available <= reorderLevel, both defaulting to 0 when absent) so this
+    // Mongo-side query can't silently drift from the canonical JS check.
     Inventory.find({
       $expr: {
         $lte: [
           { $ifNull: ['$available', 0] },
-          { $ifNull: ['$reorderLevel', 10] },
+          { $ifNull: ['$reorderLevel', 0] },
         ],
       },
     })

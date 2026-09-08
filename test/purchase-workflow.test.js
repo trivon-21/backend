@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const {
   approvalMode,
   canonicalPurchaseStatus,
+  isPendingManagerApproval,
+  isPendingFinanceApproval,
   outstandingQuantity,
   fulfillmentStatus,
   purchaseRequestWorkflowStages,
@@ -25,6 +27,23 @@ test('legacy pending approval is projected into the Manager stage', () => {
   assert.equal(canonicalPurchaseStatus('APPROVED'), 'approved');
   assert.equal(canonicalPurchaseStatus('REJECTED'), 'rejected');
   assert.equal(canonicalPurchaseStatus('approved'), 'approved');
+});
+
+test('isPendingManagerApproval and isPendingFinanceApproval partition the pending statuses without overlap', () => {
+  assert.equal(isPendingManagerApproval('pending-manager'), true);
+  assert.equal(isPendingManagerApproval('pending-approval'), true); // legacy alias
+  assert.equal(isPendingManagerApproval('pending-finance'), false);
+  assert.equal(isPendingManagerApproval('PENDING'), false); // legacy alias of pending-finance
+
+  assert.equal(isPendingFinanceApproval('pending-finance'), true);
+  assert.equal(isPendingFinanceApproval('PENDING'), true); // legacy alias
+  assert.equal(isPendingFinanceApproval('pending-manager'), false);
+  assert.equal(isPendingFinanceApproval('pending-approval'), false);
+
+  for (const status of ['approved', 'rejected', 'ordered', 'received', 'cancelled', 'draft']) {
+    assert.equal(isPendingManagerApproval(status), false, `${status} must not be manager-pending`);
+    assert.equal(isPendingFinanceApproval(status), false, `${status} must not be finance-pending`);
+  }
 });
 
 test('purchase mutations require an exact statusVersion and normalize save races', async () => {
@@ -155,8 +174,6 @@ test('workflow summary keeps Finance approval separate from receipt reconciliati
       awaitingManager: { purchaseRequests: 1, receiptAuthorizations: 1 },
       readyToReceive: { purchaseOrders: 1, receiptAuthorizations: 1 },
     },
-    awaitingReceipt: 2,
-    awaitingFinance: 1,
   });
 });
 

@@ -6,7 +6,7 @@ const SerializedAsset = require('../../../models/SerializedAsset');
 const QuarantineItem = require('../../../models/QuarantineItem');
 const RmaCase = require('../../../models/RmaCase');
 const Activity = require('../../../models/Activity');
-const { toBusinessDateString } = require('../../../utils/inventory-domain');
+const { toBusinessDateString, isLoanOverdue } = require('../../../utils/inventory-domain');
 const { normalizeSerialNumber } = require('../../../utils/serialized-asset-domain');
 const { dispositionForReturnCondition } = require('../../../utils/rma-workflow');
 const {
@@ -85,8 +85,7 @@ exports.checkOutTool = async (data, user) => {
     throw serviceError('Select an asset tag', 400, 'ASSET_TAG_REQUIRED');
   }
   const dueDateStr = toBusinessDateString(data.dueDate);
-  const todayStr = toBusinessDateString(new Date());
-  if (!dueDateStr || dueDateStr < todayStr) {
+  if (!dueDateStr || isLoanOverdue(data.dueDate)) {
     throw serviceError('Tool due date must be a valid future date', 400, 'INVALID_DUE_DATE');
   }
   const dueDate = new Date(`${dueDateStr}T00:00:00.000Z`);

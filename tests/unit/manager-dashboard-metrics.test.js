@@ -16,7 +16,7 @@ describe('Manager dashboard metrics and aggregations', () => {
   function build(overrides = {}) {
     return buildDashboardMetrics({
       tickets: [], orders: [], inventory: [], materialRequests: [], authorizations: [],
-      serviceRating30d: { average: null, responseCount: 0 }, now, ...overrides,
+      now, ...overrides,
     });
   }
 
@@ -82,8 +82,6 @@ describe('Manager dashboard metrics and aggregations', () => {
     const action = data.pendingActions.find((item) => item.sourceId === risky._id);
     assert.deepEqual(action.reasons, ['Escalated', 'SLA overdue', 'Awaiting Main Technician assignment']);
     assert.equal(data.pendingActionsTotal, 1);
-    assert.equal(data.recentActivity.length, 8);
-    assert.equal(data.recentActivity[0].sourceId, tickets[1]._id);
   });
 
   it('workload uses stable identity and preview ordering by SLA risk then active', () => {

@@ -2,6 +2,12 @@ const ServiceTicket = require('../../models/ServiceTicket');
 const InspectionTicket = require('../../models/InspectionTicket');
 const Installation = require('../../models/Installation');
 require('../../models/User');
+const {
+  canonicalSourceType,
+  normalizeServiceStatus,
+  normalizeInstallationStatus,
+  normalizeInspectionStatus,
+} = require('./manager.work-item-domain');
 
 const SAFE_CUSTOMER_FIELDS = 'fullName email phoneNumber address';
 const SAFE_TECHNICIAN_FIELDS = 'fullName email phoneNumber role';
@@ -16,27 +22,6 @@ function customerFields(customer) {
     customer: customer?.fullName || 'Customer',
     customerDetails: customer && typeof customer === 'object' ? customer : undefined,
   };
-}
-
-function normalizeServiceStatus(status) {
-  if (['resolved', 'Completed', 'Closed'].includes(status)) return 'resolved';
-  if (['escalated', 'Rejected', 'Cancelled'].includes(status)) return 'escalated';
-  if (['Reviewed', 'Assigned', 'In Progress', 'in-progress'].includes(status)) return 'in-progress';
-  return 'open';
-}
-
-function normalizeInspectionStatus(status) {
-  if (status === 'INSPECTED') return 'resolved';
-  if (status === 'PAYMENT_REJECTED') return 'escalated';
-  if (['INSPECTION_SCHEDULED', 'ONGOING', 'REPORT_RECORDED'].includes(status)) return 'in-progress';
-  return 'open';
-}
-
-function normalizeInstallationStatus(status) {
-  if (status === 'Completed') return 'resolved';
-  if (status === 'Cancelled') return 'escalated';
-  if (['Assigned', 'In Progress'].includes(status)) return 'in-progress';
-  return 'open';
 }
 
 function normalizeServiceTicket(ticket) {
@@ -67,7 +52,7 @@ function normalizeInspectionTicket(ticket) {
     priority: 'medium',
     status: normalizeInspectionStatus(ticket.status),
     sourceStatus: ticket.status,
-    sourceType: 'inspection-ticket',
+    sourceType: canonicalSourceType('inspection-ticket'),
     assignedTechnicianId: null,
     assignedTo: '',
     slaDueAt: ticket.scheduledDate || ticket.scheduledAt,
@@ -87,8 +72,12 @@ function normalizeInstallation(ticket) {
     priority: 'medium',
     status: normalizeInstallationStatus(ticket.status),
     sourceStatus: ticket.status,
-    sourceType: 'installation',
-    assignedTechnicianId: ticket.assignedTeamId || null,
+    sourceType: canonicalSourceType('installation'),
+    // Installations are assigned to a TechTeam, not an individual technician —
+    // assignedTeamId (from ...ticket above) carries the identity; leaving
+    // assignedTechnicianId unset here prevents workload grouping from
+    // mistaking a team assignment for an individual one.
+    assignedTechnicianId: null,
     assignedTo: ticket.assignedTeamName || '',
     slaDueAt: ticket.serviceDate,
     resolvedAt: ticket.status === 'Completed' ? ticket.updatedAt : undefined,
@@ -116,5 +105,7 @@ async function loadManagerTickets() {
 module.exports = {
   loadManagerTickets,
   normalizeServiceTicket,
+  normalizeInspectionTicket,
+  normalizeInstallation,
   SAFE_TECHNICIAN_FIELDS,
 };

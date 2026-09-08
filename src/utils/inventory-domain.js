@@ -152,6 +152,45 @@ function isLoanOverdue(dueDate, referenceDate = new Date(), timeZone = BUSINESS_
   return dueStr < currentStr;
 }
 
+/**
+ * True when a loan's due date falls within the next `days` calendar days
+ * (inclusive of today, exclusive of already-overdue loans).
+ *
+ * @param {Date|string} dueDate
+ * @param {number} days
+ * @param {Date} [referenceDate]
+ * @param {string} [timeZone]
+ * @returns {boolean}
+ */
+function isLoanDueWithinDays(dueDate, days, referenceDate = new Date(), timeZone = BUSINESS_TIMEZONE) {
+  if (!dueDate) return false;
+  const dueStr = toBusinessDateString(dueDate, timeZone);
+  const currentStr = toBusinessDateString(referenceDate, timeZone);
+  if (!dueStr || !currentStr) return false;
+  if (dueStr < currentStr) return false;
+  const horizon = new Date(referenceDate);
+  horizon.setDate(horizon.getDate() + days);
+  const horizonStr = toBusinessDateString(horizon, timeZone);
+  return dueStr <= horizonStr;
+}
+
+/**
+ * Returns the material requests whose requested quantity, on at least one
+ * line, exceeds available stock for that inventory item.
+ *
+ * @param {Array<{ items?: Array<{ inventoryId: string, qty: number }> }>} materialRequests
+ * @param {Array<{ _id: string, available?: number }>} inventory
+ * @returns {Array} the blocked subset of materialRequests
+ */
+function findBlockedMaterialRequests(materialRequests, inventory) {
+  const inventoryById = new Map(inventory.map((item) => [String(item._id), item]));
+  return materialRequests.filter((request) => (
+    (request.items || []).some((line) => (
+      Number(inventoryById.get(String(line.inventoryId))?.available || 0) < Number(line.qty || 0)
+    ))
+  ));
+}
+
 module.exports = {
   ITEM_CLASSES,
   ITEM_SUBCATEGORIES,
@@ -169,4 +208,6 @@ module.exports = {
   isValidInventoryLocation,
   toBusinessDateString,
   isLoanOverdue,
+  isLoanDueWithinDays,
+  findBlockedMaterialRequests,
 };

@@ -41,6 +41,7 @@ function canonicalSourceType(raw) {
 
 const SERVICE_STATUS_MAP = {
   'New': 'open',
+  'Reviewed': 'in-progress',
   'Assigned': 'in-progress',
   'In Progress': 'in-progress',
   'in-progress': 'in-progress',
@@ -48,8 +49,12 @@ const SERVICE_STATUS_MAP = {
   'resolved': 'resolved',
   'Escalated': 'escalated',
   'escalated': 'escalated',
+  // Cancelled and Rejected are both dead-end, non-actionable states — neither
+  // is "escalated" (which implies work still needs manager attention).
   'Cancelled': 'cancelled',
   'cancelled': 'cancelled',
+  'Rejected': 'cancelled',
+  'rejected': 'cancelled',
   'Closed': 'closed',
   'closed': 'closed',
   'completed': 'completed',
@@ -59,6 +64,7 @@ const SERVICE_STATUS_MAP = {
 const INSTALLATION_STATUS_MAP = {
   'Pending': 'open',
   'pending': 'open',
+  'Assigned': 'in-progress',
   'Scheduled': 'scheduled',
   'scheduled': 'scheduled',
   'In Progress': 'in-progress',
@@ -67,6 +73,17 @@ const INSTALLATION_STATUS_MAP = {
   'completed': 'completed',
   'Cancelled': 'cancelled',
   'cancelled': 'cancelled',
+};
+
+const INSPECTION_STATUS_MAP = {
+  INSPECTED: 'resolved',
+  // A rejected payment still needs manager attention (chase the customer,
+  // decide next steps) — unlike Cancelled/Rejected tickets, this is not a
+  // dead end, so it correctly stays 'escalated' rather than 'cancelled'.
+  PAYMENT_REJECTED: 'escalated',
+  INSPECTION_SCHEDULED: 'in-progress',
+  ONGOING: 'in-progress',
+  REPORT_RECORDED: 'in-progress',
 };
 
 /**
@@ -89,6 +106,19 @@ function normalizeServiceStatus(raw) {
 function normalizeInstallationStatus(raw) {
   if (!raw) return raw;
   return INSTALLATION_STATUS_MAP[raw] || String(raw).toLowerCase();
+}
+
+/**
+ * Normalizes a raw inspection ticket status string to a canonical lowercase value.
+ * Unmapped values (PENDING_PAYMENT, PAYMENT_UNDER_REVIEW, PAYMENT_CONFIRMED)
+ * default to 'open' — the inspection is still awaiting action.
+ *
+ * @param {string} raw
+ * @returns {string}
+ */
+function normalizeInspectionStatus(raw) {
+  if (!raw) return raw;
+  return INSPECTION_STATUS_MAP[raw] || 'open';
 }
 
 // ── Terminal-state detection ─────────────────────────────────────────────────
@@ -165,6 +195,7 @@ module.exports = {
   canonicalSourceType,
   normalizeServiceStatus,
   normalizeInstallationStatus,
+  normalizeInspectionStatus,
   isTerminal,
   isUnassigned,
   slaClassification,

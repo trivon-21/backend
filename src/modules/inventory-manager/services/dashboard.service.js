@@ -11,6 +11,7 @@ const {
   legacyStockStatus,
   isLowStock,
   isLoanOverdue,
+  isLoanDueWithinDays,
 } = require('../../../utils/inventory-domain');
 const { summarizeProcurementWorkflow } = require('../../../utils/purchase-workflow');
 
@@ -52,8 +53,11 @@ exports.getDashboardData = async (user) => {
     assetHealth: {
       total: loans.length,
       subStats: [
-        { label: 'Tools in Field', value: loans.length },
         { label: 'Overdue Returns', value: loans.filter((l) => isLoanOverdue(l.dueDate)).length },
+        // A forward-looking dimension, distinct from "already overdue" —
+        // the previous second sub-stat ("Tools in Field") duplicated the
+        // card's own total and told the viewer nothing new.
+        { label: 'Due This Week', value: loans.filter((l) => isLoanDueWithinDays(l.dueDate, 7)).length },
       ],
     },
     stockAlerts: {
@@ -73,27 +77,28 @@ exports.getDashboardData = async (user) => {
       available: i.available,
       reserved: i.reserved,
       status: legacyStockStatus(i.available, i.reorderLevel),
-      stockStatus: deriveStockStatus(i.available, i.reorderLevel),
     }));
 
-  const inventoryIds = new Set(inventory.map((item) => String(item._id)));
-  const procurementWorkflow = summarizeProcurementWorkflow(orderRequests, authorizations, { inventoryIds });
+  // Deliberately unfiltered: a purchase line referencing a since-deleted
+  // inventory item is still a real financial commitment, and every other
+  // caller of this function (Procurement page, Finance workflow view)
+  // computes the funnel without an inventoryIds filter — passing one only
+  // here made this dashboard's "Ready to Receive" count silently disagree
+  // with the page it links to.
+  const procurementWorkflow = summarizeProcurementWorkflow(orderRequests, authorizations);
 
+  const LOGISTICS_DASHBOARD_LIMIT = 15;
   const logistics = orders
     .sort((a, b) => new Date(b.createdAt || b.date || 0) - new Date(a.createdAt || a.date || 0))
+    .slice(0, LOGISTICS_DASHBOARD_LIMIT)
     .map(o => ({
-      id: o.orderId,
       orderId: o.orderId,
       customer: o.customer,
       status: o.status,
-      statusVersion: o.statusVersion ?? 0,
-      type: o.type,
       courier: o.courier || '',
       trackId: o.trackId || '',
-      itemCount: Array.isArray(o.items) ? o.items.length : 0,
       date: o.date,
       lastMovedAt: o.lastMovedAt,
-      completedAt: o.completedAt,
     }));
 
   return {
@@ -105,7 +110,6 @@ exports.getDashboardData = async (user) => {
       id: a._id,
       type: a.type,
       title: a.title,
-      description: a.description,
       timestamp: a.timestamp,
       actionLabel: a.actionLabel,
     })),

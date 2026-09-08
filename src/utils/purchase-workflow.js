@@ -41,6 +41,29 @@ function canonicalPurchaseStatus(status) {
   return legacyMap[status] || status;
 }
 
+/**
+ * True when a purchase request is waiting on the Manager's own decision —
+ * i.e. it belongs in the Manager's actionable approval queue. Deliberately
+ * excludes 'pending-finance': that stage is Finance's queue, not the
+ * Manager's, even though both are "pending approval" in a loose sense.
+ *
+ * @param {string} status raw or canonical purchase status
+ * @returns {boolean}
+ */
+function isPendingManagerApproval(status) {
+  return canonicalPurchaseStatus(status) === 'pending-manager';
+}
+
+/**
+ * True when a purchase request is waiting on Finance's decision.
+ *
+ * @param {string} status raw or canonical purchase status
+ * @returns {boolean}
+ */
+function isPendingFinanceApproval(status) {
+  return canonicalPurchaseStatus(status) === 'pending-finance';
+}
+
 function outstandingQuantity(line) {
   return Math.max(0, Number(line.orderedQuantity ?? line.quantity ?? 0) - Number(line.receivedQuantity || 0));
 }
@@ -130,8 +153,6 @@ function summarizeProcurementWorkflow(purchaseRequests, authorizations, options 
         receiptAuthorizations: readyReceiptAuthorizations,
       },
     },
-    awaitingReceipt: readyToReceive,
-    awaitingFinance: awaitingReceiptReconciliation,
   };
 }
 
@@ -142,6 +163,8 @@ module.exports = {
   NON_PO_REASONS,
   approvalMode,
   canonicalPurchaseStatus,
+  isPendingManagerApproval,
+  isPendingFinanceApproval,
   outstandingQuantity,
   fulfillmentStatus,
   purchaseRequestWorkflowStages,
