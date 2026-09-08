@@ -13,6 +13,7 @@ const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const { isLowStock } = require('../../utils/inventory-domain');
 const { loadManagerTickets } = require('./manager.ticket-read-model');
 const { buildDashboardMetrics } = require('./manager.dashboard-metrics');
+const { getRecentCustomerOrders } = require('./manager.customer-orders.service');
 
 // Add service methods here
 exports.placeholder = () => {
@@ -31,15 +32,16 @@ exports.getDashboardData = async (user) => {
     throw serviceError('Manager dashboard is unavailable while the database is offline');
   }
 
-  const [tickets, orders, inventory, materialRequests, authorizations] = await Promise.all([
+  const [tickets, orders, inventory, materialRequests, authorizations, recentOrders] = await Promise.all([
     loadManagerTickets(),
     PurchaseRequest.find({ status: { $ne: 'draft' } }).sort({ updatedAt: -1 }).lean(),
     Inventory.find().sort({ updatedAt: -1 }).lean(),
     WarehousePickRequest.find({ status: 'pending' }).lean(),
     ReceiptAuthorization.find().sort({ updatedAt: -1 }).lean(),
+    getRecentCustomerOrders({ limit: 5 }).catch(() => []),
   ]);
 
-  return buildDashboardMetrics({
+  const metrics = buildDashboardMetrics({
     tickets,
     orders,
     inventory,
@@ -48,6 +50,9 @@ exports.getDashboardData = async (user) => {
     now: new Date(),
     user,
   });
+
+  metrics.recentOrders = recentOrders || [];
+  return metrics;
 };
 
 /**

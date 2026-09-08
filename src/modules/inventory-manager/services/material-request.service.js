@@ -18,7 +18,7 @@ exports.getMaterialRequests = async () => {
     .filter(id => mongoose.isValidObjectId(id)))];
   const inventory = inventoryIds.length
     ? await Inventory.find({ _id: { $in: inventoryIds } })
-      .select('name sku available reserved unit unitCost itemClass subcategory supplierId manufacturerPartNumber')
+      .select('name description sku available reserved unit unitCost itemClass subcategory supplierId manufacturerPartNumber')
       .populate('supplierId', 'name')
       .lean()
     : [];

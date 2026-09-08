@@ -179,32 +179,47 @@ function buildDashboardMetrics({
   }
 
   for (const order of pendingOrders) {
+    const isUrgent = order.priority === 'urgent';
+    const amount = Number(order.totalEstimate || order.totalAmount || 0);
     pendingActionsMap.set(`order-${order._id}`, {
       id: `order-${order._id}`,
       sourceId: order._id,
-      type: 'order',
-      title: `Review ${order.requestId}`,
-      description: `${order.supplierName || 'Supplier'} purchase request`,
-      priority: order.priority === 'urgent' ? 'high' : 'medium',
+      type: 'approval',
+      approvalType: 'purchase',
+      category: 'approval',
+      title: `Review Purchase Request: ${order.requestId || 'Order'}`,
+      description: `${order.supplierName || 'Supplier'}${order.items?.length ? ` · ${order.items.length} line item${order.items.length === 1 ? '' : 's'}` : ''}`,
+      amount,
+      supplierName: order.supplierName || 'Supplier',
+      itemsCount: order.items?.length || 1,
+      reference: order.requestId,
+      priority: isUrgent ? 'high' : 'medium',
       reasons: ['Pending Manager Approval'],
       createdAt: order.createdAt,
-      deadline: Infinity,
+      deadline: isUrgent && order.createdAt ? new Date(order.createdAt).getTime() : Infinity,
       route: '/manager/orders',
-      queryParams: { status: 'pending-manager' },
+      queryParams: { type: 'purchase', status: 'pending-manager' },
     });
   }
 
   for (const auth of pendingAuthorizations) {
+    const isEmergency = auth.nonPoReason === 'EMERGENCY_REPAIR' || auth.priority === 'urgent';
+    const amount = Number(auth.estimatedTotal || auth.totalAmount || 0);
     pendingActionsMap.set(`auth-${auth._id}`, {
       id: `auth-${auth._id}`,
       sourceId: auth._id,
-      type: 'authorization',
-      title: `Review ${auth.authorizationNumber}`,
+      type: 'approval',
+      approvalType: 'non-po',
+      category: 'approval',
+      title: `Review Non-PO: ${auth.authorizationNumber || 'Authorization'}`,
       description: `${String(auth.nonPoReason || 'NON_PO').replaceAll('_', ' ')} · ${auth.supplierName || 'Supplier not specified'}`,
-      priority: auth.nonPoReason === 'EMERGENCY_REPAIR' ? 'high' : 'medium',
+      amount,
+      supplierName: auth.supplierName || 'Supplier not specified',
+      reference: auth.authorizationNumber,
+      priority: isEmergency ? 'high' : 'medium',
       reasons: ['Pending Non-PO Approval'],
       createdAt: auth.createdAt,
-      deadline: Infinity,
+      deadline: isEmergency && auth.createdAt ? new Date(auth.createdAt).getTime() : Infinity,
       route: '/manager/orders',
       queryParams: { type: 'non-po', status: 'pending' },
     });
@@ -238,7 +253,7 @@ function buildDashboardMetrics({
   ));
 
   const pendingActionsTotal = allPendingActions.length;
-  const pendingActions = allPendingActions.slice(0, 12);
+  const pendingActions = allPendingActions.slice(0, 16);
 
   // Recent activity: tickets + orders sorted descending by timestamp, sliced to 8
   const ticketActivity = tickets.map((ticket) => ({

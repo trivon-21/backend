@@ -50,6 +50,22 @@ describe('Manager dashboard metrics and aggregations', () => {
     assert.equal(data.stats.pendingApprovals.totalValue, 1500);
     assert.equal(data.stats.pendingApprovals.urgent, 2);
     assert.equal(data.stats.pendingApprovals.oldestPendingAgeHours, 24);
+
+    const orderAction = data.pendingActions.find((a) => a.id === 'order-aaaaaaaaaaaaaaaaaaaaaaaa');
+    assert.ok(orderAction);
+    assert.equal(orderAction.type, 'approval');
+    assert.equal(orderAction.approvalType, 'purchase');
+    assert.equal(orderAction.amount, 1200);
+    assert.equal(orderAction.supplierName, 'Fabricated Supplier');
+    assert.deepEqual(orderAction.queryParams, { type: 'purchase', status: 'pending-manager' });
+
+    const authAction = data.pendingActions.find((a) => a.id === 'auth-bbbbbbbbbbbbbbbbbbbbbbbb');
+    assert.ok(authAction);
+    assert.equal(authAction.type, 'approval');
+    assert.equal(authAction.approvalType, 'non-po');
+    assert.equal(authAction.amount, 300);
+    assert.equal(authAction.supplierName, 'Local Supplier');
+    assert.deepEqual(authAction.queryParams, { type: 'non-po', status: 'pending' });
   });
 
   it('deduplicates action reasons, ranks by deadline, and sorts all updates before slicing', () => {

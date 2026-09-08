@@ -4,16 +4,17 @@ const { protect } = require("../../middleware/protect");
 const { authorize } = require("../../middleware/role.middleware");
 
 router.use(protect);
+
+// Inventory catalog read routes (accessible to INVENTORY, SUPER_ADMIN, and MANAGER)
+router.get("/list", authorize(["INVENTORY", "SUPER_ADMIN", "MANAGER"]), controller.getInventory);
+router.get("/locations", authorize(["INVENTORY", "SUPER_ADMIN", "MANAGER"]), controller.getLocations);
+router.get("/item/:id", authorize(["INVENTORY", "SUPER_ADMIN", "MANAGER"]), controller.getItem);
+
+// Operational, dashboard, and mutating routes restricted to INVENTORY and SUPER_ADMIN
 router.use(authorize(["INVENTORY", "SUPER_ADMIN"]));
 
 // Dashboard data
 router.get("/dashboard", controller.getDashboard);
-// Inventory list
-router.get("/list", controller.getInventory);
-// Fixed warehouse and placement-area catalog
-router.get("/locations", controller.getLocations);
-// Single item
-router.get("/item/:id", controller.getItem);
 // Update item
 router.put("/item/:id", controller.updateItem);
 router.patch("/item/:id", controller.updateItem);

@@ -11,6 +11,7 @@ const DEFAULT_LOCATION = INVENTORY_LOCATIONS[0];
 
 const InventorySchema = new mongoose.Schema({
   name: { type: String, required: true },
+  description: { type: String, default: '', trim: true },
   sku: { type: String, required: true, unique: true },
   type: { type: String, enum: ['Single', 'Kit', 'Bundle'], default: 'Single' },
   category: { type: String, required: true },

@@ -14,7 +14,7 @@ const {
 } = require('../../../utils/inventory-domain');
 
 const MASTER_DATA_FIELDS = [
-  'name', 'itemClass', 'subcategory', 'brand', 'manufacturerPartNumber', 'type', 'unit',
+  'name', 'description', 'itemClass', 'subcategory', 'brand', 'manufacturerPartNumber', 'type', 'unit',
   'reorderLevel', 'maxStockLevel', 'unitCost', 'location', 'binLocation', 'supplierId',
   'isSerialized', 'compatibleModels', 'systemType', 'refrigerants', 'capacityBtu',
   'voltage', 'phase', 'specsUrl',
@@ -30,6 +30,7 @@ function normalizeInventoryData(data, applyDefaults = true) {
   if (normalized.itemClass) normalized.category = normalized.itemClass;
   else delete normalized.category;
   if (normalized.supplierId === '') delete normalized.supplierId;
+  if (normalized.description !== undefined) normalized.description = String(normalized.description).trim();
   if (normalized.location !== undefined) normalized.location = String(normalized.location).trim();
   if (normalized.binLocation !== undefined) normalized.binLocation = String(normalized.binLocation).trim();
   for (const field of ['compatibleModels', 'refrigerants', 'serialNumbers']) {

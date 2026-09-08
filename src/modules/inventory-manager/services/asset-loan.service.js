@@ -66,7 +66,7 @@ exports.getAvailableTools = async () => {
     _id: { $in: [...availableByInventory.keys()] },
     itemClass: 'Tools and Test Equipment',
     isSerialized: true,
-  }).select('name sku itemClass subcategory brand location binLocation available reorderLevel');
+  }).select('name description sku itemClass subcategory brand location binLocation available reorderLevel');
   const projected = await projectSerialNumbers(tools);
   return projected.map((tool) => ({
     ...tool,

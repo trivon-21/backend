@@ -65,7 +65,7 @@ exports.getInventoryList = async (params) => {
   const filter = {};
   if (params.search && String(params.search).trim()) {
     const re = new RegExp(String(params.search).trim().replace(/[$()*+.?[\\\]^{|}]/g, '\\$&'), 'i');
-    filter.$or = [{ name: re }, { sku: re }, { brand: re }];
+    filter.$or = [{ name: re }, { sku: re }, { brand: re }, { description: re }];
   }
   if (params.itemClass) filter.itemClass = params.itemClass;
   if (params.subcategory) filter.subcategory = params.subcategory;
@@ -194,7 +194,7 @@ exports.getSuggestedOrders = async () => {
     })
       .populate('supplierId', 'name')
       .sort({ available: 1 })
-      .select('name sku available reserved reorderLevel maxStockLevel unitCost unit status category itemClass subcategory brand manufacturerPartNumber compatibleModels supplierId'),
+      .select('name description sku available reserved reorderLevel maxStockLevel unitCost unit status category itemClass subcategory brand manufacturerPartNumber compatibleModels supplierId'),
     PurchaseRequest.find({ status: { $in: [...ACTIVE_INCOMING_STATUSES, 'pending-approval'] } }).lean(),
   ]);
   const incomingByInventory = new Map();

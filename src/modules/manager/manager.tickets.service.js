@@ -158,11 +158,9 @@ function safeCustomer(ticket) {
   };
 }
 
-function allowedActions(ticket) {
-  if (!['service', 'maintenance'].includes(ticket.sourceType)) return [];
-  if (ticket.status === 'resolved') return ['update-control', 'reopen'];
-  if (ticket.status === 'escalated') return ['update-control', 'clear-escalation', 'close'];
-  return ['update-control', 'escalate', 'close'];
+function allowedActions(_ticket) {
+  // Operational work items are view-only in the Manager portal.
+  return [];
 }
 
 function toOperationalWorkItem(ticket) {
