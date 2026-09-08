@@ -246,9 +246,9 @@ exports.getCustomerHistory = async (req, res) => {
     const filteredInstallations = installations.filter(isSameCustomer);
     const filteredInspections = inspections.filter(isSameCustomer);
 
-    const teamFilteredServices = filteredServices;
-    const teamFilteredInstallations = filteredInstallations;
-    const teamFilteredInspections = filteredInspections;
+    const teamFilteredServices = filteredServices.filter(item => matchesJobTeam(item, requestedTeamName));
+    const teamFilteredInstallations = filteredInstallations.filter(item => matchesJobTeam(item, requestedTeamName));
+    const teamFilteredInspections = filteredInspections.filter(item => matchesJobTeam(item, requestedTeamName));
 
     /**
      * Maps source-specific records into a single history DTO consumed by the UI.

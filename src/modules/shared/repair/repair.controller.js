@@ -30,6 +30,7 @@ exports.getAllServiceRequests = async (req, res) => {
       fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
       customerName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
       location: item.customerId?.address || item.location || '-',
+      productType: item.productType || item.acUnitModel || item.category || item.repairType || '-',
       assignedTeam: item.assignedTeamName || DEFAULTS.UNASSIGNED
     }));
 

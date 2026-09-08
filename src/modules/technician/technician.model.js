@@ -1,6 +1,7 @@
 // src/models/ServiceReport.js
 const mongoose = require('mongoose');
 const { EXECUTION_STATUS } = require('../../constants/enums');
+require('../../models/counter.model');
 
 const serviceReportSchema = new mongoose.Schema({
   serviceReportId: { type: String, unique: true },
@@ -13,12 +14,12 @@ const serviceReportSchema = new mongoose.Schema({
   onModel: {
     type: String,
     required: true,
-    enum: ['ServiceRequest', 'Installation'] // Supports both request types
+    enum: ['ServiceRequest', 'Installation', 'Maintenance'] // Supports all request types
   },
   serviceType: { type: String, default: 'Repair' }, 
   teamName: String,
   customer: {
-    name: String, phone: String, email: String, address: String
+    name: String, fullName: String, phone: String, email: String, address: String
   },
   location: String,
   scheduledDate: Date,
@@ -33,26 +34,24 @@ const serviceReportSchema = new mongoose.Schema({
   submittedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 
-serviceReportSchema.pre('save', async function (next) {
+serviceReportSchema.pre('save', async function () {
   if (this.isNew && !this.serviceReportId) {
-    try {
-      const CounterModel = mongoose.model('Counter');
-      let counter = await CounterModel.findOneAndUpdate(
+    const CounterModel = mongoose.model('Counter');
+    let counter = await CounterModel.findOneAndUpdate(
+      { _id: 'serviceReportId' },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    if (!counter || counter.seq < 1000) {
+      counter = await CounterModel.findOneAndUpdate(
         { _id: 'serviceReportId' },
-        { $inc: { seq: 1 } },
+        { $set: { seq: 1000 } },
         { new: true, upsert: true }
       );
-      if (!counter) {
-        counter = await CounterModel.updateOne({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { upsert: true });
-      } else if (counter.seq < 1000) {
-        counter = await CounterModel.findOneAndUpdate({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { new: true });
-      }
-      this.serviceReportId = `REP-${counter.seq}`;
-    } catch (err) {
-      return next(err);
     }
+    this.serviceReportId = `SREP-${String(counter.seq).padStart(4, '0')}`;
   }
-  next();
 });
+
 
 module.exports = mongoose.model('service_reports', serviceReportSchema, 'service_reports');

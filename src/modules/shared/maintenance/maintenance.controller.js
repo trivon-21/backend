@@ -2,7 +2,9 @@ const Maintenance = require('./maintenance.model');
 const MaintenanceSchedule = require('./maintenanceSchedule.model');
 const Installation = require('../installation/installation.model');
 const ServiceRequest = require('../repair/repair.model');
+const TechTeamMember = require('../tech-teams/techTeamMember.model');
 const mongoose = require('mongoose');
+
 const { 
   MAINTENANCE_SCHEDULE_STATUS, 
   MAINTENANCE_STATUS,
@@ -47,6 +49,7 @@ exports.getAllSchedules = async (req, res) => {
       
       const mapped = {
         ...sched,
+        sentToCustomerAt: sched.sentToCustomerAt || (sched.status === 'Sent to Customer' ? sched.updatedAt : null),
         customerName: customer.fullName || 'Unknown Customer',
         customerEmail: customer.email || '-',
         customerPhone: customer.phoneNumber || '-',
@@ -245,7 +248,9 @@ exports.getAllMaintenance = async (req, res) => {
     const mappedTickets = tickets.map(ticket => ({
       ...ticket,
       isCustomerInitiated: ticket.maintenanceType === 'Customer Initiated' || ticket.isCustomerInitiated || false,
-      maintenanceType: ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated')
+      maintenanceType: ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated'),
+      productType: ticket.productType || ticket.acUnitModel || ticket.category || ticket.repairType || '-',
+      assignedTeam: ticket.assignedTeamName || ticket.assignedTeam || (ticket.assignedTeamId ? ticket.assignedTeamId.teamName : 'Not Assigned')
     }));
 
     res.json({ success: true, count: mappedTickets.length, data: mappedTickets });
@@ -272,6 +277,20 @@ exports.getMaintenanceById = async (req, res) => {
     if (ticket) {
       ticket.isCustomerInitiated = ticket.maintenanceType === 'Customer Initiated' || ticket.isCustomerInitiated || false;
       ticket.maintenanceType = ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated');
+      ticket.productType = ticket.productType || ticket.acUnitModel || ticket.category || ticket.repairType || '-';
+      ticket.assignedTeam = ticket.assignedTeamName || ticket.assignedTeam || (ticket.assignedTeamId ? ticket.assignedTeamId.teamName : 'Not Assigned');
+
+      // Fetch team members if a team is assigned
+      if (ticket.assignedTeamId && ticket.assignedTeamId._id) {
+        const members = await TechTeamMember.find({ teamId: ticket.assignedTeamId._id }).lean();
+        const lead = members.find(m => m.role === 'Lead');
+        const helpers = members.filter(m => m.role !== 'Lead');
+        ticket.assignedTeamData = {
+          teamLead: lead ? { name: lead.name, position: lead.role, contactNumber: lead.contactNumber } : null,
+          helpers: helpers.map(h => ({ name: h.name, position: h.role, contactNumber: h.contactNumber }))
+        };
+      }
+
       return res.json({ success: true, data: ticket });
     }
 
@@ -280,6 +299,7 @@ exports.getMaintenanceById = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
 // H. POST: Forward stock parameters from Materials view onwards to the Inventory Manager
 exports.sendMaterialListToInventoryManager = async (req, res) => {

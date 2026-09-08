@@ -643,7 +643,13 @@ exports.sendToInventoryManager = async (req, res) => {
         if (req.body.isFreeOfCharge !== undefined) docObj.isFreeOfCharge = req.body.isFreeOfCharge;
         
         if (requestType === 'Maintenance') {
-          newEntry = new Maintenance({ ...docObj, materialList: materials || newReq.materials || [], totalEstimatedCost: 0 });
+          newEntry = new Maintenance({ 
+            ...docObj, 
+            ticketId: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId || `MS-${String(docObj._id).slice(-8).toUpperCase()}`,
+            maintenanceType: 'Customer Initiated',
+            materialList: materials || newReq.materials || [], 
+            totalEstimatedCost: 0 
+          });
         } else if (requestType === REQUEST_TYPES.INSTALLATION) {
           newEntry = new Installation(docObj);
         } else {
@@ -694,15 +700,27 @@ exports.sendToInventoryManager = async (req, res) => {
     };
     const validJobType = jobTypeMapping[requestType] || 'Repair';
 
-    await JobMaterialRequest.findOneAndUpdate(
+    const WarehousePickRequest = require('../../../models/WarehousePickRequest');
+    
+    const warehousePickItems = items.map(item => ({
+      lineId: item.lineId,
+      inventoryId: item.inventoryId,
+      name: item.itemName,
+      qty: item.quantity,
+      sku: item.sku
+    }));
+
+    await WarehousePickRequest.findOneAndUpdate(
       { jobId: sourceRecord._id, jobType: validJobType },
       {
         $set: {
-          requestId: 'JMR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
-          requestedBy: req.user ? req.user._id : new mongoose.Types.ObjectId(),
-          requesterName: req.user ? (req.user.fullName || 'System') : 'System',
-          items: items,
-          status: 'PENDING'
+          requestId: 'WPR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
+          requesterId: req.user ? req.user._id : new mongoose.Types.ObjectId(),
+          requester: req.user ? (req.user.fullName || 'System') : 'System',
+          date: new Date().toISOString().split('T')[0],
+          location: location || sourceRecord.location || 'Unknown Location',
+          items: warehousePickItems,
+          status: 'pending'
         }
       },
       { upsert: true, new: true }
@@ -1120,7 +1138,8 @@ exports.getNewRequests = async (req, res) => {
         const materialWorkflowStatusRegex = [
             new RegExp(`^\\s*${WORKFLOW_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${WORKFLOW_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const toCustomerId = (value) => {
             if (!value) return null;
@@ -1149,7 +1168,8 @@ exports.getNewRequests = async (req, res) => {
         const materialMaintenanceStatusRegex = [
             new RegExp(`^\\s*${MAINTENANCE_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const maintenances = await Maintenance.find({
             status: { $in: materialMaintenanceStatusRegex }
@@ -1181,34 +1201,42 @@ exports.getNewRequests = async (req, res) => {
                 const customerId = toCustomerId(item.customerId);
                 const populatedCustomer = item.customerId && typeof item.customerId === 'object' ? item.customerId : null;
                 const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+                // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+                const resolvedTicketId = item.serviceRequestRef || item.ticketId || null;
 
                 return {
                     ...item,
-                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
+                    ticketId: resolvedTicketId,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
                     location: customer?.address || item.location || item.customerAddress || '-',
                     requestType: item.serviceType || 'Repair'
                 };
-            });
+            })
+            // Exclude records that have no human-readable ticket ID
+            .filter(item => item.ticketId);
 
         const installationsFormatted = installations
             .map((item) => {
                 const customerId = toCustomerId(item.customerId);
                 const populatedCustomer = item.customerId && typeof item.customerId === 'object' ? item.customerId : null;
                 const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+                // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+                const resolvedTicketId = item.serviceRequestRef || item.ticketId || null;
 
                 return {
                     ...item,
-                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
+                    ticketId: resolvedTicketId,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
                     location: customer?.address || item.location || item.customerAddress || '-',
                     requestType: REQUEST_TYPES.INSTALLATION
                 };
-            });
+            })
+            // Exclude records that have no human-readable ticket ID
+            .filter(item => item.ticketId);
 
         const newRequestsFormatted = await Promise.all(newRequests.map(async (req) => {
             const customerId = toCustomerId(req.customerId);
@@ -1223,9 +1251,12 @@ exports.getNewRequests = async (req, res) => {
                 resolvedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair'
             );
 
+            // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+            const resolvedTicketId = req.serviceRequestRef || req.ticketId || null;
+
             return {
                 ...req,
-                ticketId: req.serviceRequestRef || req._id,
+                ticketId: resolvedTicketId,
                 customerName: customer?.fullName || req.customerName || req.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                 customerEmail: customer?.email || req.customerEmail || '-',
                 customerContactNo: customer?.phoneNumber || req.customerContactNo || req.customerPhone || '-',
@@ -1238,15 +1269,20 @@ exports.getNewRequests = async (req, res) => {
             };
         }));
 
+        // Exclude NewRequest records that have no human-readable ticket ID
+        const newRequestsFiltered = newRequestsFormatted.filter(req => req.ticketId);
+
         const maintenancesFormatted = maintenances
             .map((item) => {
                 const customerId = toCustomerId(item.customerId);
                 const populatedCustomer = item.customerId && typeof item.customerId === 'object' ? item.customerId : null;
                 const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+                // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+                const resolvedTicketId = item.serviceRequestRef || item.ticketId || null;
 
                 return {
                     ...item,
-                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
+                    ticketId: resolvedTicketId,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
@@ -1255,12 +1291,14 @@ exports.getNewRequests = async (req, res) => {
                     serviceType: 'Maintenance',
                     materials: item.materialList || []
                 };
-            });
+            })
+            // Exclude records that have no human-readable ticket ID
+            .filter(item => item.ticketId);
 
-        const allRequests = [...serviceRequestsFormatted, ...installationsFormatted, ...newRequestsFormatted, ...maintenancesFormatted]
+        const allRequests = [...serviceRequestsFormatted, ...installationsFormatted, ...newRequestsFiltered, ...maintenancesFormatted]
             .filter(req => {
                 const s = (req.status || '').trim().toLowerCase();
-                return ['new', 'pending', 'finance approved', 'finance rejected'].includes(s);
+                return ['new', 'pending', 'finance approved', 'finance rejected', 'sent to im'].includes(s);
             })
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 

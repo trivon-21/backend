@@ -65,7 +65,7 @@ installationSchema.pre('validate', async function() {
   }
 });
 
-installationSchema.pre('save', async function () {
+installationSchema.pre('save', async function (next) {
   // Generate ticketId for Installation if it doesn't exist
   if (this.isNew && !this.ticketId) {
     try {
