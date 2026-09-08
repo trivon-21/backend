@@ -72,7 +72,7 @@ exports.getRevenueSummary = async (req, res) => {
     }
 
 
-  // Maintenance revenue — from the Maintenance collection, not ServiceTicket
+  // Maintenance revenue — from the Maintenance collection
 let serviceRevenue = 0;
 try {
   const Maintenance = mongoose.model("Maintenance");
@@ -85,8 +85,7 @@ try {
   console.error("Maintenance revenue calc failed:", e.message);
 }
 
-    // 5. Buy-only payments — match by status OR paymentStatus (team schema has both fields;
-    //    which one actually gets set depends on the exact approval codepath, so check both)
+    // 5. Buy-only payments — match by status OR paymentStatus
     let buyOnlyRevenue = 0;
     const Order = getOrderModel();
     if (Order) {
@@ -152,7 +151,7 @@ try {
 };
 
 // ── Helper: monthly breakdown — 'total' field represents pure revenue          ─
-//    (buyOnly + inspection + service + invoice), matching the bar chart's need ─
+//    (buyOnly + inspection + service + invoice)
 async function getMonthlyBreakdown(Invoice, months) {
   const result = [];
   const now = new Date();
@@ -489,7 +488,7 @@ for (const m of maints) {
       }));
     }
 
-    // FIX: newest first (was oldest first)
+    
     collections.sort((a, b) => new Date(b.date) - new Date(a.date));
     res.json(collections);
   } catch (error) {

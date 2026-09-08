@@ -14,9 +14,9 @@ async function insertInstallationOrder() {
       // ORDER REFERENCES
       // =====================================================
 
-      orderReference: "ALX-BI-TEST03",
+      orderReference: "ALX-BI-TEST024",
 
-      orderId: "ALX-BI-TEST03-ID",
+      orderId: "ALX-BI-TEST024-ID",
 
       // =====================================================
       // CUSTOMER

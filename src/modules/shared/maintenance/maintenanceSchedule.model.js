@@ -8,6 +8,10 @@ const maintenanceScheduleSchema = new Schema(
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: { type: String, enum: ['New', 'Draft Saved', 'Sent to CSA', 'Sent to Customer'], default: 'New' },
     services: [{ serviceName: String, date: Date }],
+    sentToCsaAt: { type: Date },
+    sentToCustomerAt: { type: Date },
+    csaNotes: { type: String },
+    customerNotes: { type: String },
   },
   { timestamps: true, collection: 'maintenance_schedules' }
 );

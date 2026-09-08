@@ -256,8 +256,32 @@ exports.getServiceTickets = async ({ search = '', category = '', status = '', pr
     ServiceTicket.countDocuments(query)
   ]);
 
+  const formattedTickets = tickets.map((t) => {
+    let tId = t.ticketId || t.serviceRequestId;
+    const cat = (t.category || 'repair').toLowerCase();
+    if (!tId) {
+      const hex = t._id ? t._id.toString().slice(-4).toUpperCase() : '1001';
+      const num = 1000 + (parseInt(hex, 16) % 9000);
+      if (cat === 'installation') {
+        tId = `#INT-${num}`;
+      } else if (cat === 'inspection') {
+        tId = `#INS-${String(num).padStart(5, '0')}`;
+      } else if (cat === 'maintenance') {
+        tId = `#MS-${num}`;
+      } else {
+        tId = `#SRQ-${num}`;
+      }
+    } else if (!tId.startsWith('#')) {
+      tId = `#${tId}`;
+    }
+    return {
+      ...t,
+      ticketId: tId
+    };
+  });
+
   return {
-    tickets,
+    tickets: formattedTickets,
     total,
     page: pageNum,
     totalPages: Math.ceil(total / limitNum)
@@ -290,7 +314,45 @@ exports.createServiceTicket = async ({
     inspection: 'Inspection'
   };
 
+  let prefix = 'SRQ';
+  let padLen = 4;
+  if (normalizedCategory === 'installation') {
+    prefix = 'INT';
+    padLen = 4;
+  } else if (normalizedCategory === 'inspection') {
+    prefix = 'INS';
+    padLen = 5;
+  } else if (normalizedCategory === 'maintenance') {
+    prefix = 'MS';
+    padLen = 4;
+  }
+
+  let generatedTicketId = '';
+  try {
+    const mongoose = require('mongoose');
+    require('../../../models/counter.model');
+    const CounterModel = mongoose.model('Counter');
+    let counter = await CounterModel.findOneAndUpdate(
+      { _id: `csa_${prefix}_ticket` },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    if (!counter || counter.seq < 1001) {
+      counter = await CounterModel.findOneAndUpdate(
+        { _id: `csa_${prefix}_ticket` },
+        { $set: { seq: 1001 } },
+        { new: true, upsert: true }
+      );
+    }
+    generatedTicketId = `#${prefix}-${String(counter.seq).padStart(padLen, '0')}`;
+  } catch (cErr) {
+    const count = await ServiceTicket.countDocuments({ category: normalizedCategory });
+    generatedTicketId = `#${prefix}-${String(1001 + count).padStart(padLen, '0')}`;
+  }
+
   const newTicket = new ServiceTicket({
+    ticketId: generatedTicketId,
+    serviceRequestId: generatedTicketId.replace('#', ''),
     customerId,
     category: normalizedCategory,
     requestType: requestTypeMap[normalizedCategory] || 'Repair',
@@ -308,21 +370,50 @@ exports.createServiceTicket = async ({
 
   await newTicket.save();
 
+  if (normalizedCategory === 'maintenance') {
+    try {
+      const MaintenanceSchedule = require('../shared/maintenance/maintenanceSchedule.model');
+      const { buildServiceTemplate } = require('../shared/maintenance/scheduleTemplate');
+      const schedTicketId = generatedTicketId.replace('#', '');
+      await MaintenanceSchedule.create({
+        ticketId: schedTicketId,
+        customerId: customer._id,
+        status: 'New',
+        services: buildServiceTemplate(),
+        csaNotes: `Logged via CSA Portal: ${description.trim()}`
+      });
+    } catch (schedErr) {
+      console.error('Failed to auto-create maintenance schedule from CSA ticket:', schedErr);
+    }
+  }
+
   const populated = await ServiceTicket.findById(newTicket._id)
     .populate('customerId', 'fullName lastName email phoneNumber address')
     .lean();
 
-  return populated;
+  return {
+    ...populated,
+    ticketId: generatedTicketId
+  };
 };
 
 exports.updateServiceTicketStatus = async (ticketId, { status, rejectionReason }) => {
-  const ticket = await ServiceTicket.findById(ticketId);
-  if (!ticket) throw new Error('Ticket not found');
+  // First verify the ticket exists
+  const existing = await ServiceTicket.findById(ticketId).lean();
+  if (!existing) throw new Error('Ticket not found');
 
-  if (status) ticket.status = status;
-  if (rejectionReason) ticket.rejectionReason = rejectionReason;
+  // Build only the fields we want to change — avoids triggering
+  // full Mongoose validation (which would fail on required fields
+  // like `description` that may be absent on older records).
+  const updateFields = {};
+  if (status) updateFields.status = status;
+  if (rejectionReason !== undefined) updateFields.rejectionReason = rejectionReason;
 
-  await ticket.save();
+  await ServiceTicket.findByIdAndUpdate(
+    ticketId,
+    { $set: updateFields },
+    { new: false, runValidators: false }
+  );
 
   return ServiceTicket.findById(ticketId)
     .populate('customerId', 'fullName lastName email phoneNumber address')

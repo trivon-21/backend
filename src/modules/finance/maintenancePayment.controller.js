@@ -91,6 +91,18 @@ exports.approvePayment = async (req, res) => {
       await sendServiceApprovalEmail(customerEmail, customerName, "MAINTENANCE");
     }
 
+    if (ticket.ticketId) {
+      try {
+        const ServiceRequest = require("../../models/ServiceRequest");
+        await ServiceRequest.findOneAndUpdate(
+          { serviceRequestRef: ticket.ticketId },
+          { status: "Finance Approved", paymentStatus: "APPROVED" }
+        );
+      } catch (syncErr) {
+        console.warn("Failed to sync ServiceRequest status:", syncErr.message);
+      }
+    }
+
     res.json({ message: "Payment approved", ticket });
   } catch (error) {
     console.error("approvePayment (maintenance) error:", error);
@@ -132,6 +144,18 @@ exports.rejectPayment = async (req, res) => {
 
     if (customerEmail) {
       await sendServiceRejectionEmail(customerEmail, customerName, rejectionReason, "MAINTENANCE");
+    }
+
+    if (ticket.ticketId) {
+      try {
+        const ServiceRequest = require("../../models/ServiceRequest");
+        await ServiceRequest.findOneAndUpdate(
+          { serviceRequestRef: ticket.ticketId },
+          { status: "Finance Rejected", paymentStatus: "REJECTED" }
+        );
+      } catch (syncErr) {
+        console.warn("Failed to sync ServiceRequest status:", syncErr.message);
+      }
     }
 
     res.json({ message: "Payment rejected", ticket });
