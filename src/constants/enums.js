@@ -68,6 +68,7 @@ const REQUEST_TYPES = {
   SERVICE: 'Service',
   INSTALLATION: 'Installation',
   INSPECTION: 'Inspection',
+  MAINTENANCE: 'Maintenance',
 };
 
 const STATUS_GROUPS = {

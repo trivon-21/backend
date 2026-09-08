@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const ServiceRequest = require('../repair/repair.model');
 const Installation = require('../installation/installation.model');
 const Inspection = require('../inspection/inspectionTicket.model');
+const Maintenance = require('../maintenance/maintenance.model');
 const ServiceReport = require('../../technician/technician.model');
 const Customer = require('../../user/user.model');
 const { getLocalApiBaseUrl, DEFAULT_TEAM_NAME } = require('../../../config/app.config');
@@ -161,7 +162,9 @@ exports.getCustomerHistory = async (req, res) => {
       ? Installation
       : source === REQUEST_TYPES.INSPECTION.toLowerCase()
         ? Inspection
-        : ServiceRequest;
+        : source === REQUEST_TYPES.MAINTENANCE.toLowerCase()
+          ? Maintenance
+          : ServiceRequest;
 
     /**
      * Prefers the declared source collection to keep lookup semantics predictable.
@@ -176,13 +179,14 @@ exports.getCustomerHistory = async (req, res) => {
      * This fallback improves resilience for mixed legacy identifiers.
      */
     const loadFromAnyCollection = async () => {
-      const [serviceAnchor, installationAnchor, inspectionAnchor] = await Promise.all([
+      const [serviceAnchor, installationAnchor, inspectionAnchor, maintenanceAnchor] = await Promise.all([
         findTaskRecord(ServiceRequest, id),
         findTaskRecord(Installation, id),
-        findTaskRecord(Inspection, id)
+        findTaskRecord(Inspection, id),
+        findTaskRecord(Maintenance, id)
       ]);
 
-      return serviceAnchor || installationAnchor || inspectionAnchor || null;
+      return serviceAnchor || installationAnchor || inspectionAnchor || maintenanceAnchor || null;
     };
 
     const anchor = (await loadBySource()) || (await loadFromAnyCollection());
@@ -227,7 +231,7 @@ exports.getCustomerHistory = async (req, res) => {
       return toCustomerIdString(itemCustomer) === anchorCustomerIdStr;
     };
 
-    const [services, installations, inspections] = await Promise.all([
+    const [services, installations, inspections, maintenances] = await Promise.all([
       ServiceRequest.find({
         ...customerQuery,
         status: { $in: visibleStatuses }
@@ -239,16 +243,22 @@ exports.getCustomerHistory = async (req, res) => {
       Inspection.find({
         ...customerQuery,
         status: { $in: visibleStatuses }
+      }).populate('assignedTeam', 'teamName').lean(),
+      Maintenance.find({
+        ...customerQuery,
+        status: { $in: visibleStatuses }
       }).populate('assignedTeam', 'teamName').lean()
     ]);
 
     const filteredServices = services.filter(isSameCustomer);
     const filteredInstallations = installations.filter(isSameCustomer);
     const filteredInspections = inspections.filter(isSameCustomer);
+    const filteredMaintenances = maintenances.filter(isSameCustomer);
 
     const teamFilteredServices = filteredServices.filter(item => matchesJobTeam(item, requestedTeamName));
     const teamFilteredInstallations = filteredInstallations.filter(item => matchesJobTeam(item, requestedTeamName));
     const teamFilteredInspections = filteredInspections.filter(item => matchesJobTeam(item, requestedTeamName));
+    const teamFilteredMaintenances = filteredMaintenances.filter(item => matchesJobTeam(item, requestedTeamName));
 
     /**
      * Maps source-specific records into a single history DTO consumed by the UI.
@@ -288,6 +298,7 @@ exports.getCustomerHistory = async (req, res) => {
       ...teamFilteredServices.map((item) => toHistoryItem(item, REQUEST_TYPES.SERVICE)),
       ...teamFilteredInstallations.map((item) => toHistoryItem(item, REQUEST_TYPES.INSTALLATION)),
       ...teamFilteredInspections.map((item) => toHistoryItem(item, REQUEST_TYPES.INSPECTION)),
+      ...teamFilteredMaintenances.map((item) => toHistoryItem(item, REQUEST_TYPES.MAINTENANCE)),
     ].sort((a, b) => {
       const aTime = a.date ? new Date(a.date).getTime() : Number.NEGATIVE_INFINITY;
       const bTime = b.date ? new Date(b.date).getTime() : Number.NEGATIVE_INFINITY;
