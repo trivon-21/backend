@@ -27,6 +27,12 @@ router.put('/system-info', systemConfigController.updateSystemInfo);
 // Update logging settings (retention, flags, log level)
 router.put('/logging', systemConfigController.updateLoggingSettings);
 
+// Get bank details
+router.get('/bank-details', systemConfigController.getBankDetails);
+
+// Update bank details
+router.put('/bank-details', systemConfigController.updateBankDetails);
+
 // Get audit logs
 router.get('/audit-logs', systemConfigController.getAuditLogs);
 

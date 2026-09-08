@@ -25,9 +25,15 @@ const BankDetailSchema = new mongoose.Schema({
     type: String,
     default: 'LKR'
   },
+  type: {
+    type: String,
+    default: 'Current',
+    trim: true
+  },
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true
+    ref: 'User',
+    default: null
   }
 }, {
   timestamps: true,

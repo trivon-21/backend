@@ -1,6 +1,7 @@
 const SystemConfig = require('../../../models/SystemConfig');
 const AuditLog = require('../../../models/AuditLog');
 const Charge = require('../../shared/L_charges.model');
+const BankDetail = require('../../../models/bankDetail.model');
 const { clearCache } = require('../../../utils/config-cache');
 const maintenanceNotificationService = require('../../../services/maintenance-notification.service');
 
@@ -551,6 +552,138 @@ class SystemConfigService {
     clearCache();
 
     return config.populate('updatedBy', 'fullName email');
+  }
+
+  /**
+   * Get bank details from bank_details collection
+   */
+  async getBankDetails() {
+    let bankDetail = await BankDetail.findOne().populate('updatedBy', 'fullName email');
+    if (!bankDetail) {
+      bankDetail = await BankDetail.create({
+        bankName: 'Commercial Bank',
+        branch: 'Colombo 03',
+        accountName: 'AirLux (Pvt) Ltd',
+        accountNumber: '1000123456',
+        type: 'Current',
+        currency: 'LKR',
+      });
+      bankDetail = await bankDetail.populate('updatedBy', 'fullName email');
+    }
+    return bankDetail;
+  }
+
+  /**
+   * Update bank details in bank_details collection
+   */
+  async updateBankDetails(updates, performedBy, reason, ipAddress, userAgent, performedByRole) {
+    let bankDetail = await BankDetail.findOne();
+    if (!bankDetail) {
+      bankDetail = new BankDetail({
+        bankName: 'Commercial Bank',
+        branch: 'Colombo 03',
+        accountName: 'AirLux (Pvt) Ltd',
+        accountNumber: '1000123456',
+        type: 'Current',
+        currency: 'LKR',
+      });
+    }
+
+    const oldValues = {
+      bankName: bankDetail.bankName || '',
+      branch: bankDetail.branch || '',
+      accountName: bankDetail.accountName || '',
+      accountNumber: bankDetail.accountNumber || '',
+      type: bankDetail.type || 'Current',
+      currency: bankDetail.currency || 'LKR',
+    };
+
+    const changes = {};
+
+    if (updates.hasOwnProperty('bankName')) {
+      if (typeof updates.bankName !== 'string' || !updates.bankName.trim()) {
+        throw new Error('Bank name is required');
+      }
+      const val = updates.bankName.trim();
+      if (oldValues.bankName !== val) {
+        changes.bankName = { oldValue: oldValues.bankName, newValue: val };
+        bankDetail.bankName = val;
+      }
+    }
+
+    if (updates.hasOwnProperty('branch')) {
+      if (typeof updates.branch !== 'string' || !updates.branch.trim()) {
+        throw new Error('Branch name is required');
+      }
+      const val = updates.branch.trim();
+      if (oldValues.branch !== val) {
+        changes.branch = { oldValue: oldValues.branch, newValue: val };
+        bankDetail.branch = val;
+      }
+    }
+
+    if (updates.hasOwnProperty('accountName')) {
+      if (typeof updates.accountName !== 'string' || !updates.accountName.trim()) {
+        throw new Error('Account holder name is required');
+      }
+      const val = updates.accountName.trim();
+      if (oldValues.accountName !== val) {
+        changes.accountName = { oldValue: oldValues.accountName, newValue: val };
+        bankDetail.accountName = val;
+      }
+    }
+
+    if (updates.hasOwnProperty('accountNumber')) {
+      if (typeof updates.accountNumber !== 'string' || !updates.accountNumber.trim()) {
+        throw new Error('Account number is required');
+      }
+      const val = updates.accountNumber.trim();
+      if (oldValues.accountNumber !== val) {
+        changes.accountNumber = { oldValue: oldValues.accountNumber, newValue: val };
+        bankDetail.accountNumber = val;
+      }
+    }
+
+    if (updates.hasOwnProperty('type')) {
+      if (typeof updates.type !== 'string' || !updates.type.trim()) {
+        throw new Error('Account type must be valid');
+      }
+      const val = updates.type.trim();
+      if (oldValues.type !== val) {
+        changes.type = { oldValue: oldValues.type, newValue: val };
+        bankDetail.type = val;
+      }
+    }
+
+    if (updates.hasOwnProperty('currency')) {
+      const val = (updates.currency || 'LKR').trim();
+      if (oldValues.currency !== val) {
+        changes.currency = { oldValue: oldValues.currency, newValue: val };
+        bankDetail.currency = val;
+      }
+    }
+
+    if (Object.keys(changes).length === 0) {
+      throw new Error('No changes made to bank details');
+    }
+
+    bankDetail.updatedBy = performedBy;
+    await bankDetail.save();
+
+    await this._createAuditLog(
+      'Update Bank Details',
+      'UPDATE',
+      'SYSTEM_CONFIG',
+      performedByRole || 'SUPER_ADMIN',
+      changes,
+      bankDetail._id,
+      performedBy,
+      reason,
+      ipAddress,
+      userAgent
+    );
+
+    return await BankDetail.findById(bankDetail._id).populate('updatedBy', 'fullName email');
   }
 
   /**
