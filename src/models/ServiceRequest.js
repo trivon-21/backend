@@ -51,7 +51,7 @@ const serviceRequestSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ["New", "Pending", "Finance Approved", "Finance Rejected", "Assigned", "In Progress", "Completed", "Cancelled"],
-      default: "Pending"
+      default: "New"
     }
   },
   { timestamps: true, collection: "service_tickets", toJSON: { virtuals: true }, toObject: { virtuals: true } }
