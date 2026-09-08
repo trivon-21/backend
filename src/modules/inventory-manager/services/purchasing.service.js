@@ -148,8 +148,12 @@ exports.updateOrderRequest = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
   const request = await PurchaseRequest.findOne({ requestId: id });
   if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
-  if (String(request.requestedById || '') !== String(user._id)) {
+  if (request.requestedById && user?.role !== 'SUPER_ADMIN' && String(request.requestedById) !== String(user._id)) {
     throw serviceError('Only the requester can edit this purchase request', 403, 'NOT_REQUEST_OWNER');
+  }
+  if (!request.requestedById) {
+    request.requestedById = user._id;
+    request.requestedBy = request.requestedBy || actorName(user, 'Inventory Manager');
   }
   assertPurchaseStatusVersion(request, data.statusVersion);
   if (!['draft', 'rejected'].includes(canonicalPurchaseStatus(request.status))) {
@@ -223,8 +227,12 @@ exports.submitOrderRequest = async (id, data, user, options = {}) => {
     const sessionOpt = session ? { session } : {};
     const request = await PurchaseRequest.findOne(orderLookup(id)).session(session || null);
     if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
-    if (String(request.requestedById || '') !== String(user._id)) {
+    if (request.requestedById && user?.role !== 'SUPER_ADMIN' && String(request.requestedById) !== String(user._id)) {
       throw serviceError('Only the requester can submit this purchase request', 403, 'NOT_REQUEST_OWNER');
+    }
+    if (!request.requestedById) {
+      request.requestedById = user._id;
+      request.requestedBy = request.requestedBy || actorName(user, 'Inventory Manager');
     }
     assertPurchaseStatusVersion(request, data.statusVersion);
     if (!['draft', 'rejected'].includes(canonicalPurchaseStatus(request.status))) {
