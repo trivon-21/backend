@@ -16,21 +16,26 @@ const serviceReportSchema = new mongoose.Schema({
     required: true,
     enum: ['ServiceRequest', 'Installation', 'Maintenance'] // Supports all request types
   },
-  serviceType: { type: String, default: 'Repair' }, 
-  teamName: String,
+  serviceType: { type: String, trim: true, maxlength: 100, default: 'Repair' }, 
+  teamName: { type: String, trim: true, maxlength: 100 },
   customer: {
     name: String, fullName: String, phone: String, email: String, address: String
   },
-  location: String,
+  location: { type: String, trim: true, maxlength: 500 },
   scheduledDate: Date,
   productDetails: {
     generalType: String, detailedType: String, description: String
   },
   materialsUsed: [{ item: String, quantity: String }],
-  notesFromMainTechnician: String,
-  technicianComment: String, 
-  reviewNotes: String,
-  finalStatus: { type: String, default: EXECUTION_STATUS.COMPLETED },        
+  notesFromMainTechnician: { type: String, required: true, trim: true, minlength: 3, maxlength: 2000 },
+  technicianComment: { type: String, trim: true, maxlength: 2000 },
+  reviewNotes: { type: String, trim: true, maxlength: 2000 },
+  finalStatus: {
+    type: String,
+    trim: true,
+    enum: ['Pending', 'Reviewed', 'Approved', 'Rejected', EXECUTION_STATUS.COMPLETED],
+    default: EXECUTION_STATUS.COMPLETED,
+  },
   submittedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 

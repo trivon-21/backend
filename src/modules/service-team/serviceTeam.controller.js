@@ -375,6 +375,14 @@ exports.assignServiceRequestToTeam = async (req, res) => {
     const isInstallation = normalizedRequestType === REQUEST_TYPES.INSTALLATION.toLowerCase();
     const isInspection = normalizedRequestType === REQUEST_TYPES.INSPECTION.toLowerCase() || normalizedRequestType === 'inspection';
     const isMaintenance = normalizedRequestType === 'maintenance';
+    const isService = normalizedRequestType === REQUEST_TYPES.SERVICE.toLowerCase() || normalizedRequestType === 'repair';
+    if (!isService && !isInstallation && !isInspection && !isMaintenance) {
+      return res.status(400).json({ success: false, error: 'requestType must be Service, Installation, Inspection, or Maintenance.' });
+    }
+
+    if (warehouseStatusVersion !== undefined && (!Number.isInteger(Number(warehouseStatusVersion)) || Number(warehouseStatusVersion) < 0)) {
+      return res.status(400).json({ success: false, error: 'warehouseStatusVersion must be a non-negative whole number.' });
+    }
     
     let Model = ServiceRequest;
     let targetStatus = EXECUTION_STATUS.ASSIGNED;

@@ -17,7 +17,7 @@ const repairSchema = new Schema(
     status: {
       type: String,
       enum: ['PENDING', 'MATERIALS_READY', 'INVOICED', 'Pending', 'Finance Approved', 'Finance Rejected',
-        'Sent to IM', 'Materials Ready', 'Assigned', 'Scheduled', 'In Progress', 'On Hold', 'Completed', 'Cancelled'],
+        'Sent to IM', 'Materials Ready', 'Assigned', 'In Progress', 'On Hold', 'Completed', 'Cancelled'],
       default: 'PENDING'
     },
   },

@@ -265,17 +265,17 @@ exports.getCustomerHistory = async (req, res) => {
      * Keeping this mapper local ensures status and warranty rules stay consistent.
      */
     const toHistoryItem = (item, type) => {
-      const rawStatus = String(item.status || EXECUTION_STATUS.SCHEDULED).trim();
+      const rawStatus = String(item.status || EXECUTION_STATUS.ASSIGNED).trim();
       const normalizedKey = rawStatus.toLowerCase();
       const statusMap = {
         [EXECUTION_STATUS.ASSIGNED.toLowerCase()]: EXECUTION_STATUS.ASSIGNED,
         [EXECUTION_STATUS.COMPLETED.toLowerCase()]: EXECUTION_STATUS.COMPLETED,
         [EXECUTION_STATUS.IN_PROGRESS.toLowerCase()]: EXECUTION_STATUS.IN_PROGRESS,
-        [EXECUTION_STATUS.SCHEDULED.toLowerCase()]: EXECUTION_STATUS.SCHEDULED,
+        scheduled: EXECUTION_STATUS.ASSIGNED,
         [EXECUTION_STATUS.ON_HOLD.toLowerCase()]: EXECUTION_STATUS.ON_HOLD,
         'inspected': EXECUTION_STATUS.COMPLETED,
       };
-      const normalizedStatus = statusMap[normalizedKey] || EXECUTION_STATUS.SCHEDULED;
+      const normalizedStatus = statusMap[normalizedKey] || EXECUTION_STATUS.ASSIGNED;
 
       return {
         ticketId: item.serviceRequestId || item.serviceRequestRef || item.ticketId || item.ticketRef || `#${String(item._id)}`,

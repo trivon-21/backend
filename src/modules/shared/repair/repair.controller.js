@@ -196,10 +196,10 @@ exports.getCustomerHistory = async (req, res) => {
     const filteredMaintenances = maintenances.filter(isSameCustomer);
 
     const toHistoryItem = (item, type) => {
-      const rawStatus = String(item.status || EXECUTION_STATUS.SCHEDULED);
+      const rawStatus = String(item.status || EXECUTION_STATUS.ASSIGNED);
       let normalizedStatus = STATUS_GROUPS.HISTORY_NORMALIZED.includes(rawStatus)
         ? rawStatus
-        : EXECUTION_STATUS.SCHEDULED;
+        : EXECUTION_STATUS.ASSIGNED;
       
       if (rawStatus.toUpperCase() === 'INSPECTED') {
         normalizedStatus = EXECUTION_STATUS.COMPLETED;

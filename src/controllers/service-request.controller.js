@@ -105,7 +105,7 @@ exports.createServiceRequest = async (req, res) => {
       paymentSlipUrl: paymentSlipUrl || "",
       paymentStatus,
       subject: serviceType,
-      status: "Pending"
+      status: "New"
     });
 
     // If Maintenance, also record in maintenances collection so Finance Officer can review and verify

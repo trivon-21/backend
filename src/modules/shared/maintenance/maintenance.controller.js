@@ -11,6 +11,55 @@ const {
   INSTALLATION_MAINTENANCE_STATUS
 } = require('../../../constants/enums');
 
+const SCHEDULE_SERVICE_COUNT = 6;
+const MAX_SCHEDULE_YEARS = 3;
+
+const startOfDay = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const validateScheduleServices = async (schedule, services) => {
+  if (!Array.isArray(services) || services.length !== SCHEDULE_SERVICE_COUNT) {
+    return 'A complete six-service maintenance schedule is required.';
+  }
+
+  const installation = schedule.installationId
+    ? await Installation.findById(schedule.installationId).select('serviceDate createdAt').lean()
+    : null;
+  const installationDate = startOfDay(installation?.serviceDate || installation?.createdAt);
+  if (!installationDate) return 'The installation date is missing or invalid.';
+
+  const today = startOfDay(new Date());
+  const scheduleEndDate = new Date(installationDate);
+  scheduleEndDate.setFullYear(scheduleEndDate.getFullYear() + MAX_SCHEDULE_YEARS);
+  const dates = [];
+
+  for (let index = 0; index < services.length; index += 1) {
+    const service = services[index] || {};
+    const name = String(service.serviceName || '').trim();
+    const date = startOfDay(service.date);
+    if (!name) return `Service ${index + 1} must have a service name.`;
+    if (!date) return `${name} requires a valid date.`;
+    if (date < today) return `${name} cannot be scheduled in the past.`;
+    if (date < installationDate) return `${name} cannot be scheduled before the installation date.`;
+    if (date > scheduleEndDate) return `${name} must fall within the three-year maintenance period.`;
+    dates.push(date);
+  }
+
+  for (let index = 1; index < dates.length; index += 1) {
+    if (dates[index].getTime() === dates[index - 1].getTime()) {
+      return 'Each maintenance service must be scheduled on a different date.';
+    }
+    if (dates[index] < dates[index - 1]) {
+      return 'Maintenance service dates must be in chronological order.';
+    }
+  }
+  return null;
+};
+
 // A. Triggered automatically when an Installation status updates to 'Completed' (via DB hook)
 exports.handleInstallationCompletion = async (installationId) => {
   // Logic handled by the pre-save hook in installation.model.js
@@ -100,6 +149,9 @@ exports.saveDraft = async (req, res) => {
       });
     }
 
+    const validationError = await validateScheduleServices(schedule, services);
+    if (validationError) return res.status(400).json({ success: false, message: validationError });
+
     schedule.services = services;
     // Transition from 'New' to 'Draft Saved' on first save; keep 'Draft Saved' if already a draft
     schedule.status = MAINTENANCE_SCHEDULE_STATUS.DRAFT_SAVED;
@@ -131,6 +183,9 @@ exports.sendScheduleToCsa = async (req, res) => {
         message: `Cannot send to CSA: schedule must be in 'New' or 'Draft Saved' status. Current status: '${schedule.status}'.`
       });
     }
+
+    const validationError = await validateScheduleServices(schedule, services || schedule.services);
+    if (validationError) return res.status(400).json({ success: false, message: validationError });
 
     if (services) schedule.services = services;
     schedule.status = MAINTENANCE_SCHEDULE_STATUS.SENT_TO_CSA;
@@ -333,7 +388,7 @@ exports.assignTeamToMaintenance = async (req, res) => {
     const maintenance = await Maintenance.findByIdAndUpdate(
       maintenanceId,
       {
-        status: MAINTENANCE_STATUS.SCHEDULED,
+        status: MAINTENANCE_STATUS.ASSIGNED,
         assignedTeamId: teamId,
         assignedTeam: teamName,
         updatedAt: Date.now()
