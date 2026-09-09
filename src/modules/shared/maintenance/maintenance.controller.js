@@ -388,7 +388,7 @@ exports.assignTeamToMaintenance = async (req, res) => {
     const maintenance = await Maintenance.findByIdAndUpdate(
       maintenanceId,
       {
-        status: MAINTENANCE_STATUS.SCHEDULED,
+        status: MAINTENANCE_STATUS.ASSIGNED,
         assignedTeamId: teamId,
         assignedTeam: teamName,
         updatedAt: Date.now()

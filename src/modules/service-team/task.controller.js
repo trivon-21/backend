@@ -45,7 +45,8 @@ const formatTask = (job, source) => {
     customer,
     location: customer.address || job.location || '-',
     serviceType,
-    status: job.status || WORKFLOW_STATUS.PENDING,
+    // Legacy Scheduled records are shown as Assigned without modifying data.
+    status: job.status === 'Scheduled' ? 'Assigned' : (job.status || WORKFLOW_STATUS.PENDING),
     scheduledDate: job.serviceDate || job.date || job.createdAt || null,
     detailedProductType: job.productType || job.acUnitModel || job.category || job.repairType || '',
     description: job.description || job.serviceDescription || job.scheduledServiceType || '',

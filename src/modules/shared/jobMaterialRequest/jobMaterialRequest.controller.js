@@ -1318,11 +1318,11 @@ exports.validateMaterialSubmission = [
   body('materials.*.quantity').isInt({ min: 1, max: 10000 }).withMessage('Each material quantity must be a whole number between 1 and 10,000'),
   body('financeNotes').optional({ values: 'falsy' }).isString().trim().isLength({ max: 2000 }).withMessage('Finance notes cannot exceed 2,000 characters'),
   body('customerEmail').optional({ values: 'falsy' }).isEmail().withMessage('Customer email must be valid'),
-  body('customerContactNo').optional({ values: 'falsy' }).matches(/^[+()\-\s0-9]{7,20}$/).withMessage('Customer contact number must contain 7 to 20 valid phone characters'),
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+      const details = errors.array();
+      return res.status(400).json({ success: false, message: details[0].msg, errors: details });
     }
     const ids = req.body.materials.map((material) => String(material.inventoryId));
     if (new Set(ids).size !== ids.length) {
