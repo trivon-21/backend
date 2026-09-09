@@ -4,6 +4,14 @@ const Installation = require('../shared/installation/installation.model');
 const Customer = require('../user/user.model');
 const { EXECUTION_STATUS, REQUEST_TYPES } = require('../../constants/enums');
 
+const MAX_NOTE_LENGTH = 2000;
+const REPORT_STATUSES = new Set(['Pending', 'Reviewed', 'Approved', 'Rejected', EXECUTION_STATUS.COMPLETED]);
+const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(String(value || '').trim());
+const isValidText = (value, min = 1, max = MAX_NOTE_LENGTH) => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text.length >= min && text.length <= max;
+};
+
 /**
  * Strips test prefixes from strings (e.g., "TEST:", "TESTEST_")
  */
@@ -306,16 +314,36 @@ exports.submitServiceReport = async (req, res) => {
   try {
     const serviceRequestId = String(req.body.serviceRequestId || req.body._id || '').trim();
     const onModel = String(req.body.onModel || '').trim();
+    const note = String(req.body.notesFromMainTechnician || req.body.technicianComment || req.body.notes || '').trim();
 
     if (!serviceRequestId) {
       return res.status(400).json({ success: false, message: 'serviceRequestId is required' });
+    }
+
+    if (!isValidObjectId(serviceRequestId)) {
+      return res.status(400).json({ success: false, message: 'serviceRequestId must be a valid identifier' });
     }
 
     if (onModel !== 'ServiceRequest' && onModel !== 'Installation' && onModel !== 'Maintenance') {
       return res.status(400).json({ success: false, message: 'onModel must be ServiceRequest, Installation, or Maintenance' });
     }
 
+    if (!isValidText(note, 3)) {
+      return res.status(400).json({ success: false, message: 'A service report note must be between 3 and 2,000 characters' });
+    }
+
+    if (req.body.reviewNotes && !isValidText(req.body.reviewNotes, 0)) {
+      return res.status(400).json({ success: false, message: 'Review notes cannot exceed 2,000 characters' });
+    }
+
+    if (req.body.finalStatus && !REPORT_STATUSES.has(String(req.body.finalStatus).trim())) {
+      return res.status(400).json({ success: false, message: 'Invalid report status' });
+    }
+
     const sourceRecord = await loadSourceRecord(serviceRequestId, onModel);
+    if (!sourceRecord) {
+      return res.status(404).json({ success: false, message: 'The related service task was not found' });
+    }
     const customer = buildCustomerFromPayload(req.body, sourceRecord);
     const reportPayload = {
       serviceRequestId,
@@ -333,7 +361,7 @@ exports.submitServiceReport = async (req, res) => {
       materialsUsed: Array.isArray(req.body.materialsUsed)
         ? req.body.materialsUsed
         : (Array.isArray(req.body.materials) ? req.body.materials : []),
-      notesFromMainTechnician: String(req.body.notesFromMainTechnician || req.body.technicianComment || req.body.notes || sourceRecord?.reviewNotes || '').trim(),
+      notesFromMainTechnician: note,
       technicianComment: String(req.body.technicianComment || '').trim(),
       reviewNotes: String(req.body.reviewNotes || '').trim(),
       finalStatus: req.body.finalStatus || EXECUTION_STATUS.COMPLETED,
@@ -397,12 +425,21 @@ exports.updateServiceReport = async (req, res) => {
     }
 
     if (typeof req.body.reviewNotes === 'string') {
+      if (!isValidText(req.body.reviewNotes, 0)) {
+        return res.status(400).json({ success: false, message: 'Review notes cannot exceed 2,000 characters' });
+      }
       report.reviewNotes = req.body.reviewNotes.trim();
     }
 
     if (typeof req.body.finalStatus === 'string') {
+      if (!REPORT_STATUSES.has(req.body.finalStatus.trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid report status' });
+      }
       report.finalStatus = req.body.finalStatus.trim();
     } else if (typeof req.body.status === 'string') {
+      if (!REPORT_STATUSES.has(req.body.status.trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid report status' });
+      }
       report.finalStatus = req.body.status.trim();
     }
 
