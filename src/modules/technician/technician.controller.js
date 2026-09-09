@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ServiceReport = require('./technician.model');
 const ServiceRequest = require('../shared/serviceTicket/serviceTicket.model');
 const Installation = require('../shared/installation/installation.model');
