@@ -1311,12 +1311,22 @@ const { body, validationResult } = require('express-validator');
 
 // Insert this specific validation chain
 exports.validateMaterialSubmission = [
-  body('newRequestId').notEmpty().withMessage('Ticket ID is required'),
-  body('materials').isArray({ min: 1 }).withMessage('At least one material is required'),
+  body('newRequestId').trim().notEmpty().withMessage('Ticket ID is required'),
+  body('materials').isArray({ min: 1, max: 100 }).withMessage('Between 1 and 100 material items are required'),
+  body('materials.*.inventoryId').isMongoId().withMessage('Each material must use a valid catalog item'),
+  body('materials.*.item').trim().isLength({ min: 1, max: 200 }).withMessage('Each material name is required and limited to 200 characters'),
+  body('materials.*.quantity').isInt({ min: 1, max: 10000 }).withMessage('Each material quantity must be a whole number between 1 and 10,000'),
+  body('financeNotes').optional({ values: 'falsy' }).isString().trim().isLength({ max: 2000 }).withMessage('Finance notes cannot exceed 2,000 characters'),
+  body('customerEmail').optional({ values: 'falsy' }).isEmail().withMessage('Customer email must be valid'),
+  body('customerContactNo').optional({ values: 'falsy' }).matches(/^[+()\-\s0-9]{7,20}$/).withMessage('Customer contact number must contain 7 to 20 valid phone characters'),
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, errors: errors.array() });
+    }
+    const ids = req.body.materials.map((material) => String(material.inventoryId));
+    if (new Set(ids).size !== ids.length) {
+      return res.status(400).json({ success: false, error: 'Duplicate material items are not allowed.' });
     }
     next();
   }
