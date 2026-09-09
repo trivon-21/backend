@@ -42,7 +42,7 @@ exports.createInquiry = async (req, res) => {
       message: message.trim(),
       attachmentUrl: attachmentUrl || "",
       thread: [{ sender: "Customer", message: message.trim() }],
-      status: "Ongoing"
+      status: "Awaiting"
     });
 
     return res.status(201).json({ message: "Inquiry submitted successfully", inquiry });
