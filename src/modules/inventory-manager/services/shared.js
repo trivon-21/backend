@@ -160,7 +160,7 @@ async function validateCatalogData(data, { partial = false } = {}) {
     }
   }
   if (!isValidInventoryLocation(data.location, data.binLocation)) {
-    throw serviceError('Select a valid warehouse and placement area', 400, 'INVALID_STORAGE_LOCATION');
+    throw serviceError('Select a valid warehouse, rack and bin', 400, 'INVALID_STORAGE_LOCATION');
   }
   for (const field of ['reorderLevel', 'maxStockLevel', 'unitCost', 'capacityBtu']) {
     if (data[field] !== undefined && data[field] !== null && Number(data[field]) < 0) {

@@ -217,8 +217,8 @@ test('manager-first, two-stage, legacy adapter, migration dry-run, and receipt r
       available: 1,
       reorderLevel: 1,
       maxStockLevel: 10,
-      location: 'Central Warehouse',
-      binLocation: 'Consumables Storage',
+      location: 'A',
+      binLocation: 'A102',
       supplierId: supplier._id,
     });
     const authorization = await ReceiptAuthorization.create({

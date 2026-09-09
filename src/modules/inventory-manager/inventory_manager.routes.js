@@ -25,6 +25,7 @@ router.post("/receipts", controller.receiveInventory);
 router.get("/suppliers", controller.getSuppliers);
 router.post("/suppliers", controller.createSupplier);
 // Procurements
+router.get("/procurement/summary", controller.getProcurementSummary);
 router.get("/procurements", controller.getProcurements);
 router.get("/receipt-discrepancies", controller.getReceiptDiscrepancies);
 router.get("/receipt-authorizations", controller.getReceiptAuthorizations);

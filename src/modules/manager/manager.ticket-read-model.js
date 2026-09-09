@@ -8,6 +8,9 @@ const {
   normalizeInstallationStatus,
   normalizeInspectionStatus,
 } = require('./manager.work-item-domain');
+const { managerCache } = require('./manager.cache');
+
+const TICKETS_CACHE_KEY = 'manager:tickets';
 
 const SAFE_CUSTOMER_FIELDS = 'fullName email phoneNumber address';
 const SAFE_TECHNICIAN_FIELDS = 'fullName email phoneNumber role';
@@ -85,7 +88,7 @@ function normalizeInstallation(ticket) {
   };
 }
 
-async function loadManagerTickets() {
+async function readManagerTickets() {
   const [serviceTickets, inspectionTickets, installations] = await Promise.all([
     ServiceTicket.find()
       .populate('customerId', SAFE_CUSTOMER_FIELDS)
@@ -102,8 +105,21 @@ async function loadManagerTickets() {
   ].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
+/**
+ * Cached entry point. The dashboard, analytics, /tickets and /work-items
+ * endpoints all derive from this same read model, so caching here collapses
+ * what were three independent passes over the ticket collections into one.
+ *
+ * @param {{ fresh?: boolean }} [options] - `fresh` bypasses and repopulates the cache.
+ */
+async function loadManagerTickets({ fresh = false } = {}) {
+  if (fresh) managerCache.invalidate(TICKETS_CACHE_KEY);
+  return managerCache.get(TICKETS_CACHE_KEY, readManagerTickets);
+}
+
 module.exports = {
   loadManagerTickets,
+  readManagerTickets,
   normalizeServiceTicket,
   normalizeInspectionTicket,
   normalizeInstallation,

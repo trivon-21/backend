@@ -9,6 +9,8 @@ const {
   assertPurchaseStatusVersion,
   savePurchaseRequest,
 } = require('../../utils/purchase-request-concurrency');
+const { invalidateManagerCache } = require('./manager.cache');
+const { invalidateInventoryCache } = require('../inventory-manager/inventory-manager.cache');
 
 function serviceError(statusCode, message, code) {
   const error = new Error(message);
@@ -116,6 +118,8 @@ exports.decideOrder = async (id, input, user) => {
   }
   request.statusVersion += 1;
   await savePurchaseRequest(request);
+  invalidateManagerCache();
+  invalidateInventoryCache();
   await Activity.create({
     type: input.decision === 'approved' ? 'request' : 'alert',
     title: `Purchase Request ${input.decision === 'approved' ? 'Approved' : 'Rejected'}`,
@@ -169,6 +173,8 @@ exports.decideReceiptAuthorization = async (id, input, user) => {
   }
   authorization.statusVersion += 1;
   await authorization.save();
+  invalidateManagerCache();
+  invalidateInventoryCache();
   await Activity.create({
     type: input.decision === 'approved' ? 'request' : 'alert',
     title: `Non-PO Authorization ${input.decision === 'approved' ? 'Approved' : 'Rejected'}`,

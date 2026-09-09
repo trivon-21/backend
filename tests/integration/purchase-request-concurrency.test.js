@@ -59,8 +59,8 @@ test('competing purchase edits and transitions allow one statusVersion winner', 
       available: 0,
       reorderLevel: 1,
       maxStockLevel: 20,
-      location: 'Central Warehouse',
-      binLocation: 'Consumables Storage',
+      location: 'A',
+      binLocation: 'A102',
       supplierId: supplier._id,
     });
     let sequence = 0;

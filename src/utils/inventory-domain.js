@@ -18,35 +18,44 @@ const ITEM_SUBCATEGORIES = {
   Unclassified: ['Unclassified']
 };
 
-const INVENTORY_LOCATIONS = [
-  {
-    warehouse: 'Central Warehouse',
-    placementAreas: [
-      'Receiving & Inspection',
-      'Small Parts Racking',
-      'Consumables Storage',
-      'Dispatch Staging'
-    ]
-  },
-  {
-    warehouse: 'Equipment Warehouse',
-    placementAreas: [
-      'Indoor Unit Storage',
-      'Outdoor Unit Storage',
-      'Large Equipment Floor',
-      'Installation Materials'
-    ]
-  },
-  {
-    warehouse: 'Service Warehouse',
-    placementAreas: [
-      'Spare Parts Racking',
-      'Tool Crib',
-      'Technician Pickup',
-      'Returns & Quarantine'
-    ]
+// Storage addressing has three levels: a warehouse (code "A", shown as
+// "Warehouse A"), the racks inside it ("R1".."R5"), and the numbered bins on
+// each rack. A bin code is the physical label a product carries - warehouse
+// letter + rack number + two-digit bin - so a full address reads
+// "Warehouse A, R2, A201".
+const WAREHOUSE_CODES = ['A', 'B', 'C'];
+const RACKS_PER_WAREHOUSE = 5;
+const BINS_PER_RACK = 5;
+
+function warehouseLabelFor(warehouseCode) {
+  return warehouseCode ? `Warehouse ${warehouseCode}` : '';
+}
+
+function binCodeFor(warehouseCode, rackNumber, binNumber) {
+  return `${warehouseCode}${rackNumber}${String(binNumber).padStart(2, '0')}`;
+}
+
+function buildRack(warehouseCode, rackNumber) {
+  const bins = [];
+  for (let binNumber = 1; binNumber <= BINS_PER_RACK; binNumber++) {
+    bins.push(binCodeFor(warehouseCode, rackNumber, binNumber));
   }
-];
+  return { rackTag: `R${rackNumber}`, bins };
+}
+
+function buildWarehouseRacks(warehouseCode) {
+  const racks = [];
+  for (let rackNumber = 1; rackNumber <= RACKS_PER_WAREHOUSE; rackNumber++) {
+    racks.push(buildRack(warehouseCode, rackNumber));
+  }
+  return racks;
+}
+
+const INVENTORY_LOCATIONS = WAREHOUSE_CODES.map((warehouse) => ({
+  warehouse,
+  warehouseLabel: warehouseLabelFor(warehouse),
+  racks: buildWarehouseRacks(warehouse),
+}));
 
 const LEGACY_CLASS_MAP = {
   'Air Conditioners': 'AC Equipment',
@@ -97,9 +106,19 @@ function isValidClassification(itemClass, subcategory) {
   return ITEM_CLASSES.includes(itemClass) && (ITEM_SUBCATEGORIES[itemClass] || []).includes(subcategory);
 }
 
-function isValidInventoryLocation(warehouse, placementArea) {
+function isValidInventoryLocation(warehouse, binCode) {
   const location = INVENTORY_LOCATIONS.find((entry) => entry.warehouse === warehouse);
-  return Boolean(location && location.placementAreas.includes(placementArea));
+  return Boolean(location && location.racks.some((rack) => rack.bins.includes(binCode)));
+}
+
+function rackTagFor(warehouse, binCode) {
+  const location = INVENTORY_LOCATIONS.find((entry) => entry.warehouse === warehouse);
+  return location?.racks.find((rack) => rack.bins.includes(binCode))?.rackTag || '';
+}
+
+function formatStorageLocation(warehouse, binCode) {
+  const parts = [warehouseLabelFor(warehouse), rackTagFor(warehouse, binCode), binCode];
+  return parts.filter(Boolean).join(', ');
 }
 
 const BUSINESS_TIMEZONE = process.env.BUSINESS_TIMEZONE || 'Asia/Colombo';
@@ -195,6 +214,7 @@ module.exports = {
   ITEM_CLASSES,
   ITEM_SUBCATEGORIES,
   INVENTORY_LOCATIONS,
+  WAREHOUSE_CODES,
   LEGACY_CLASS_MAP,
   BUSINESS_TIMEZONE,
   deriveStockStatus,
@@ -206,6 +226,9 @@ module.exports = {
   classifyLegacyItem,
   isValidClassification,
   isValidInventoryLocation,
+  rackTagFor,
+  formatStorageLocation,
+  warehouseLabelFor,
   toBusinessDateString,
   isLoanOverdue,
   isLoanDueWithinDays,

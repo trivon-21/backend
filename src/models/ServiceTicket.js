@@ -33,6 +33,13 @@ const ServiceTicketSchema = new mongoose.Schema({
   optimisticConcurrency: true,
 });
 
+// Supports the manager work-item read model: status filtering, the default
+// createdAt-descending ordering, SLA-risk windows, and workload grouping.
+ServiceTicketSchema.index({ status: 1 });
+ServiceTicketSchema.index({ createdAt: -1 });
+ServiceTicketSchema.index({ slaDueAt: 1 });
+ServiceTicketSchema.index({ assignedTechnicianId: 1 });
+
 ServiceTicketSchema.pre('validate', function synchronizeResolutionTimestamp() {
   if (this.status === 'resolved' && !this.resolvedAt) this.resolvedAt = new Date();
   if (this.status !== 'resolved' && this.resolvedAt) this.resolvedAt = undefined;

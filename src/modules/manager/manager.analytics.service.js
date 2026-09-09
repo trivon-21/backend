@@ -9,6 +9,7 @@ const Invoice = require('../finance/Invoice.model');
 const { isLowStock, findBlockedMaterialRequests } = require('../../utils/inventory-domain');
 const { buildAnalytics } = require('../../utils/manager-metrics');
 const { loadManagerTickets } = require('./manager.ticket-read-model');
+const { managerCache } = require('./manager.cache');
 
 exports.getAnalyticsData = async (_user, periodKey) => {
   if (mongoose.connection.readyState !== 1) {
@@ -18,6 +19,10 @@ exports.getAnalyticsData = async (_user, periodKey) => {
     throw error;
   }
 
+  return managerCache.get(`manager:analytics:${periodKey}`, () => buildAnalyticsPayload(periodKey));
+};
+
+async function buildAnalyticsPayload(periodKey) {
   const [tickets, orders, inventory, pendingRequests, procurements, authorizations, customerOrders, invoices] = await Promise.all([
     loadManagerTickets(),
     PurchaseRequest.find({ status: { $ne: 'draft' } }).lean(),
@@ -60,4 +65,4 @@ exports.getAnalyticsData = async (_user, periodKey) => {
       blockedMaterialRequests,
     },
   };
-};
+}

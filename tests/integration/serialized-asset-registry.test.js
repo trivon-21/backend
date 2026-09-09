@@ -37,7 +37,7 @@ test('concurrent receipts cannot register the same normalized serial globally', 
       itemClass: 'Tools and Test Equipment', subcategory: 'Vacuum Pump',
       category: 'Tools and Test Equipment', brand: 'Fabricated', type: 'Single', unit: 'units',
       isSerialized: true, available: 1, reorderLevel: 0, maxStockLevel: 5,
-      location: 'Service Warehouse', binLocation: 'Tool Crib', supplierId: supplier._id,
+      location: 'C', binLocation: 'C101', supplierId: supplier._id,
       serialNumbers: [' Legacy-Tag-1 '],
     });
     const migrationSummary = await migrate({
@@ -52,13 +52,13 @@ test('concurrent receipts cannot register the same normalized serial globally', 
         name: 'Fabricated Registry Tool A', sku: 'REGISTRY-TOOL-A', itemClass: 'Tools and Test Equipment',
         subcategory: 'Vacuum Pump', category: 'Tools and Test Equipment', brand: 'Fabricated', type: 'Single',
         unit: 'units', isSerialized: true, available: 0, reorderLevel: 0, maxStockLevel: 5,
-        location: 'Service Warehouse', binLocation: 'Tool Crib', supplierId: supplier._id,
+        location: 'C', binLocation: 'C101', supplierId: supplier._id,
       },
       {
         name: 'Fabricated Registry Tool B', sku: 'REGISTRY-TOOL-B', itemClass: 'Tools and Test Equipment',
         subcategory: 'Vacuum Pump', category: 'Tools and Test Equipment', brand: 'Fabricated', type: 'Single',
         unit: 'units', isSerialized: true, available: 0, reorderLevel: 0, maxStockLevel: 5,
-        location: 'Service Warehouse', binLocation: 'Tool Crib', supplierId: supplier._id,
+        location: 'C', binLocation: 'C101', supplierId: supplier._id,
       },
     ]);
     const authorizations = await ReceiptAuthorization.create(items.map((item, index) => ({
@@ -72,7 +72,7 @@ test('concurrent receipts cannot register the same normalized serial globally', 
       receiptMode: 'NON_PO', receiptAuthorizationId: authorizations[index]._id,
       quantity: 1, acceptedQuantity: 1, damagedQuantity: 0, missingQuantity: 0, condition: 'Good',
       serialNumbers: [serialNumber], damagedSerialNumbers: [],
-      location: 'Service Warehouse', binLocation: 'Tool Crib',
+      location: 'C', binLocation: 'C101',
       sourceDocumentNumber: `DN-REGISTRY-${index + 1}`, receiptEventId: `registry-event-${index + 1}`,
     }, user);
 

@@ -37,5 +37,8 @@ WarehousePickRequestSchema.index({ sourceMaterialRequestId: 1 }, {
   partialFilterExpression: { sourceMaterialRequestId: { $type: 'objectId' } },
 });
 
+// Manager dashboard and analytics both read only the pending queue.
+WarehousePickRequestSchema.index({ status: 1 });
+
 module.exports = mongoose.models.WarehousePickRequest
   || mongoose.model('WarehousePickRequest', WarehousePickRequestSchema);

@@ -7,42 +7,49 @@ const TechTeam = require('../../shared/tech-teams/techTeam.model');
 const materialWorkflow = require('../../shared/jobMaterialRequest/jobMaterialRequest.service');
 const { legacyStockStatus } = require('../../../utils/inventory-domain');
 const { serviceError, assertRole, actorName } = require('./shared');
+const {
+  inventoryCache,
+  invalidateInventoryCache,
+  INVENTORY_CACHE_PREFIXES,
+} = require('../inventory-manager.cache');
 
 /**
  * Fetches all material requests sorted by creation date.
  */
 exports.getMaterialRequests = async () => {
-  const requests = await WarehousePickRequest.find({ status: { $ne: 'cancelled' } }).sort({ createdAt: -1 }).lean();
-  const inventoryIds = [...new Set(requests.flatMap(request => request.items || [])
-    .map(item => String(item.inventoryId || ''))
-    .filter(id => mongoose.isValidObjectId(id)))];
-  const inventory = inventoryIds.length
-    ? await Inventory.find({ _id: { $in: inventoryIds } })
-      .select('name description sku available reserved unit unitCost itemClass subcategory supplierId manufacturerPartNumber')
-      .populate('supplierId', 'name')
-      .lean()
-    : [];
-  const byId = new Map(inventory.map(item => [String(item._id), item]));
-  return requests.map(request => {
-    const items = (request.items || []).map(item => {
-      const stock = byId.get(String(item.inventoryId));
-      const available = Number(stock?.available || 0);
-      const shortage = request.status === 'pending' ? Math.max(0, Number(item.qty) - available) : 0;
-      return {
-        ...item,
-        available,
-        reservedStock: Number(stock?.reserved || 0),
-        unit: stock?.unit || 'units',
-        unitCost: Number(stock?.unitCost || 0),
-        itemClass: stock?.itemClass || 'Unclassified',
-        subcategory: stock?.subcategory || 'Unclassified',
-        manufacturerPartNumber: stock?.manufacturerPartNumber || '',
-        supplierId: stock?.supplierId?._id || stock?.supplierId,
-        supplierName: stock?.supplierId?.name || '',
-        shortage,
-      };
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.MATERIAL_REQUEST}list`, async () => {
+    const requests = await WarehousePickRequest.find({ status: { $ne: 'cancelled' } }).sort({ createdAt: -1 }).lean();
+    const inventoryIds = [...new Set(requests.flatMap(request => request.items || [])
+      .map(item => String(item.inventoryId || ''))
+      .filter(id => mongoose.isValidObjectId(id)))];
+    const inventory = inventoryIds.length
+      ? await Inventory.find({ _id: { $in: inventoryIds } })
+        .select('name description sku available reserved unit unitCost itemClass subcategory supplierId manufacturerPartNumber')
+        .populate('supplierId', 'name')
+        .lean()
+      : [];
+    const byId = new Map(inventory.map(item => [String(item._id), item]));
+    return requests.map(request => {
+      const items = (request.items || []).map(item => {
+        const stock = byId.get(String(item.inventoryId));
+        const available = Number(stock?.available || 0);
+        const shortage = request.status === 'pending' ? Math.max(0, Number(item.qty) - available) : 0;
+        return {
+          ...item,
+          available,
+          reservedStock: Number(stock?.reserved || 0),
+          unit: stock?.unit || 'units',
+          unitCost: Number(stock?.unitCost || 0),
+          itemClass: stock?.itemClass || 'Unclassified',
+          subcategory: stock?.subcategory || 'Unclassified',
+          manufacturerPartNumber: stock?.manufacturerPartNumber || '',
+          supplierId: stock?.supplierId?._id || stock?.supplierId,
+          supplierName: stock?.supplierId?.name || '',
+          shortage,
+        };
+      });
+      return { ...request, items, hasShortage: items.some(item => item.shortage > 0) };
     });
-    return { ...request, items, hasShortage: items.some(item => item.shortage > 0) };
   });
 };
 
@@ -80,12 +87,13 @@ exports.confirmMaterialItem = async (id, lineId, data, user) => {
     runValidators: true,
   });
   if (!updated) throw serviceError('The material request changed; reload before trying again', 409, 'STALE_MATERIAL_REQUEST');
+  invalidateInventoryCache();
   return updated;
 };
 
 exports.reserveMaterialRequest = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
-  return mongoose.connection.transaction(async session => {
+  const result = await mongoose.connection.transaction(async session => {
     const request = await materialRequestByReference(id, session);
     assertRequestVersion(request, data.statusVersion);
     if (request.status !== 'pending') {
@@ -132,11 +140,13 @@ exports.reserveMaterialRequest = async (id, data, user) => {
     }], { session });
     return request;
   });
+  invalidateInventoryCache();
+  return result;
 };
 
 exports.releaseMaterialRequest = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
-  return mongoose.connection.transaction(async session => {
+  const result = await mongoose.connection.transaction(async session => {
     const request = await materialRequestByReference(id, session);
     assertRequestVersion(request, data.statusVersion);
     if (request.status !== 'reserved') {
@@ -185,11 +195,13 @@ exports.releaseMaterialRequest = async (id, data, user) => {
     }, { session, runValidators: true });
     return request;
   });
+  invalidateInventoryCache();
+  return result;
 };
 
 exports.handoverMaterialRequest = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
-  return mongoose.connection.transaction(async session => {
+  const result = await mongoose.connection.transaction(async session => {
     const request = await materialRequestByReference(id, session);
     assertRequestVersion(request, data.statusVersion);
     if (request.status !== 'reserved') {
@@ -224,4 +236,6 @@ exports.handoverMaterialRequest = async (id, data, user) => {
     }], { session });
     return request;
   });
+  invalidateInventoryCache();
+  return result;
 };
