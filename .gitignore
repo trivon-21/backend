@@ -37,3 +37,6 @@ coverage/
 test/
 postman/
 seed/
+
+#firebase service account
+firebase-service-account.json

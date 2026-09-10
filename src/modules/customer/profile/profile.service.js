@@ -42,7 +42,7 @@ async function sendAdditionalEmailOtp(toEmail, userName, otp) {
       await transporter.sendMail({
         from: `AirLux <${process.env.EMAIL_USER}>`,
         to: toEmail,
-        subject: "AirLux — Verify Your Additional Email",
+        subject: "AirLux - Verify Your Additional Email",
         html: `
           <p>Hi ${userName},</p>
           <p>Your verification code for <strong>${toEmail}</strong> is:</p>
@@ -248,7 +248,7 @@ exports.changePasswordFirstLogin = async (userId, { newPassword }) => {
       await transporter.sendMail({
         from: `AirLux <${process.env.EMAIL_USER}>`,
         to: user.email,
-        subject: "AirLux — Verify Your Email",
+        subject: "AirLux - Verify Your Email",
         html: `
           <p>Hi ${user.fullName},</p>
           <p>Your email verification code is:</p>
