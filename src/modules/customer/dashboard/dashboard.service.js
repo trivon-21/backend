@@ -1,15 +1,15 @@
 /**
  * Customer Dashboard Service
  */
-const Order = require("../../../models/Order");
 const ServiceRequest = require("../../../models/ServiceRequest");
 const Maintenance = require("../../shared/maintenance/maintenance.model");
 const Inquiry = require("../../../models/Inquiry");
+const orderService = require("../../shared/order/order.service");
 
 exports.getDashboard = async (userId) => {
   try {
-    const [orders, repairRequests, maintenanceRequests, inquiries] = await Promise.all([
-      Order.find({ customer: userId }).sort({ createdAt: -1 }),
+    const [{ orders }, repairRequests, maintenanceRequests, inquiries] = await Promise.all([
+      orderService.getUserOrders(userId, {}, { limit: 10000 }),
       ServiceRequest.find({ customerId: userId, serviceType: "Repair" }),
       Maintenance.find({ customerId: userId }),
       Inquiry.find({ customer: userId })
@@ -38,7 +38,7 @@ exports.getDashboard = async (userId) => {
     return {
       stats: { totalPurchases, returnOrders, pendingPayment, rejectedPayment, completed },
       orders: orders.map(o => ({
-        id: o._id,
+        id: o.id,
         itemName: o.itemName,
         date: o.createdAt,
         amount: o.amount,

@@ -3,19 +3,77 @@
  * Used by Customer, CSA, Manager roles
  */
 const Order = require("../../../models/Order");
+const InstallationOrder = require("../../../models/installationOrder.model");
 const configCache = require("../../../utils/config-cache");
+
+const orderReferenceFilter = (reference) => ({
+  $or: [
+    { orderRef: reference },
+    { orderReference: reference },
+    { orderId: reference },
+  ],
+});
+
+const installationReferenceFilter = (reference) => ({
+  $or: [
+    { orderReference: reference },
+    { orderId: reference },
+  ],
+});
+
+const installationOwnerFilter = (userId) => ({ userId: String(userId) });
+
+const normalizeOrderForCustomer = (order, isInstallationOrder = false) => {
+  const firstItem = order.items?.[0] || {};
+  const orderType = isInstallationOrder ? 'Buy & Install' : (order.orderType || 'Buy Only');
+  const orderStatus = isInstallationOrder
+    ? (order.status === 'Confirmed' ? 'Payment Confirmed' : order.status)
+    : order.orderStatus;
+
+  return {
+    id: order._id,
+    orderRef: order.orderRef || order.orderReference || order.orderId,
+    itemName: order.itemName || firstItem.name || '',
+    productImage: order.productImage || '',
+    quantity: order.quantity || firstItem.quantity || 1,
+    amount: order.amount ?? order.total ?? order.subtotal ?? 0,
+    status: isInstallationOrder
+      ? (order.status === 'Cancelled' ? 'Returned' : order.status === 'Confirmed' ? 'Completed' : 'Pending')
+      : order.status,
+    paymentStatus: isInstallationOrder
+      ? (order.paymentStatus === 'Pending' ? 'Pending Payment' : order.paymentStatus)
+      : order.paymentStatus,
+    orderType,
+    orderStatus,
+    deliveryTrackingId: order.deliveryTrackingId || order.trackingId || '',
+    deliveryPartnerUrl: order.deliveryPartnerUrl || order.partnerUrl || '',
+    warrantyStart: order.warrantyStart || null,
+    warrantyExpiry: order.warrantyExpiry || null,
+    amcStatus: order.amcStatus || 'Not Available',
+    paymentSlipUrl: order.paymentSlipUrl || order.paymentSlip || '',
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+  };
+};
 
 exports.getUserOrders = async (userId, filters = {}, pagination = {}) => {
   try {
-    const { limit = 10, skip = 0 } = pagination;
+    const { limit = null, skip = 0 } = pagination;
     const query = { customer: userId, ...filters };
-
-    const orders = await Order.find(query)
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
-
-    const total = await Order.countDocuments(query);
+    const [canonicalOrders, installationOrders] = await Promise.all([
+      Order.find(query),
+      Object.keys(filters).length === 0
+        ? InstallationOrder.find(installationOwnerFilter(userId))
+        : [],
+    ]);
+    const combinedOrders = [
+      ...canonicalOrders.map((order) => normalizeOrderForCustomer(order)),
+      ...installationOrders.map((order) => normalizeOrderForCustomer(order, true)),
+    ].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+    const orders = limit === null
+      ? combinedOrders.slice(skip)
+      : combinedOrders.slice(skip, skip + limit);
+    const total = combinedOrders.length;
 
     return { orders, total, limit, skip };
   } catch (err) {
@@ -35,27 +93,28 @@ exports.getOrderById = async (orderId) => {
 
 exports.trackOrderPublic = async (orderRef, phone, email) => {
   try {
-    const query = { orderRef };
+    const normalizedRef = String(orderRef || '').trim();
+    const query = orderReferenceFilter(normalizedRef);
 
     // Optional phone or email verification
     if (phone || email) {
-      query.$or = [];
-      if (phone) query.$or.push({ "customer.phoneNumber": phone });
-      if (email) query.$or.push({ "customer.email": email });
+      const verificationClauses = [];
+      if (phone) verificationClauses.push({ "shippingDetails.phone": String(phone).trim() });
+      if (email) verificationClauses.push({ "shippingDetails.email": String(email).trim().toLowerCase() });
+      query.$and = [{ $or: query.$or }, { $or: verificationClauses }];
+      delete query.$or;
     }
 
-    const order = await Order.findOne(query);
-    if (!order) throw new Error("Order not found");
-
-    return {
-      orderRef: order.orderRef,
-      customer: order.customer,
-      product: order.product,
-      orderStatus: order.orderStatus,
-      trackingId: order.trackingId,
-      partnerUrl: order.partnerUrl,
-      deliveryDate: order.deliveryDate
-    };
+    const [order, installationOrder] = await Promise.all([
+      Order.findOne(query),
+      InstallationOrder.findOne({
+        ...installationReferenceFilter(normalizedRef),
+        ...(query.$and ? { $and: query.$and.slice(1) } : {}),
+      }),
+    ]);
+    if (order) return normalizeOrderForCustomer(order);
+    if (installationOrder) return normalizeOrderForCustomer(installationOrder, true);
+    throw new Error("Order not found");
   } catch (err) {
     throw new Error(`Failed to track order: ${err.message}`);
   }

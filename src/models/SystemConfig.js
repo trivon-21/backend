@@ -27,6 +27,13 @@ const systemConfigSchema = new mongoose.Schema(
         min: 0,
         description: 'Standard Site Inspection Fee (LKR) synced with charges collection',
       },
+      profitMargin: {
+        type: Number,
+        default: 0.25,
+        min: 0,
+        max: 1,
+        description: 'Default inventory profit margin as a decimal (0.25 = 25%)',
+      },
       logRetentionDays: {
         type: Number,
         default: 30,
