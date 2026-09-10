@@ -5,6 +5,7 @@ const Charge = require("../modules/shared/L_charges.model");
 const Maintenance = require("../modules/shared/maintenance/maintenance.model");
 const Counter = require("../models/counter.model");
 const { createLog } = require("../modules/finance/auditLog.controller");
+const { validatePaymentSlip } = require("../services/slipValidation.service");
 
 async function nextServiceRequestId() {
   let counter = await Counter.findOneAndUpdate(
@@ -100,6 +101,52 @@ exports.getServiceRequest = async (req, res) => {
   }
 };
 
+// POST /api/service-requests/validate-slip
+exports.validateSlip = async (req, res) => {
+  try {
+    const { paymentSlipUrl, slip } = req.body;
+    const slipData = paymentSlipUrl || slip;
+
+    if (!slipData) {
+      return res.status(400).json({ success: false, message: 'No payment slip provided' });
+    }
+
+    let fileBuffer = null;
+    let declaredMime = null;
+
+    if (typeof slipData === 'string' && slipData.startsWith('data:')) {
+      const matches = slipData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        declaredMime = matches[1];
+        fileBuffer = Buffer.from(matches[2], 'base64');
+      }
+    }
+
+    if (!fileBuffer) {
+      return res.status(400).json({ success: false, message: 'Invalid payment slip format' });
+    }
+
+    const validation = await validatePaymentSlip(fileBuffer, declaredMime);
+    if (!validation.isValid) {
+      return res.status(422).json({
+        success: false,
+        layer: validation.layer,
+        message: validation.error
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Payment slip validated successfully',
+      matchedCount: validation.matchedCount,
+      matchedKeywords: validation.matchedKeywords
+    });
+  } catch (err) {
+    console.error('[ServiceRequest] validateSlip error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // POST /api/service-requests
 exports.createServiceRequest = async (req, res) => {
   try {
@@ -113,7 +160,9 @@ exports.createServiceRequest = async (req, res) => {
       problemImageUrl,
       preferredDate,
       preferredTimeSlot,
-      paymentSlipUrl
+      paymentSlipUrl,
+      requestType,
+      maintenanceType
     } = req.body;
 
     if (!serviceType || !["Repair", "Maintenance"].includes(serviceType)) {
@@ -144,11 +193,35 @@ exports.createServiceRequest = async (req, res) => {
       paymentStatus = paymentSlipUrl ? "UNDER_REVIEW" : "PENDING";
     }
 
+    // Verify slip with Layer 1 (magic bytes) and Layer 2 (OCR content)
+    if (paymentSlipUrl && typeof paymentSlipUrl === 'string' && paymentSlipUrl.startsWith('data:')) {
+      const matches = paymentSlipUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        const declaredMime = matches[1];
+        const fileBuffer = Buffer.from(matches[2], 'base64');
+        const validation = await validatePaymentSlip(fileBuffer, declaredMime);
+        if (!validation.isValid) {
+          return res.status(422).json({
+            success: false,
+            layer: validation.layer,
+            message: validation.error
+          });
+        }
+      }
+    }
+
+    const isStaffOrCsa = req.user && (req.user.role === 'CSA' || req.user.role === 'STAFF' || req.user.role === 'ADMIN');
+    const effectiveCustomerId = (isStaffOrCsa && req.body.customerId) ? req.body.customerId : req.user._id;
+    const effectiveMaintenanceType = maintenanceType || (isStaffOrCsa ? "Company Initiated" : "Customer Initiated");
+    const effectiveRequestType = requestType || effectiveMaintenanceType;
+
     if (serviceType === "Maintenance") {
+      const ticketId = await nextServiceRequestId();
+
       const maintenance = await Maintenance.create({
-        ticketId: await nextServiceRequestId(),
-        maintenanceType: "Customer Initiated",
-        customerId: req.user._id,
+        ticketId,
+        maintenanceType: effectiveMaintenanceType,
+        customerId: effectiveCustomerId,
         isUnderWarranty: acWarrantyStatus === "Active",
         date: preferredDate ? new Date(preferredDate) : new Date(),
         status: "Pending",
@@ -166,15 +239,40 @@ exports.createServiceRequest = async (req, res) => {
         estimatedCharges
       });
 
+      // Also record in service_tickets collection so CSA and technical workflows track it
+      await ServiceRequest.create({
+        serviceRequestRef: ticketId,
+        customerId: effectiveCustomerId,
+        acUnitModel: acUnitModel || "",
+        acUnitSerial: acUnitSerial || "",
+        acWarrantyStatus: acWarrantyStatus || "Unknown",
+        acAmcStatus: acAmcStatus || "Not Active",
+        serviceType: "Maintenance",
+        serviceTypeOther: "",
+        problemDescription: problemDescription || "",
+        problemImageUrl: problemImageUrl || "",
+        preferredDate: preferredDate || null,
+        preferredTimeSlot: preferredTimeSlot || "",
+        estimatedCharges,
+        paymentRequired,
+        paymentAmount,
+        paymentSlipUrl: paymentSlipUrl || "",
+        paymentStatus,
+        requestType: effectiveRequestType,
+        maintenanceType: effectiveMaintenanceType,
+        subject: "Maintenance",
+        status: "New"
+      }).catch(srErr => console.warn("ServiceRequest record warning:", srErr.message));
+
       if (paymentSlipUrl) {
         await createLog({
           eventType: "SERVICE_PAYMENT_SUBMITTED",
           paymentType: "MAINTENANCE",
-          ticketId: maintenance.ticketId,
-          customerId: req.user._id,
+          ticketId,
+          customerId: effectiveCustomerId,
           amount: paymentAmount,
           slipUrl: paymentSlipUrl,
-          performedBy: "Customer"
+          performedBy: isStaffOrCsa ? "CSA" : "Customer"
         }).catch(logErr => console.warn("Audit log error:", logErr.message));
       }
 
@@ -190,7 +288,7 @@ exports.createServiceRequest = async (req, res) => {
     }
 
     const sr = await ServiceRequest.create({
-      customerId: req.user._id,
+      customerId: effectiveCustomerId,
       acUnitModel: acUnitModel || "",
       acUnitSerial: acUnitSerial || "",
       acWarrantyStatus: acWarrantyStatus || "Unknown",
@@ -206,6 +304,8 @@ exports.createServiceRequest = async (req, res) => {
       paymentAmount,
       paymentSlipUrl: paymentSlipUrl || "",
       paymentStatus,
+      requestType: effectiveRequestType,
+      maintenanceType: effectiveMaintenanceType,
       subject: serviceType,
       status: "New"
     });
