@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  approvalMode,
   canonicalPurchaseStatus,
   isPendingManagerApproval,
   isPendingFinanceApproval,
@@ -76,16 +75,6 @@ test('outstanding quantity and fulfillment status honor partial receipts', () =>
   assert.equal(fulfillmentStatus(lines), 'partially-received');
   lines[0].receivedQuantity = 5;
   assert.equal(fulfillmentStatus(lines), 'received');
-});
-
-test('approval mode defaults safely to manager-first', () => {
-  const previous = process.env.PURCHASE_APPROVAL_MODE;
-  delete process.env.PURCHASE_APPROVAL_MODE;
-  assert.equal(approvalMode(), 'manager-first');
-  process.env.PURCHASE_APPROVAL_MODE = 'two-stage';
-  assert.equal(approvalMode(), 'two-stage');
-  if (previous === undefined) delete process.env.PURCHASE_APPROVAL_MODE;
-  else process.env.PURCHASE_APPROVAL_MODE = previous;
 });
 
 test('purchase requests map to one explicit workflow stage', () => {

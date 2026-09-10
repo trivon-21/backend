@@ -4,7 +4,7 @@ const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const Activity = require('../../models/Activity');
 require('../../models/Inventory');
 require('../../models/Supplier');
-const { approvalMode, canonicalPurchaseStatus } = require('../../utils/purchase-workflow');
+const { canonicalPurchaseStatus, isPendingFinanceApproval } = require('../../utils/purchase-workflow');
 const {
   assertPurchaseStatusVersion,
   savePurchaseRequest,
@@ -47,6 +47,7 @@ function summarize(orders) {
   const pending = orders.filter((order) => canonicalPurchaseStatus(order.status) === 'pending-manager');
   return {
     pending: pending.length,
+    awaitingFinance: orders.filter((order) => isPendingFinanceApproval(order.status)).length,
     approved: orders.filter((order) => ['approved', 'ordered', 'partially-received', 'received'].includes(canonicalPurchaseStatus(order.status))).length,
     rejected: orders.filter((order) => canonicalPurchaseStatus(order.status) === 'rejected').length,
     pendingValue: pending.reduce((sum, order) => sum + Number(order.totalEstimate || 0), 0),
@@ -105,16 +106,10 @@ exports.decideOrder = async (id, input, user) => {
     request.rejectedAt = undefined;
     request.approvedBy = user.fullName;
     request.approvedAt = now;
-    if (approvalMode() === 'two-stage') {
-      request.status = 'pending-finance';
-      request.financialApproval = { status: 'pending' };
-    } else {
-      request.status = 'approved';
-      request.financialApproval = {
-        status: 'not-required', actorName: 'Manager-first rollout',
-        comment: 'Finance approval is not required in the current rollout mode', decidedAt: now,
-      };
-    }
+    // Operational sign-off hands the request to Finance; it only becomes
+    // 'approved' (and therefore issuable as a PO) once Finance decides.
+    request.status = 'pending-finance';
+    request.financialApproval = { status: 'pending' };
   }
   request.statusVersion += 1;
   await savePurchaseRequest(request);
@@ -122,7 +117,7 @@ exports.decideOrder = async (id, input, user) => {
   invalidateInventoryCache();
   await Activity.create({
     type: input.decision === 'approved' ? 'request' : 'alert',
-    title: `Purchase Request ${input.decision === 'approved' ? 'Approved' : 'Rejected'}`,
+    title: `Purchase Request ${input.decision === 'approved' ? 'Sent to Finance' : 'Rejected'}`,
     description: `${request.requestId}: ${comment}`,
     actionLabel: 'View Request',
   });

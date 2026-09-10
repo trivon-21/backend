@@ -27,10 +27,6 @@ const NON_PO_REASONS = Object.freeze([
   'OTHER',
 ]);
 
-function approvalMode() {
-  return process.env.PURCHASE_APPROVAL_MODE === 'two-stage' ? 'two-stage' : 'manager-first';
-}
-
 function canonicalPurchaseStatus(status) {
   const legacyMap = {
     'pending-approval': 'pending-manager',
@@ -161,7 +157,6 @@ module.exports = {
   LEGACY_PURCHASE_STATUSES,
   ACTIVE_INCOMING_STATUSES,
   NON_PO_REASONS,
-  approvalMode,
   canonicalPurchaseStatus,
   isPendingManagerApproval,
   isPendingFinanceApproval,

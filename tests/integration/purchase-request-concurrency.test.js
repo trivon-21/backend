@@ -34,7 +34,6 @@ async function competing(first, second) {
 test('competing purchase edits and transitions allow one statusVersion winner', {
   skip: !uri,
 }, async () => {
-  const originalMode = process.env.PURCHASE_APPROVAL_MODE;
   await mongoose.connect(uri);
   try {
     await resetAuditDatabase();
@@ -133,7 +132,6 @@ test('competing purchase edits and transitions allow one statusVersion winner', 
     assert.equal(submitted.status, 'pending-manager');
     assert.equal(submitted.statusVersion, 1);
 
-    delete process.env.PURCHASE_APPROVAL_MODE;
     const managerPending = await makeRequest('pending-manager');
     await competing(
       () => managerService.decideOrder(
@@ -148,7 +146,7 @@ test('competing purchase edits and transitions allow one statusVersion winner', 
       ),
     );
     const managerStored = await PurchaseRequest.findById(managerPending._id).lean();
-    assert.ok(['approved', 'rejected'].includes(managerStored.status));
+    assert.ok(['pending-finance', 'rejected'].includes(managerStored.status));
     assert.equal(managerStored.statusVersion, 1);
 
     const financePending = await makeRequest('pending-finance');
@@ -189,8 +187,6 @@ test('competing purchase edits and transitions allow one statusVersion winner', 
     assert.equal(await Activity.countDocuments({ title: 'Purchase Request Submitted' }), 1);
     assert.equal(await Activity.countDocuments({ title: 'Purchase Order Issued' }), 1);
   } finally {
-    if (originalMode === undefined) delete process.env.PURCHASE_APPROVAL_MODE;
-    else process.env.PURCHASE_APPROVAL_MODE = originalMode;
     if (mongoose.connection.readyState === 1) await resetAuditDatabase();
     await mongoose.disconnect();
   }
