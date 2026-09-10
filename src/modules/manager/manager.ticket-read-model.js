@@ -2,6 +2,15 @@ const ServiceTicket = require('../../models/ServiceTicket');
 const InspectionTicket = require('../../models/InspectionTicket');
 const Installation = require('../../models/Installation');
 require('../../models/User');
+const {
+  canonicalSourceType,
+  normalizeServiceStatus,
+  normalizeInstallationStatus,
+  normalizeInspectionStatus,
+} = require('./manager.work-item-domain');
+const { managerCache } = require('./manager.cache');
+
+const TICKETS_CACHE_KEY = 'manager:tickets';
 
 const SAFE_CUSTOMER_FIELDS = 'fullName email phoneNumber address';
 const SAFE_TECHNICIAN_FIELDS = 'fullName email phoneNumber role';
@@ -16,27 +25,6 @@ function customerFields(customer) {
     customer: customer?.fullName || 'Customer',
     customerDetails: customer && typeof customer === 'object' ? customer : undefined,
   };
-}
-
-function normalizeServiceStatus(status) {
-  if (['resolved', 'Completed', 'Closed'].includes(status)) return 'resolved';
-  if (['escalated', 'Rejected', 'Cancelled'].includes(status)) return 'escalated';
-  if (['Reviewed', 'Assigned', 'In Progress', 'in-progress'].includes(status)) return 'in-progress';
-  return 'open';
-}
-
-function normalizeInspectionStatus(status) {
-  if (status === 'INSPECTED') return 'resolved';
-  if (status === 'PAYMENT_REJECTED') return 'escalated';
-  if (['INSPECTION_SCHEDULED', 'ONGOING', 'REPORT_RECORDED'].includes(status)) return 'in-progress';
-  return 'open';
-}
-
-function normalizeInstallationStatus(status) {
-  if (status === 'Completed') return 'resolved';
-  if (status === 'Cancelled') return 'escalated';
-  if (['Assigned', 'In Progress'].includes(status)) return 'in-progress';
-  return 'open';
 }
 
 function normalizeServiceTicket(ticket) {
@@ -67,7 +55,7 @@ function normalizeInspectionTicket(ticket) {
     priority: 'medium',
     status: normalizeInspectionStatus(ticket.status),
     sourceStatus: ticket.status,
-    sourceType: 'inspection-ticket',
+    sourceType: canonicalSourceType('inspection-ticket'),
     assignedTechnicianId: null,
     assignedTo: '',
     slaDueAt: ticket.scheduledDate || ticket.scheduledAt,
@@ -87,8 +75,12 @@ function normalizeInstallation(ticket) {
     priority: 'medium',
     status: normalizeInstallationStatus(ticket.status),
     sourceStatus: ticket.status,
-    sourceType: 'installation',
-    assignedTechnicianId: ticket.assignedTeamId || null,
+    sourceType: canonicalSourceType('installation'),
+    // Installations are assigned to a TechTeam, not an individual technician —
+    // assignedTeamId (from ...ticket above) carries the identity; leaving
+    // assignedTechnicianId unset here prevents workload grouping from
+    // mistaking a team assignment for an individual one.
+    assignedTechnicianId: null,
     assignedTo: ticket.assignedTeamName || '',
     slaDueAt: ticket.serviceDate,
     resolvedAt: ticket.status === 'Completed' ? ticket.updatedAt : undefined,
@@ -96,7 +88,7 @@ function normalizeInstallation(ticket) {
   };
 }
 
-async function loadManagerTickets() {
+async function readManagerTickets() {
   const [serviceTickets, inspectionTickets, installations] = await Promise.all([
     ServiceTicket.find()
       .populate('customerId', SAFE_CUSTOMER_FIELDS)
@@ -113,8 +105,23 @@ async function loadManagerTickets() {
   ].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
+/**
+ * Cached entry point. The dashboard, analytics, /tickets and /work-items
+ * endpoints all derive from this same read model, so caching here collapses
+ * what were three independent passes over the ticket collections into one.
+ *
+ * @param {{ fresh?: boolean }} [options] - `fresh` bypasses and repopulates the cache.
+ */
+async function loadManagerTickets({ fresh = false } = {}) {
+  if (fresh) managerCache.invalidate(TICKETS_CACHE_KEY);
+  return managerCache.get(TICKETS_CACHE_KEY, readManagerTickets);
+}
+
 module.exports = {
   loadManagerTickets,
+  readManagerTickets,
   normalizeServiceTicket,
+  normalizeInspectionTicket,
+  normalizeInstallation,
   SAFE_TECHNICIAN_FIELDS,
 };

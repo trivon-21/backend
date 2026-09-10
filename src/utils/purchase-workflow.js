@@ -27,10 +27,6 @@ const NON_PO_REASONS = Object.freeze([
   'OTHER',
 ]);
 
-function approvalMode() {
-  return process.env.PURCHASE_APPROVAL_MODE === 'two-stage' ? 'two-stage' : 'manager-first';
-}
-
 function canonicalPurchaseStatus(status) {
   const legacyMap = {
     'pending-approval': 'pending-manager',
@@ -39,6 +35,29 @@ function canonicalPurchaseStatus(status) {
     REJECTED: 'rejected',
   };
   return legacyMap[status] || status;
+}
+
+/**
+ * True when a purchase request is waiting on the Manager's own decision —
+ * i.e. it belongs in the Manager's actionable approval queue. Deliberately
+ * excludes 'pending-finance': that stage is Finance's queue, not the
+ * Manager's, even though both are "pending approval" in a loose sense.
+ *
+ * @param {string} status raw or canonical purchase status
+ * @returns {boolean}
+ */
+function isPendingManagerApproval(status) {
+  return canonicalPurchaseStatus(status) === 'pending-manager';
+}
+
+/**
+ * True when a purchase request is waiting on Finance's decision.
+ *
+ * @param {string} status raw or canonical purchase status
+ * @returns {boolean}
+ */
+function isPendingFinanceApproval(status) {
+  return canonicalPurchaseStatus(status) === 'pending-finance';
 }
 
 function outstandingQuantity(line) {
@@ -130,8 +149,6 @@ function summarizeProcurementWorkflow(purchaseRequests, authorizations, options 
         receiptAuthorizations: readyReceiptAuthorizations,
       },
     },
-    awaitingReceipt: readyToReceive,
-    awaitingFinance: awaitingReceiptReconciliation,
   };
 }
 
@@ -140,8 +157,9 @@ module.exports = {
   LEGACY_PURCHASE_STATUSES,
   ACTIVE_INCOMING_STATUSES,
   NON_PO_REASONS,
-  approvalMode,
   canonicalPurchaseStatus,
+  isPendingManagerApproval,
+  isPendingFinanceApproval,
   outstandingQuantity,
   fulfillmentStatus,
   purchaseRequestWorkflowStages,

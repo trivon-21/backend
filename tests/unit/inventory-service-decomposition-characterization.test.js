@@ -28,6 +28,7 @@ describe('Inventory Capability Decomposition Characterization & Contracts (AR-02
       'getReceiptAuthorizations',
       'receiveInventory',
       'getRecentProcurements',
+      'getProcurementSummary',
       'getReceiptDiscrepancies',
       // Dispatch
       'getOrders',
@@ -69,7 +70,7 @@ describe('Inventory Capability Decomposition Characterization & Contracts (AR-02
       'getActivityLog',
     ];
 
-    assert.equal(expectedMethods.length, 44, 'Must track all 44 domain methods');
+    assert.equal(expectedMethods.length, 45, 'Must track all 45 domain methods');
 
     for (const methodName of expectedMethods) {
       assert.equal(
@@ -96,6 +97,7 @@ describe('Inventory Capability Decomposition Characterization & Contracts (AR-02
     assert.equal(service.getReceiptAuthorizations, procurementService.getReceiptAuthorizations);
     assert.equal(service.receiveInventory, procurementService.receiveInventory);
     assert.equal(service.getRecentProcurements, procurementService.getRecentProcurements);
+    assert.equal(service.getProcurementSummary, procurementService.getProcurementSummary);
     assert.equal(service.getReceiptDiscrepancies, procurementService.getReceiptDiscrepancies);
   });
 

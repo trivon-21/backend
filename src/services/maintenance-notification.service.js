@@ -375,7 +375,7 @@ class MaintenanceNotificationService {
               timeRemaining
             );
           } else if (isActive) {
-            subject = "AirLux is currently undergoing maintenance — we'll be back shortly";
+            subject = "AirLux is currently undergoing maintenance - we'll be back shortly";
             html = this.generateInstantMaintenanceEmailHtml(
               user.fullName,
               maintenance.message,
@@ -442,7 +442,7 @@ class MaintenanceNotificationService {
           await transporter.sendMail({
             from: `AirLux <${process.env.EMAIL_USER}>`,
             to: user.email,
-            subject: "AirLux is currently undergoing maintenance — we'll be back shortly",
+            subject: "AirLux is currently undergoing maintenance - we'll be back shortly",
             html,
           });
 
@@ -581,7 +581,7 @@ class MaintenanceNotificationService {
     const safeUserName = this.escapeHtml(userName || 'there');
 
     const bodyHtml = `
-      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.7; color:#334155;">You’re all set — everything is running normally again.</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.7; color:#334155;">You’re all set - everything is running normally again.</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:0 0 18px 0;">
         <tr>
           <td style="background:#ecfdf5; border:1px solid #bbf7d0; border-left:4px solid #16a34a; border-radius:14px; padding:18px; font-family: Arial, Helvetica, sans-serif; color:#14532d;">
@@ -602,7 +602,7 @@ class MaintenanceNotificationService {
       bodyHtml,
       ctaLabel: 'Go to AirLux',
       ctaHref: branding.appUrl,
-      footerNote: 'Thanks for bearing with us — if anything feels off, we’re just an email away.',
+      footerNote: 'Thanks for bearing with us - if anything feels off, we’re just an email away.',
       borderColor: '#bbf7d0',
     });
   }

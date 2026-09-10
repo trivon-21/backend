@@ -23,9 +23,22 @@ const {
   runInTransaction,
   controllerSafeOrderFields,
 } = require('./shared');
+const {
+  inventoryCache,
+  invalidateInventoryScopes,
+  INVENTORY_CACHE_PREFIXES,
+} = require('../inventory-manager.cache');
 
-exports.getOrderRequests = async (user) => {
-  assertRole(user, ['INVENTORY']);
+// Purchase-request writes never move stock — receiving does. So they only clear
+// procurement, the dashboard tiles and the activity feed.
+const invalidatePurchasingScopes = () => invalidateInventoryScopes(
+  INVENTORY_CACHE_PREFIXES.PROCUREMENT,
+  INVENTORY_CACHE_PREFIXES.DASHBOARD,
+  INVENTORY_CACHE_PREFIXES.ACTIVITY,
+);
+
+/** Shared with the bundled procurement summary so both paths return one shape. */
+const loadOrderRequests = async () => {
   const requests = await PurchaseRequest.find()
     .populate('items.supplierId', 'name')
     .sort({ createdAt: -1 })
@@ -35,6 +48,15 @@ exports.getOrderRequests = async (user) => {
     status: canonicalPurchaseStatus(request.status),
     workflowStages: purchaseRequestWorkflowStages(request),
   }));
+};
+exports.loadOrderRequests = loadOrderRequests;
+
+exports.getOrderRequests = async (user) => {
+  assertRole(user, ['INVENTORY']);
+  return await inventoryCache.get(
+    `${INVENTORY_CACHE_PREFIXES.PROCUREMENT}order-requests`,
+    loadOrderRequests,
+  );
 };
 
 /**
@@ -92,7 +114,7 @@ exports.createOrderRequest = async (data, user, options = {}) => {
   if (!String(safe.supplierName || '').trim()) {
     throw serviceError('Supplier is required', 400, 'SUPPLIER_REQUIRED');
   }
-  return runInTransaction(async (session) => {
+  const result = await runInTransaction(async (session) => {
     const sessionOpt = session ? { session } : {};
     if (safe.source === 'material-request') {
       assertObjectId(safe.sourceMaterialRequestId, 'Material request reference is invalid', 'INVALID_MATERIAL_REQUEST_ID');
@@ -139,6 +161,8 @@ exports.createOrderRequest = async (data, user, options = {}) => {
 
     return saved;
   }, options.session);
+  invalidatePurchasingScopes();
+  return result;
 };
 
 /**
@@ -148,8 +172,12 @@ exports.updateOrderRequest = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
   const request = await PurchaseRequest.findOne({ requestId: id });
   if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
-  if (String(request.requestedById || '') !== String(user._id)) {
+  if (request.requestedById && user?.role !== 'SUPER_ADMIN' && String(request.requestedById) !== String(user._id)) {
     throw serviceError('Only the requester can edit this purchase request', 403, 'NOT_REQUEST_OWNER');
+  }
+  if (!request.requestedById) {
+    request.requestedById = user._id;
+    request.requestedBy = request.requestedBy || actorName(user, 'Inventory Manager');
   }
   assertPurchaseStatusVersion(request, data.statusVersion);
   if (!['draft', 'rejected'].includes(canonicalPurchaseStatus(request.status))) {
@@ -214,17 +242,23 @@ exports.updateOrderRequest = async (id, data, user) => {
   request.approvedBy = '';
   request.approvedAt = undefined;
   request.statusVersion += 1;
-  return savePurchaseRequest(request);
+  const updated = await savePurchaseRequest(request);
+  invalidatePurchasingScopes();
+  return updated;
 };
 
 exports.submitOrderRequest = async (id, data, user, options = {}) => {
   assertRole(user, ['INVENTORY']);
-  return runInTransaction(async (session) => {
+  const result = await runInTransaction(async (session) => {
     const sessionOpt = session ? { session } : {};
     const request = await PurchaseRequest.findOne(orderLookup(id)).session(session || null);
     if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
-    if (String(request.requestedById || '') !== String(user._id)) {
+    if (request.requestedById && user?.role !== 'SUPER_ADMIN' && String(request.requestedById) !== String(user._id)) {
       throw serviceError('Only the requester can submit this purchase request', 403, 'NOT_REQUEST_OWNER');
+    }
+    if (!request.requestedById) {
+      request.requestedById = user._id;
+      request.requestedBy = request.requestedBy || actorName(user, 'Inventory Manager');
     }
     assertPurchaseStatusVersion(request, data.statusVersion);
     if (!['draft', 'rejected'].includes(canonicalPurchaseStatus(request.status))) {
@@ -252,11 +286,13 @@ exports.submitOrderRequest = async (id, data, user, options = {}) => {
     }], sessionOpt);
     return request;
   }, options.session);
+  invalidatePurchasingScopes();
+  return result;
 };
 
 exports.issuePurchaseOrder = async (id, data, user, options = {}) => {
   assertRole(user, ['INVENTORY']);
-  return runInTransaction(async (session) => {
+  const result = await runInTransaction(async (session) => {
     const sessionOpt = session ? { session } : {};
     const request = await PurchaseRequest.findOne(orderLookup(id)).session(session || null);
     if (!request) throw serviceError('Order request not found', 404, 'ORDER_NOT_FOUND');
@@ -280,6 +316,8 @@ exports.issuePurchaseOrder = async (id, data, user, options = {}) => {
     }], sessionOpt);
     return request;
   }, options.session);
+  invalidatePurchasingScopes();
+  return result;
 };
 
 exports.retiredInventoryApproval = () => {

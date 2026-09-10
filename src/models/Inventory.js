@@ -11,6 +11,7 @@ const DEFAULT_LOCATION = INVENTORY_LOCATIONS[0];
 
 const InventorySchema = new mongoose.Schema({
   name: { type: String, required: true },
+  description: { type: String, default: '', trim: true },
   sku: { type: String, required: true, unique: true },
   type: { type: String, enum: ['Single', 'Kit', 'Bundle'], default: 'Single' },
   category: { type: String, required: true },
@@ -35,7 +36,7 @@ const InventorySchema = new mongoose.Schema({
   available: { type: Number, default: 0, min: 0 },
   reserved: { type: Number, default: 0, min: 0 },
   location: { type: String, default: DEFAULT_LOCATION.warehouse, trim: true },
-  binLocation: { type: String, default: DEFAULT_LOCATION.placementAreas[0], trim: true },
+  binLocation: { type: String, default: DEFAULT_LOCATION.racks[0].bins[0], trim: true },
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
   unit: { type: String, default: 'units' },
   reorderLevel: { type: Number, default: 10, min: 0 },
@@ -58,6 +59,10 @@ const InventorySchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
+InventorySchema.index({ itemClass: 1 });
+InventorySchema.index({ available: 1 });
+InventorySchema.index({ name: 1 });
+
 InventorySchema.virtual('stockStatus').get(function stockStatusVirtual() {
   return deriveStockStatus(this.available, this.reorderLevel);
 });
@@ -76,7 +81,7 @@ InventorySchema.pre('validate', function synchronizeInventoryCompatibility() {
   this.serialNumbers = serials;
   if ((this.isNew || this.isModified('location') || this.isModified('binLocation'))
     && !isValidInventoryLocation(this.location, this.binLocation)) {
-    this.invalidate('binLocation', 'Select a placement area belonging to the selected warehouse');
+    this.invalidate('binLocation', 'Select a bin belonging to a rack in the selected warehouse');
   }
 });
 

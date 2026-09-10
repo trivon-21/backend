@@ -1,7 +1,12 @@
 const { deriveStockStatus } = require('./inventory-domain');
+const { isTerminal, isUnassigned, canonicalSourceType } = require('../modules/manager/manager.work-item-domain');
+const {
+  canonicalPurchaseStatus,
+  isPendingManagerApproval,
+  isPendingFinanceApproval,
+} = require('./purchase-workflow');
 
 const PERIODS = ['7d', '30d', '12m'];
-const ACTIVE_TICKET_STATUSES = ['open', 'in-progress', 'escalated'];
 const PURCHASE_STATUSES = [
   'pending-manager', 'pending-finance', 'approved', 'ordered',
   'partially-received', 'received', 'rejected', 'cancelled',
@@ -259,6 +264,10 @@ function assigneeName(ticket) {
 }
 
 function isSlaRisk(ticket, now) {
+  // Inspection tickets are managed by their own workflow and are never
+  // expected to carry a Manager-portal SLA — mirrors the Dashboard's
+  // exclusion so the two surfaces agree on the same tickets.
+  if (canonicalSourceType(ticket.sourceType) === 'inspection') return false;
   if (ticket.status === 'escalated') return true;
   const due = validDate(ticket.slaDueAt);
   return Boolean(due && due <= new Date(new Date(now).getTime() + 24 * 3600000));
@@ -270,7 +279,7 @@ function buildWorkload(tickets, resolvedInPeriod, now) {
     if (!rows.has(name)) rows.set(name, { name, active: 0, slaRisk: 0, escalated: 0, awaitingAction: 0, completedInPeriod: 0 });
     return rows.get(name);
   };
-  tickets.filter((ticket) => ACTIVE_TICKET_STATUSES.includes(ticket.status)).forEach((ticket) => {
+  tickets.filter((ticket) => !isTerminal(ticket.status)).forEach((ticket) => {
     const name = assigneeName(ticket);
     if (!name) return;
     const item = row(name);
@@ -350,15 +359,21 @@ function buildAnalytics(
     if (bucket) bucket.spend += Number(receipt.totalCost || 0);
   });
 
-  const activeTickets = tickets.filter((ticket) => ACTIVE_TICKET_STATUSES.includes(ticket.status));
-  const unassignedTickets = activeTickets.filter((ticket) => !assigneeName(ticket));
-  const pendingOrders = orders.filter((order) => ['pending-manager', 'pending-approval', 'pending-finance'].includes(order.status));
+  const activeTickets = tickets.filter((ticket) => !isTerminal(ticket.status));
+  const unassignedTickets = activeTickets.filter((ticket) => isUnassigned(ticket));
+  // Pipeline value in flight — unlike the Manager dashboard's actionable
+  // approval count, this deliberately includes pending-finance: it answers
+  // "how much is committed but not yet through the pipeline", not "what
+  // needs the Manager's decision right now".
+  const pendingOrders = orders.filter((order) => (
+    isPendingManagerApproval(order.status) || isPendingFinanceApproval(order.status)
+  ));
   const stockRisks = buildStockRisk(inventory);
   const outOfStock = inventory.filter((item) => deriveStockStatus(item.available, item.reorderLevel) === 'out-of-stock');
   const lowStock = inventory.filter((item) => deriveStockStatus(item.available, item.reorderLevel) === 'low-stock');
 
   const pipeline = PURCHASE_STATUSES.map((status) => {
-    const matching = orders.filter((order) => order.status === status || (status === 'pending-manager' && order.status === 'pending-approval'));
+    const matching = orders.filter((order) => canonicalPurchaseStatus(order.status) === status);
     return { status, count: matching.length, value: sum(matching, (order) => order.totalEstimate) };
   });
 

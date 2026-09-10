@@ -2,19 +2,26 @@ const DispatchOrder = require('../../../models/DispatchOrder');
 const Activity = require('../../../models/Activity');
 const { buildDispatchMutation } = require('../../../utils/dispatch-workflow');
 const { serviceError, runInTransaction } = require('./shared');
+const {
+  inventoryCache,
+  invalidateInventoryScopes,
+  INVENTORY_CACHE_PREFIXES,
+} = require('../inventory-manager.cache');
 
 /**
  * Retrieves all orders sorted by creation date.
  */
 exports.getOrders = async () => {
-  return await DispatchOrder.find().sort({ createdAt: -1 });
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.DISPATCH}orders`, async () => {
+    return await DispatchOrder.find().sort({ createdAt: -1 }).lean();
+  });
 };
 
 /**
  * Updates an order's details and manages status-related timestamps.
  */
 exports.updateOrder = async (id, data, options = {}) => {
-  return runInTransaction(async (session) => {
+  const result = await runInTransaction(async (session) => {
     const sessionOpt = session ? { session } : {};
     const order = await DispatchOrder.findOne({ orderId: id }).session(session || null).lean();
     if (!order) throw serviceError('Dispatch order not found', 404, 'DISPATCH_NOT_FOUND');
@@ -37,4 +44,11 @@ exports.updateOrder = async (id, data, options = {}) => {
     }
     return updated;
   }, options.session);
+  // Advancing a dispatch stage moves no stock — the reservation already did.
+  invalidateInventoryScopes(
+    INVENTORY_CACHE_PREFIXES.DISPATCH,
+    INVENTORY_CACHE_PREFIXES.DASHBOARD,
+    INVENTORY_CACHE_PREFIXES.ACTIVITY,
+  );
+  return result;
 };

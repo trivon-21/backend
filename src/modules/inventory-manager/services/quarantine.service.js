@@ -8,12 +8,19 @@ const {
   generateId,
   runInTransaction,
 } = require('./shared');
+const {
+  inventoryCache,
+  invalidateInventoryCache,
+  INVENTORY_CACHE_PREFIXES,
+} = require('../inventory-manager.cache');
 
 /**
  * Fetches all active quarantine items (status = 'quarantined').
  */
 exports.getQuarantineItems = async () => {
-  return await QuarantineItem.find({ status: 'quarantined' }).sort({ createdAt: -1 });
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.QUARANTINE}items`, async () => {
+    return await QuarantineItem.find({ status: 'quarantined' }).sort({ createdAt: -1 }).lean();
+  });
 };
 
 /**
@@ -27,7 +34,7 @@ exports.createQuarantineItem = async (data, user, options = {}) => {
     throw serviceError('Item name, reason and a positive whole quantity are required', 400, 'INVALID_QUARANTINE_ITEM');
   }
 
-  return runInTransaction(async (session) => {
+  const result = await runInTransaction(async (session) => {
     const sessionOpt = session ? { session } : {};
     const quarantineItem = new QuarantineItem({
       quarantineId,
@@ -51,6 +58,8 @@ exports.createQuarantineItem = async (data, user, options = {}) => {
 
     return saved;
   }, options.session);
+  invalidateInventoryCache();
+  return result;
 };
 
 /**
@@ -100,5 +109,7 @@ exports.disposeQuarantineItem = async (id, user, options = {}) => {
     ? { $or: [{ _id: id }, { quarantineId: id }] }
     : { quarantineId: id };
 
-  return runInTransaction((session) => executeDisposal(query, user, session), options.session);
+  const result = await runInTransaction((session) => executeDisposal(query, user, session), options.session);
+  invalidateInventoryCache();
+  return result;
 };
