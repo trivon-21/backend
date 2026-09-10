@@ -13,6 +13,22 @@ const {
 
 const VISIBLE_STATUSES = STATUS_GROUPS.SERVICE_REQUEST_VISIBLE;
 
+const resolveProductType = (record) => {
+  const productDetails = record?.productDetails || {};
+  const serviceTicket = record?.serviceTicketId || {};
+  const order = record?.orderId || {};
+  return record?.productType
+    || record?.detailedProductType
+    || productDetails.detailedType
+    || productDetails.generalType
+    || record?.acUnitModel
+    || serviceTicket.acUnitModel
+    || order.itemName
+    || order.productType
+    || record?.repairType
+    || 'N/A';
+};
+
 exports.getAllServiceRequests = async (req, res) => {
   try {
     const { status } = req.query;
@@ -24,6 +40,8 @@ exports.getAllServiceRequests = async (req, res) => {
 
     const serviceRequests = await ServiceRequest.find(query)
       .populate('customerId', 'fullName name address')
+      .populate('serviceTicketId', 'acUnitModel')
+      .populate('orderId', 'itemName productType')
       .lean();
 
     const data = serviceRequests.map((item) => ({
@@ -31,7 +49,7 @@ exports.getAllServiceRequests = async (req, res) => {
       fullName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
       customerName: item.customerId?.fullName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
       location: item.customerId?.address || item.location || '-',
-      productType: item.productType || item.acUnitModel || item.category || item.repairType || '-',
+      productType: resolveProductType(item),
       assignedTeam: item.assignedTeamName || DEFAULTS.UNASSIGNED
     }));
 
@@ -50,6 +68,8 @@ exports.getServiceRequestById = async (req, res) => {
 
     const service = await ServiceRequest.findOne(query)
       .populate('customerId', 'fullName name email phoneNumber contactNo address')
+      .populate('serviceTicketId', 'acUnitModel')
+      .populate('orderId', 'itemName productType')
       .lean();
 
     if (!service) return res.status(404).json({ success: false, message: 'Not found' });
@@ -61,7 +81,7 @@ exports.getServiceRequestById = async (req, res) => {
     const mappedService = {
       ...service,
       customerName: service.customerId?.fullName || service.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
-      productType: service.productType || service.acUnitModel || service.category || service.repairType || '-',
+      productType: resolveProductType(service),
       serviceDescription: service.description || service.serviceDescription || service.notes || service.subject || '-',
     };
     if (mappedService.customerId) {

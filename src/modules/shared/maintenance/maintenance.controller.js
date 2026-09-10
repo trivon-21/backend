@@ -14,6 +14,19 @@ const {
 const SCHEDULE_SERVICE_COUNT = 6;
 const MAX_SCHEDULE_YEARS = 3;
 
+const resolveProductType = (record) => {
+  const productDetails = record?.productDetails || {};
+  return record?.productType
+    || record?.detailedProductType
+    || productDetails.detailedType
+    || productDetails.generalType
+    || record?.acUnitModel
+    || record?.model
+    || record?.scheduledServiceType
+    || record?.serviceType
+    || 'N/A';
+};
+
 const startOfDay = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -304,7 +317,7 @@ exports.getAllMaintenance = async (req, res) => {
       ...ticket,
       isCustomerInitiated: ticket.maintenanceType === 'Customer Initiated' || ticket.isCustomerInitiated || false,
       maintenanceType: ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated'),
-      productType: ticket.productType || ticket.acUnitModel || ticket.category || ticket.repairType || '-',
+      productType: resolveProductType(ticket),
       assignedTeam: ticket.assignedTeamName || ticket.assignedTeam || (ticket.assignedTeamId ? ticket.assignedTeamId.teamName : 'Not Assigned')
     }));
 
@@ -332,7 +345,7 @@ exports.getMaintenanceById = async (req, res) => {
     if (ticket) {
       ticket.isCustomerInitiated = ticket.maintenanceType === 'Customer Initiated' || ticket.isCustomerInitiated || false;
       ticket.maintenanceType = ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated');
-      ticket.productType = ticket.productType || ticket.acUnitModel || ticket.category || ticket.repairType || '-';
+      ticket.productType = resolveProductType(ticket);
       ticket.assignedTeam = ticket.assignedTeamName || ticket.assignedTeam || (ticket.assignedTeamId ? ticket.assignedTeamId.teamName : 'Not Assigned');
 
       // Fetch team members if a team is assigned

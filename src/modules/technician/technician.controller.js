@@ -370,13 +370,14 @@ exports.submitServiceReport = async (req, res) => {
     };
 
     // Find existing or create new — use explicit create so the pre-save hook fires for SREP- ID generation
-    let existingReport = await ServiceReport.findOne({ serviceRequestId, onModel });
+    const existingReport = await ServiceReport.findOne({ serviceRequestId, onModel }).select('serviceReportId').lean();
     let updatedReport;
 
     if (existingReport) {
-      // Update in-place so the ID is preserved
-      Object.assign(existingReport, reportPayload);
-      updatedReport = (await existingReport.save()).toObject();
+      return res.status(409).json({
+        success: false,
+        message: `A service report has already been submitted for this request (${existingReport.serviceReportId || 'existing report'}).`,
+      });
     } else {
       // New report — pre-save hook will generate SREP-xxxx
       const newReport = new ServiceReport(reportPayload);
@@ -404,6 +405,9 @@ exports.submitServiceReport = async (req, res) => {
       data: mapServiceReportForReview(updatedReport, sourceRecord),
     });
   } catch (err) {
+    if (err?.code === 11000) {
+      return res.status(409).json({ success: false, message: 'A service report has already been submitted for this request.' });
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 };

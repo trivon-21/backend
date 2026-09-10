@@ -4,7 +4,9 @@ const { Schema } = mongoose;
 const maintenanceScheduleSchema = new Schema(
   {
     ticketId: { type: String, required: true, unique: true },
-    installationId: { type: Schema.Types.ObjectId, ref: 'Installation' },
+    // One schedule belongs to one completed installation; the unique index also
+    // prevents a concurrent completion from creating a second schedule.
+    installationId: { type: Schema.Types.ObjectId, ref: 'Installation', unique: true, sparse: true },
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: { type: String, enum: ['New', 'Draft Saved', 'Sent to CSA', 'Sent to Customer'], default: 'New' },
     services: [{ serviceName: String, date: Date }],

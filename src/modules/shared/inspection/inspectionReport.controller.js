@@ -40,6 +40,39 @@ const buildReportSignature = (report) => {
   return parts.join('|');
 };
 
+// Reports created by older inspection screens use a mix of flat and nested
+// fields. Return one stable shape so every report-detail tab can render the
+// same customer, site, findings, and photo information.
+const normalizeReportDetails = (report, customer = null) => {
+  const siteDetails = report?.siteDetails || {};
+  const inspectionMeta = report?.inspectionMeta || {};
+  const sourcePhotos = Array.isArray(report?.photos) ? report.photos : [];
+
+  return {
+    ...report,
+    customerName: report?.customerName || report?.fullName || customer?.fullName || customer?.name || 'Unknown Customer',
+    contactNumber: report?.contactNumber || report?.customerPhone || customer?.phoneNumber || customer?.contactNo || '-',
+    siteAddress: report?.siteAddress || report?.customerAddress || customer?.address || siteDetails.address || '-',
+    siteType: report?.siteType || siteDetails.buildingType || '-',
+    inspectionDate: report?.inspectionDate || inspectionMeta.date || report?.scheduledDate || report?.createdAt || null,
+    siteStatus: report?.siteStatus || siteDetails.siteStatus || '-',
+    floorLevel: report?.floorLevel || siteDetails.floors || '-',
+    elevatorAvailability: report?.elevatorAvailability ?? siteDetails.elevatorAvailability ?? false,
+    parkingAvailability: report?.parkingAvailability || siteDetails.parkingAvailability || '-',
+    rooms: Array.isArray(report?.rooms) ? report.rooms : (Array.isArray(report?.findings) ? report.findings : []),
+    photos: sourcePhotos.map((photo) => ({
+      ...photo,
+      url: photo?.url || photo?.dataUrl || '',
+      caption: photo?.caption || photo?.name || 'Inspection photo',
+    })),
+    inspectionMeta: {
+      ...inspectionMeta,
+      date: inspectionMeta.date || report?.inspectionDate || report?.scheduledDate || null,
+      recommendedProducts: inspectionMeta.recommendedProducts || report?.recommendedProducts || [],
+    },
+  };
+};
+
 // 1. GET all reports with populated Customer details
 exports.getAllReports = async (req, res) => {
   try {
@@ -82,12 +115,12 @@ exports.getAllReports = async (req, res) => {
         : fallbackCustomerId;
       const customer = resolvedCustomerId ? customerById.get(resolvedCustomerId) : null;
 
-      return {
+      return normalizeReportDetails({
         ...report,
         customerId: customer || report.customerId || null,
         fullName: customer?.fullName || null,
         customerAddress: customer?.address || null,
-      };
+      }, customer);
     });
 
     res.json({ success: true, data: enrichedReports });
@@ -142,12 +175,12 @@ exports.getReportById = async (req, res) => {
 
     res.json({
       success: true,
-      data: {
+      data: normalizeReportDetails({
         ...report,
         customerId: customer || report.customerId || null,
         fullName: customer?.fullName || null,
         customerAddress: customer?.address || null,
-      }
+      }, customer)
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

@@ -59,4 +59,6 @@ serviceReportSchema.pre('save', async function () {
 });
 
 
+serviceReportSchema.index({ serviceRequestId: 1, onModel: 1 }, { unique: true });
+
 module.exports = mongoose.model('service_reports', serviceReportSchema, 'service_reports');
