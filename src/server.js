@@ -55,11 +55,26 @@ const runStartupRepair = async () => {
 
           const services = buildServiceTemplate(new Date(inst.date || inst.serviceDate || inst.createdAt));
           const scheduleEndDate = buildScheduleEndDate(new Date(inst.date || inst.serviceDate || inst.createdAt));
-          const counter = await Counter.findOneAndUpdate(
+          let counter = await Counter.findOneAndUpdate(
             { _id: 'maintenanceScheduleTicket' },
             { $inc: { seq: 1 } },
             { new: true, upsert: true }
           );
+
+          if (!counter) {
+            await Counter.updateOne(
+              { _id: 'maintenanceScheduleTicket' },
+              { $set: { seq: 1000 } },
+              { upsert: true }
+            );
+            counter = { seq: 1000 };
+          } else if (counter.seq < 1000) {
+            counter = await Counter.findOneAndUpdate(
+              { _id: 'maintenanceScheduleTicket' },
+              { $set: { seq: 1000 } },
+              { new: true }
+            );
+          }
 
           const newSchedule = new MaintenanceSchedule({
             customerId: customer._id,

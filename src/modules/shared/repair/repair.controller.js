@@ -195,6 +195,10 @@ exports.getCustomerHistory = async (req, res) => {
     const filteredInspections = inspections.filter(isSameCustomer);
     const filteredMaintenances = maintenances.filter(isSameCustomer);
 
+    const latestInstallation = filteredInstallations
+      .slice()
+      .sort((a, b) => new Date(b.date || b.serviceDate || b.createdAt || 0).getTime() - new Date(a.date || a.serviceDate || a.createdAt || 0).getTime())[0];
+
     const toHistoryItem = (item, type) => {
       const rawStatus = String(item.status || EXECUTION_STATUS.ASSIGNED);
       let normalizedStatus = STATUS_GROUPS.HISTORY_NORMALIZED.includes(rawStatus)
@@ -208,7 +212,7 @@ exports.getCustomerHistory = async (req, res) => {
       return {
         ticketId: item.serviceRequestId || item.serviceRequestRef || item.ticketId || item.ticketRef || `#${String(item._id)}`,
         serviceType: type,
-        productType: item.productType || 'N/A',
+        productType: item.productType || item.acUnitModel || item.category || item.repairType || (latestInstallation?.productType) || 'N/A',
         date: item.serviceDate || item.date || item.createdAt || null,
         status: normalizedStatus,
         assignedTeam: type === REQUEST_TYPES.INSPECTION
@@ -228,10 +232,6 @@ exports.getCustomerHistory = async (req, res) => {
       ...filteredInspections.map((item) => toHistoryItem(item, REQUEST_TYPES.INSPECTION)),
       ...filteredMaintenances.map((item) => toHistoryItem(item, REQUEST_TYPES.MAINTENANCE)),
     ].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
-
-    const latestInstallation = filteredInstallations
-      .slice()
-      .sort((a, b) => new Date(b.date || b.serviceDate || b.createdAt || 0).getTime() - new Date(a.date || a.serviceDate || a.createdAt || 0).getTime())[0];
 
     res.json({
       success: true,
