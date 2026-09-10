@@ -80,12 +80,23 @@ exports.getProfile = async (userId) => {
 };
 
 exports.updateProfile = async (userId, { fullName, lastName, gender, address, phoneNumber }) => {
+  const requiredFields = { fullName, lastName, gender, address, phoneNumber };
+  const missingFields = Object.entries(requiredFields)
+    .filter(([, value]) => typeof value !== "string" || !value.trim())
+    .map(([field]) => field);
+
+  if (missingFields.length) {
+    const error = new Error(`Required profile fields are missing: ${missingFields.join(", ")}`);
+    error.status = 400;
+    throw error;
+  }
+
   const updates = {};
-  if (fullName !== undefined) updates.fullName = fullName;
-  if (lastName !== undefined) updates.lastName = lastName;
-  if (gender !== undefined) updates.gender = gender;
-  if (address !== undefined) updates.address = address;
-  if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
+  updates.fullName = fullName.trim();
+  updates.lastName = lastName.trim();
+  updates.gender = gender.trim();
+  updates.address = address.trim();
+  updates.phoneNumber = phoneNumber.trim();
 
   const user = await User.findByIdAndUpdate(
     userId,
