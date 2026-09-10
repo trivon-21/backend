@@ -98,6 +98,14 @@ PurchaseRequestSchema.index({ poNumber: 1 }, {
   partialFilterExpression: { poNumber: { $type: 'string' } },
 });
 
+// Manager dashboard/analytics and the approvals queue filter on status and
+// order by updatedAt.
+PurchaseRequestSchema.index({ status: 1, updatedAt: -1 });
+
+// The inventory-manager order-request list is unfiltered and ordered by
+// createdAt, which the status index above cannot serve.
+PurchaseRequestSchema.index({ createdAt: -1 });
+
 const PurchaseRequest = mongoose.models.PurchaseRequest
   || mongoose.model('PurchaseRequest', PurchaseRequestSchema);
 

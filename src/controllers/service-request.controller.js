@@ -207,7 +207,7 @@ exports.createServiceRequest = async (req, res) => {
       paymentSlipUrl: paymentSlipUrl || "",
       paymentStatus,
       subject: serviceType,
-      status: "Pending"
+      status: "New"
     });
 
     return res.status(201).json({ message: "Service request submitted successfully", serviceRequest: sr });

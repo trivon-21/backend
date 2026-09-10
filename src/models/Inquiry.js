@@ -42,8 +42,8 @@ const inquirySchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["Ongoing", "Addressed", "Closed"],
-      default: "Ongoing"
+      enum: ["Awaiting", "Ongoing", "Addressed", "Closed"],
+      default: "Awaiting"
     }
   },
   { timestamps: true }

@@ -45,6 +45,8 @@ const ProcurementSchema = new mongoose.Schema({
   collection: 'procurements'
 });
 
+ProcurementSchema.index({ timestamp: -1 });
+
 ProcurementSchema.pre('validate', function validateReceiptReference() {
   if (this.receiptMode === 'PO' && (!this.orderRequestId || !this.orderLineId)) {
     this.invalidate('orderRequestId', 'PO receipts require an order request and order line');

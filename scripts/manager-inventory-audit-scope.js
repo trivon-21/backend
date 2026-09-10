@@ -68,6 +68,7 @@ const inventoryEndpoints = [
   endpoint('inventory', 'POST', '/receipts', 'Goods receipt', true, 'inventory_manager.service.receiveInventory', ['Inventory', 'SerializedAsset', 'PurchaseRequest', 'Supplier', 'ReceiptAuthorization', 'Procurement', 'ReceiptDiscrepancy', 'QuarantineItem', 'Activity', 'User']),
   endpoint('inventory', 'GET', '/suppliers', 'Supplier list', true, 'inventory_manager.service.getSuppliersList', ['Supplier', 'User']),
   endpoint('inventory', 'POST', '/suppliers', 'Supplier creation', true, 'inventory_manager.service.createSupplier', ['Supplier', 'User']),
+  endpoint('inventory', 'GET', '/procurement/summary', 'Bundled procurement-page summary', true, 'inventory_manager.service.getProcurementSummary', ['Procurement', 'Inventory', 'PurchaseRequest', 'ReceiptAuthorization', 'ReceiptDiscrepancy', 'Supplier', 'User']),
   endpoint('inventory', 'GET', '/procurements', 'Procurement history', true, 'inventory_manager.service.getRecentProcurements', ['Procurement', 'Supplier', 'Inventory', 'User']),
   endpoint('inventory', 'GET', '/receipt-discrepancies', 'Supplier receipt discrepancies', true, 'inventory_manager.service.getReceiptDiscrepancies', ['ReceiptDiscrepancy', 'Inventory', 'Supplier', 'PurchaseRequest', 'ReceiptAuthorization', 'Procurement', 'User']),
   endpoint('inventory', 'GET', '/receipt-authorizations', 'Receipt authorization list', true, 'inventory_manager.service.getReceiptAuthorizations', ['ReceiptAuthorization', 'Inventory', 'Supplier', 'User']),

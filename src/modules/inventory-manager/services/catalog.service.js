@@ -22,6 +22,12 @@ const {
   projectSerialNumbers,
   runInTransaction,
 } = require('./shared');
+const {
+  inventoryCache,
+  invalidateInventoryCache,
+  invalidateInventoryScopes,
+  INVENTORY_CACHE_PREFIXES,
+} = require('../inventory-manager.cache');
 
 const ALLOWED_SORT_FIELDS = new Set(['name', 'sku', 'available', 'status', 'updatedAt', 'brand', 'itemClass']);
 const DEFAULT_PAGE_SIZE = 50;
@@ -57,15 +63,17 @@ exports.getInventoryList = async (params) => {
   );
 
   if (!isPaginated) {
-    const items = await Inventory.find().populate('supplierId', 'name').sort({ name: 1 });
-    return projectSerialNumbers(items);
+    return await inventoryCache.get('inventory:catalog:list', async () => {
+      const items = await Inventory.find().populate('supplierId', 'name').sort({ name: 1 });
+      return projectSerialNumbers(items);
+    });
   }
 
   // Build filter
   const filter = {};
   if (params.search && String(params.search).trim()) {
     const re = new RegExp(String(params.search).trim().replace(/[$()*+.?[\\\]^{|}]/g, '\\$&'), 'i');
-    filter.$or = [{ name: re }, { sku: re }, { brand: re }];
+    filter.$or = [{ name: re }, { sku: re }, { brand: re }, { description: re }];
   }
   if (params.itemClass) filter.itemClass = params.itemClass;
   if (params.subcategory) filter.subcategory = params.subcategory;
@@ -108,7 +116,8 @@ exports.getInventoryItem = async (id) => {
 
 exports.getInventoryLocations = () => INVENTORY_LOCATIONS.map((location) => ({
   warehouse: location.warehouse,
-  placementAreas: [...location.placementAreas],
+  warehouseLabel: location.warehouseLabel,
+  racks: location.racks.map((rack) => ({ rackTag: rack.rackTag, bins: [...rack.bins] })),
 }));
 
 /**
@@ -136,6 +145,7 @@ exports.updateInventoryItem = async (id, data) => {
   existing.set(update);
   await existing.save();
   await existing.populate('supplierId', 'name');
+  invalidateInventoryCache();
   return projectSerialNumbers(existing);
 };
 
@@ -147,7 +157,7 @@ exports.createInventoryItem = async (data, user, options = {}) => {
   if (!String(data.sku || '').trim()) throw serviceError('sku is required', 400, 'VALIDATION_ERROR');
   const normalizedData = normalizeInventoryData({ ...pickMasterData(data), sku: String(data.sku).trim() });
   await validateCatalogData(normalizedData);
-  return runInTransaction(async (session) => {
+  const created = await runInTransaction(async (session) => {
     const sessionOpt = session ? { session } : {};
     if (await Inventory.exists({ sku: normalizedData.sku }).session(session || null)) {
       throw serviceError('SKU already exists', 409, 'DUPLICATE_SKU');
@@ -160,6 +170,8 @@ exports.createInventoryItem = async (data, user, options = {}) => {
       status: legacyStockStatus(0, normalizedData.reorderLevel),
     }).save(sessionOpt);
   }, options.session);
+  invalidateInventoryCache();
+  return created;
 };
 
 /**
@@ -176,42 +188,53 @@ exports.createSupplier = async (name) => {
   const normalizedName = String(name || '').trim();
   if (!normalizedName) throw serviceError('Supplier name is required', 400, 'SUPPLIER_NAME_REQUIRED');
   const newSupplier = new Supplier({ name: normalizedName });
-  return await newSupplier.save();
+  const saved = await newSupplier.save();
+  // A new supplier changes no stock, only the pickers that list suppliers.
+  invalidateInventoryScopes(
+    INVENTORY_CACHE_PREFIXES.CATALOG,
+    INVENTORY_CACHE_PREFIXES.PROCUREMENT,
+  );
+  return saved;
 };
 
 /**
  * Calculates suggested replenishment orders based on available stock, reorder levels, and incoming purchase orders.
  */
 exports.getSuggestedOrders = async () => {
-  const [items, incomingOrders] = await Promise.all([
-    Inventory.find({
-      $expr: {
-        $lte: [
-          { $ifNull: ['$available', 0] },
-          { $ifNull: ['$reorderLevel', 10] },
-        ],
-      },
-    })
-      .populate('supplierId', 'name')
-      .sort({ available: 1 })
-      .select('name sku available reserved reorderLevel maxStockLevel unitCost unit status category itemClass subcategory brand manufacturerPartNumber compatibleModels supplierId'),
-    PurchaseRequest.find({ status: { $in: [...ACTIVE_INCOMING_STATUSES, 'pending-approval'] } }).lean(),
-  ]);
-  const incomingByInventory = new Map();
-  for (const order of incomingOrders) {
-    for (const line of order.items || []) {
-      if (!line.inventoryId) continue;
-      const key = String(line.inventoryId);
-      incomingByInventory.set(key, (incomingByInventory.get(key) || 0) + outstandingQuantity(line));
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.CATALOG}suggested-orders`, async () => {
+    const [items, incomingOrders] = await Promise.all([
+      // Mirrors utils/inventory-domain.js's isLowStock/deriveStockStatus
+      // (available <= reorderLevel, both defaulting to 0 when absent) so this
+      // Mongo-side query can't silently drift from the canonical JS check.
+      Inventory.find({
+        $expr: {
+          $lte: [
+            { $ifNull: ['$available', 0] },
+            { $ifNull: ['$reorderLevel', 0] },
+          ],
+        },
+      })
+        .populate('supplierId', 'name')
+        .sort({ available: 1 })
+        .select('name description sku available reserved reorderLevel maxStockLevel unitCost unit status category itemClass subcategory brand manufacturerPartNumber compatibleModels supplierId'),
+      PurchaseRequest.find({ status: { $in: [...ACTIVE_INCOMING_STATUSES, 'pending-approval'] } }).lean(),
+    ]);
+    const incomingByInventory = new Map();
+    for (const order of incomingOrders) {
+      for (const line of order.items || []) {
+        if (!line.inventoryId) continue;
+        const key = String(line.inventoryId);
+        incomingByInventory.set(key, (incomingByInventory.get(key) || 0) + outstandingQuantity(line));
+      }
     }
-  }
-  return items.map((item) => ({
-    ...item.toObject({ virtuals: true }),
-    status: legacyStockStatus(item.available, item.reorderLevel),
-    stockStatus: deriveStockStatus(item.available, item.reorderLevel),
-    incomingQuantity: incomingByInventory.get(String(item._id)) || 0,
-    suggestedQuantity: Math.max(0,
-      suggestedOrderQuantity(item.available, item.maxStockLevel, item.reorderLevel)
-      - (incomingByInventory.get(String(item._id)) || 0)),
-  }));
+    return items.map((item) => ({
+      ...item.toObject({ virtuals: true }),
+      status: legacyStockStatus(item.available, item.reorderLevel),
+      stockStatus: deriveStockStatus(item.available, item.reorderLevel),
+      incomingQuantity: incomingByInventory.get(String(item._id)) || 0,
+      suggestedQuantity: Math.max(0,
+        suggestedOrderQuantity(item.available, item.maxStockLevel, item.reorderLevel)
+        - (incomingByInventory.get(String(item._id)) || 0)),
+    }));
+  });
 };

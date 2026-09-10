@@ -29,4 +29,7 @@ const RmaCaseSchema = new mongoose.Schema({
   collection: 'rma_cases'
 });
 
+RmaCaseSchema.index({ status: 1 });
+RmaCaseSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('RmaCase', RmaCaseSchema);

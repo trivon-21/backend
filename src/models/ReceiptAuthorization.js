@@ -53,6 +53,8 @@ const ReceiptAuthorizationSchema = new mongoose.Schema({
 });
 
 ReceiptAuthorizationSchema.index({ supplierId: 1, sourceDocumentNumber: 1 }, { unique: true });
+// Manager approvals queue: pending filtering ordered by most recent activity.
+ReceiptAuthorizationSchema.index({ status: 1, updatedAt: -1 });
 
 ReceiptAuthorizationSchema.pre('validate', function validateAuthorizationReferences() {
   if (!this.inventoryId && !this.newItemSnapshot) {

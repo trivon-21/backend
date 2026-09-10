@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const {
   toBusinessDateString,
   isLoanOverdue,
+  isLoanDueWithinDays,
   BUSINESS_TIMEZONE,
 } = require('../../src/utils/inventory-domain');
 
@@ -76,6 +77,31 @@ describe('Inventory Date-Only and Timezone Semantics (IM-013)', () => {
       assert.equal(isLoanOverdue(null), false);
       assert.equal(isLoanOverdue(''), false);
       assert.equal(isLoanOverdue('invalid'), false);
+    });
+  });
+
+  describe('isLoanDueWithinDays', () => {
+    const ref = new Date('2026-09-05T08:00:00.000Z'); // 2026-09-05 in Colombo
+
+    it('includes a due date exactly on the horizon boundary', () => {
+      assert.equal(isLoanDueWithinDays('2026-09-12', 7, ref, 'Asia/Colombo'), true);
+    });
+
+    it('excludes a due date one day past the horizon', () => {
+      assert.equal(isLoanDueWithinDays('2026-09-13', 7, ref, 'Asia/Colombo'), false);
+    });
+
+    it('includes today as within the window', () => {
+      assert.equal(isLoanDueWithinDays('2026-09-05', 7, ref, 'Asia/Colombo'), true);
+    });
+
+    it('excludes an already-overdue loan — that is a different sub-stat', () => {
+      assert.equal(isLoanDueWithinDays('2026-09-04', 7, ref, 'Asia/Colombo'), false);
+    });
+
+    it('returns false for missing or invalid dates', () => {
+      assert.equal(isLoanDueWithinDays(null, 7, ref), false);
+      assert.equal(isLoanDueWithinDays('invalid', 7, ref), false);
     });
   });
 });

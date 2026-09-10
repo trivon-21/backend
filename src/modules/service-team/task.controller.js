@@ -14,6 +14,9 @@ const {
   DEFAULTS,
 } = require('../../constants/enums');
 
+const ALLOWED_TASK_STATUSES = new Set(['In Progress', 'On Hold', 'Completed']);
+const MAX_ADDITIONAL_SERVICE_DESCRIPTION_LENGTH = 2000;
+
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
 const toCustomer = (customerDoc, job, fallbackAddress = '-') => ({
@@ -42,7 +45,8 @@ const formatTask = (job, source) => {
     customer,
     location: customer.address || job.location || '-',
     serviceType,
-    status: job.status || WORKFLOW_STATUS.PENDING,
+    // Legacy Scheduled records are shown as Assigned without modifying data.
+    status: job.status === 'Scheduled' ? 'Assigned' : (job.status || WORKFLOW_STATUS.PENDING),
     scheduledDate: job.serviceDate || job.date || job.createdAt || null,
     detailedProductType: job.productType || job.acUnitModel || job.category || job.repairType || '',
     description: job.description || job.serviceDescription || job.scheduledServiceType || '',
@@ -215,6 +219,10 @@ exports.updateTaskStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Status is required' });
     }
 
+    if (!ALLOWED_TASK_STATUSES.has(normalizedStatus)) {
+      return res.status(400).json({ success: false, message: 'Status must be In Progress, On Hold, or Completed' });
+    }
+
     const task = await findTaskRecord(req.params.id);
     if (!task) {
       return res.status(404).json({ success: false, message: 'Task not found' });
@@ -260,9 +268,9 @@ exports.updateTaskStatus = async (req, res) => {
 
 exports.addAdditionalService = async (req, res) => {
   try {
-    const { description } = req.body;
-    if (!description) {
-      return res.status(400).json({ success: false, message: 'Description is required' });
+    const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
+    if (!description || description.length > MAX_ADDITIONAL_SERVICE_DESCRIPTION_LENGTH) {
+      return res.status(400).json({ success: false, message: 'Description is required and must not exceed 2,000 characters' });
     }
     const task = await findTaskRecord(req.params.id);
     if (!task) {

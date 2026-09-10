@@ -13,7 +13,7 @@ function createFakeQuarantineItem(overrides = {}) {
     quantity: 3,
     unit: 'units',
     reason: 'Burnt coil contacts',
-    location: 'Central Warehouse',
+    location: 'A',
     source: 'manual',
     status: 'quarantined',
     ...overrides,

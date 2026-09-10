@@ -11,7 +11,7 @@ const maintenanceSchema = new Schema(
     status: {
       type: String,
       enum: ['New', 'Pending', 'Finance Approved', 'Finance Rejected', 'Sent to IM', 'Materials Ready', 'Assigned',
-        'Scheduled', 'In Progress', 'On Hold', 'Completed', 'Cancelled'],
+        'In Progress', 'On Hold', 'Completed', 'Cancelled'],
       default: 'New'
     },
     materialList: [{ item: String, quantity: Number, estimatedCost: Number }],

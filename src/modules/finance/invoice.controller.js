@@ -358,7 +358,7 @@ const order = await Order.findById(resolvedInstallation.orderId || report.orderI
     const acModelName = order?.itemName || order?.items?.[0]?.name || order?.items?.[0]?.itemName || resolvedInstallation.productType || "";
     const acQty = Number(order?.quantity || order?.items?.[0]?.quantity || resolvedInstallation.units || 1) || 1;
     // Prioritize the actual item price over order total (which may include inspection fee etc.)
-    const acPrice = Number(order?.items?.[0]?.price || 0);
+    const acPrice = Number(order?.items?.[0]?.price || order?.amount || order?.subtotal || order?.total || 0) || 0;
 
     if (acModelName || acPrice > 0) {
       items.push({

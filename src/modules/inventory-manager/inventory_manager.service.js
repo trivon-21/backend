@@ -44,6 +44,7 @@ module.exports = {
   getReceiptAuthorizations: procurementService.getReceiptAuthorizations,
   receiveInventory: procurementService.receiveInventory,
   getRecentProcurements: procurementService.getRecentProcurements,
+  getProcurementSummary: procurementService.getProcurementSummary,
   getReceiptDiscrepancies: procurementService.getReceiptDiscrepancies,
 
   // ── Dispatch & Orders ──

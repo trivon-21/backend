@@ -9,6 +9,7 @@ const {
   normalizeServiceTicket,
   SAFE_TECHNICIAN_FIELDS,
 } = require('./manager.ticket-read-model');
+const { invalidateManagerCache } = require('./manager.cache');
 
 const TECHNICIAN_ROLES = ['MAIN_TECH', 'SERVICE_TEAM', 'INSPECTION'];
 
@@ -118,6 +119,7 @@ exports.updateTicket = async (id, patch) => {
     .populate('assignedTechnicianId', SAFE_TECHNICIAN_FIELDS)
     .lean();
   if (!ticket) throw serviceError('Service ticket not found', 404, 'TICKET_NOT_FOUND');
+  invalidateManagerCache();
   return normalizeServiceTicket(ticket);
 };
 
@@ -158,11 +160,9 @@ function safeCustomer(ticket) {
   };
 }
 
-function allowedActions(ticket) {
-  if (!['service', 'maintenance'].includes(ticket.sourceType)) return [];
-  if (ticket.status === 'resolved') return ['update-control', 'reopen'];
-  if (ticket.status === 'escalated') return ['update-control', 'clear-escalation', 'close'];
-  return ['update-control', 'escalate', 'close'];
+function allowedActions(_ticket) {
+  // Operational work items are view-only in the Manager portal.
+  return [];
 }
 
 function toOperationalWorkItem(ticket) {
@@ -253,6 +253,9 @@ async function editableServiceTicket(sourceType, sourceId, expectedVersion) {
 }
 
 async function savedWorkItem(ticket) {
+  // Reached only after a successful write, so this covers both
+  // updateWorkItemControl and runWorkItemAction.
+  invalidateManagerCache();
   await ticket.populate('customerId', 'fullName email phoneNumber address');
   await ticket.populate('assignedTechnicianId', SAFE_TECHNICIAN_FIELDS);
   return toOperationalWorkItem(normalizeServiceTicket(ticket.toObject()));

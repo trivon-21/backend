@@ -27,6 +27,10 @@ const inspectionTicketSchema = new Schema(
   { timestamps: true, collection: 'inspection_tickets' }
 );
 
+// Supports the manager work-item read model (status filtering + createdAt order).
+inspectionTicketSchema.index({ status: 1 });
+inspectionTicketSchema.index({ createdAt: -1 });
+
 inspectionTicketSchema.pre("save", async function () {
   if (!this.ticketRef) {
     const Model = mongoose.model("InspectionTicket");

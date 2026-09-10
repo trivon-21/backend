@@ -31,6 +31,7 @@ exports.getDashboard = async (req, res) => {
         blockedMaterialRequests: { label: 'Blocked Material Requests', value: 0, icon: 'triangle-alert' }
       },
       recentActivity: [],
+      recentOrders: [],
       pendingActions: [],
       message: error.message
     });

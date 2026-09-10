@@ -12,4 +12,7 @@ const ActivitySchema = new mongoose.Schema({
   collection: 'activities'
 });
 
+ActivitySchema.index({ timestamp: -1 });
+ActivitySchema.index({ type: 1 });
+
 module.exports = mongoose.model('Activity', ActivitySchema);
