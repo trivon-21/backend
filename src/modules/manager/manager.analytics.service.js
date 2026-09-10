@@ -6,9 +6,10 @@ const Procurement = require('../../models/Procurement');
 const ReceiptAuthorization = require('../../models/ReceiptAuthorization');
 const CustomerOrder = require('../../models/Order');
 const Invoice = require('../finance/Invoice.model');
-const { isLowStock } = require('../../utils/inventory-domain');
+const { isLowStock, findBlockedMaterialRequests } = require('../../utils/inventory-domain');
 const { buildAnalytics } = require('../../utils/manager-metrics');
 const { loadManagerTickets } = require('./manager.ticket-read-model');
+const { managerCache } = require('./manager.cache');
 
 exports.getAnalyticsData = async (_user, periodKey) => {
   if (mongoose.connection.readyState !== 1) {
@@ -18,11 +19,15 @@ exports.getAnalyticsData = async (_user, periodKey) => {
     throw error;
   }
 
+  return managerCache.get(`manager:analytics:${periodKey}`, () => buildAnalyticsPayload(periodKey));
+};
+
+async function buildAnalyticsPayload(periodKey) {
   const [tickets, orders, inventory, pendingRequests, procurements, authorizations, customerOrders, invoices] = await Promise.all([
     loadManagerTickets(),
     PurchaseRequest.find({ status: { $ne: 'draft' } }).lean(),
     Inventory.find().lean(),
-    WarehousePickRequest.countDocuments({ status: 'pending' }),
+    WarehousePickRequest.find({ status: 'pending' }).lean(),
     Procurement.find().lean(),
     ReceiptAuthorization.find().lean(),
     CustomerOrder.find()
@@ -33,10 +38,8 @@ exports.getAnalyticsData = async (_user, periodKey) => {
       .lean(),
   ]);
   const generatedAt = new Date();
-  const inventoryById = new Map(inventory.map(item => [String(item._id), item]));
-  const blockedRequests = await WarehousePickRequest.find({ status: 'pending' }).lean();
-  const blockedMaterialRequests = blockedRequests.filter(request => (request.items || []).some(line =>
-    Number(inventoryById.get(String(line.inventoryId))?.available || 0) < Number(line.qty || 0))).length;
+  const pendingRequestsCount = pendingRequests.length;
+  const blockedMaterialRequests = findBlockedMaterialRequests(pendingRequests, inventory).length;
   const analytics = buildAnalytics(
     tickets,
     orders,
@@ -45,7 +48,7 @@ exports.getAnalyticsData = async (_user, periodKey) => {
     procurements,
     authorizations,
     inventory,
-    pendingRequests,
+    pendingRequestsCount,
     customerOrders,
     invoices,
   );
@@ -58,8 +61,8 @@ exports.getAnalyticsData = async (_user, periodKey) => {
       lowStockAlerts: inventory.filter(isLowStock).length,
       outOfStockAlerts: analytics.inventoryRisk.outOfStockItems.value,
       reservedItems: inventory.reduce((sum, item) => sum + Number(item.reserved || 0), 0),
-      pendingRequests,
+      pendingRequests: pendingRequestsCount,
       blockedMaterialRequests,
     },
   };
-};
+}

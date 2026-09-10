@@ -16,5 +16,9 @@ const InstallationSchema = new mongoose.Schema({
   strict: false,
 });
 
+// Supports the manager work-item read model (status filtering + createdAt order).
+InstallationSchema.index({ status: 1 });
+InstallationSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.models.ManagerInstallation
   || mongoose.model('ManagerInstallation', InstallationSchema);

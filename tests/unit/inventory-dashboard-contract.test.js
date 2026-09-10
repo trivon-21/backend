@@ -5,12 +5,12 @@ const service = require('../../src/modules/inventory-manager/inventory_manager.s
 describe('Inventory Manager dashboard contract', () => {
   it('returns the fixed warehouse catalog without exposing mutable shared arrays', () => {
     const first = service.getInventoryLocations();
-    first[0].placementAreas.push('Invented Area');
+    first[0].racks.push({ rackTag: 'INVENTED', bins: ['Z901'] });
     const second = service.getInventoryLocations();
 
     assert.equal(second.length, 3);
-    assert.equal(second[0].warehouse, 'Central Warehouse');
-    assert.equal(second[0].placementAreas.includes('Invented Area'), false);
+    assert.equal(second[0].warehouse, 'A');
+    assert.equal(second[0].racks.some((rack) => rack.rackTag === 'INVENTED'), false);
   });
 
   it('returns HTTP 503 INVENTORY_DASHBOARD_UNAVAILABLE on service failure', async () => {

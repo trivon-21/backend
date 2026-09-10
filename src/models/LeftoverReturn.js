@@ -19,4 +19,6 @@ const LeftoverReturnSchema = new mongoose.Schema({
   collection: 'leftover_returns'
 });
 
+LeftoverReturnSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('LeftoverReturn', LeftoverReturnSchema);

@@ -30,7 +30,7 @@ async function migrate() {
       type: item.type || 'Single',
       unit: item.unit || 'units',
       location: item.location || INVENTORY_LOCATIONS[0].warehouse,
-      binLocation: item.binLocation || INVENTORY_LOCATIONS[0].placementAreas[0],
+      binLocation: item.binLocation || INVENTORY_LOCATIONS[0].racks[0].bins[0],
       maxStockLevel: item.maxStockLevel ?? Math.max(100, Number(item.reorderLevel || 0)),
       status: legacyStockStatus(item.available, item.reorderLevel)
     };

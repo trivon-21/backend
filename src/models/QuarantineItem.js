@@ -25,4 +25,7 @@ const QuarantineItemSchema = new mongoose.Schema({
   collection: 'quarantine_items'
 });
 
+QuarantineItemSchema.index({ status: 1 });
+QuarantineItemSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('QuarantineItem', QuarantineItemSchema);

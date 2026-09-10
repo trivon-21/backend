@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
+const inventoryService = require('../../src/modules/inventory-manager/inventory_manager.service');
 const managerService = require('../../src/modules/manager/manager.orders.service');
 const financeService = require('../../src/modules/finance-workflow/finance-workflow.service');
 const legacyController = require('../../src/modules/finance/purchaseRequest.controller');
@@ -65,10 +66,9 @@ function purchaseFixture({ requestId, requester, supplier, status = 'pending-man
   };
 }
 
-test('manager-first, two-stage, legacy adapter, migration dry-run, and receipt reconciliation are canonical', {
+test('two-stage approval, legacy adapter, migration dry-run, and receipt reconciliation are canonical', {
   skip: !uri,
 }, async () => {
-  const originalMode = process.env.PURCHASE_APPROVAL_MODE;
   await mongoose.connect(uri);
   try {
     await resetAuditDatabase();
@@ -84,27 +84,6 @@ test('manager-first, two-stage, legacy adapter, migration dry-run, and receipt r
     ]);
     const supplier = await Supplier.create({ name: 'Fabricated Finance Supplier' });
 
-    delete process.env.PURCHASE_APPROVAL_MODE;
-    const managerFirst = await PurchaseRequest.create(purchaseFixture({
-      requestId: 'AUDIT-MANAGER-FIRST', requester, supplier,
-    }));
-    const managerFirstResult = await managerService.decideOrder(
-      managerFirst._id,
-      { decision: 'approved', comment: 'Operationally approved', statusVersion: 0 },
-      manager,
-    );
-    assert.equal(managerFirstResult.status, 'approved');
-    assert.equal(managerFirstResult.financialApproval.status, 'not-required');
-    await assert.rejects(
-      () => financeService.decidePurchaseRequest(
-        managerFirst._id,
-        { decision: 'approved', comment: 'Should not be needed', statusVersion: 1 },
-        finance,
-      ),
-      (error) => error.code === 'INVALID_ORDER_TRANSITION',
-    );
-
-    process.env.PURCHASE_APPROVAL_MODE = 'two-stage';
     const twoStage = await PurchaseRequest.create(purchaseFixture({
       requestId: 'AUDIT-TWO-STAGE', requester, supplier,
     }));
@@ -114,7 +93,18 @@ test('manager-first, two-stage, legacy adapter, migration dry-run, and receipt r
       manager,
     );
     assert.equal(managerDecision.status, 'pending-finance');
+    assert.equal(managerDecision.financialApproval.status, 'pending');
     assert.equal(managerDecision.statusVersion, 1);
+
+    // A manager-approved request is not issuable until Finance signs off.
+    await assert.rejects(
+      () => inventoryService.issuePurchaseOrder(
+        twoStage.requestId,
+        { statusVersion: 1 },
+        requester,
+      ),
+      (error) => error.code === 'ORDER_NOT_APPROVED',
+    );
 
     const pending = await financeService.listPurchaseRequests(finance, { status: 'pending-finance' });
     assert.deepEqual(pending.map((request) => request.requestId), ['AUDIT-TWO-STAGE']);
@@ -217,8 +207,8 @@ test('manager-first, two-stage, legacy adapter, migration dry-run, and receipt r
       available: 1,
       reorderLevel: 1,
       maxStockLevel: 10,
-      location: 'Central Warehouse',
-      binLocation: 'Consumables Storage',
+      location: 'A',
+      binLocation: 'A102',
       supplierId: supplier._id,
     });
     const authorization = await ReceiptAuthorization.create({
@@ -270,8 +260,6 @@ test('manager-first, two-stage, legacy adapter, migration dry-run, and receipt r
     assert.equal(reconciliation.statusVersion, 1);
     assert.deepEqual(reconciliation.workflowStages, []);
   } finally {
-    if (originalMode === undefined) delete process.env.PURCHASE_APPROVAL_MODE;
-    else process.env.PURCHASE_APPROVAL_MODE = originalMode;
     if (mongoose.connection.readyState === 1) await resetAuditDatabase();
     await mongoose.disconnect();
   }

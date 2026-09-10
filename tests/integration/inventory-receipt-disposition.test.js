@@ -37,8 +37,8 @@ test('good, damaged, incomplete, and replacement receipts preserve stock disposi
       name: 'Fabricated Receipt Item', sku: 'AUDIT-RECEIPT-1',
       itemClass: 'Consumables', subcategory: 'Refrigerant', category: 'Consumables',
       brand: 'Fabricated', type: 'Single', unit: 'units', available: 0,
-      reorderLevel: 1, maxStockLevel: 20, location: 'Central Warehouse',
-      binLocation: 'Consumables Storage', supplierId: supplier._id,
+      reorderLevel: 1, maxStockLevel: 20, location: 'A',
+      binLocation: 'A102', supplierId: supplier._id,
     });
     const authorization = await ReceiptAuthorization.create({
       authorizationNumber: 'AUDIT-AUTH-RECEIPT-1', nonPoReason: 'LOCAL_PURCHASE',
@@ -50,7 +50,7 @@ test('good, damaged, incomplete, and replacement receipts preserve stock disposi
     });
     const receipt = (event, source, overrides) => service.receiveInventory({
       receiptMode: 'NON_PO', receiptAuthorizationId: authorization._id,
-      location: 'Central Warehouse', binLocation: 'Receiving & Inspection',
+      location: 'A', binLocation: 'A103',
       sourceDocumentNumber: source, receiptEventId: event,
       ...overrides,
     }, user);
@@ -116,7 +116,7 @@ test('good, damaged, incomplete, and replacement receipts preserve stock disposi
     try {
       await assert.rejects(() => service.receiveInventory({
         receiptMode: 'NON_PO', receiptAuthorizationId: rollbackAuthorization._id,
-        location: 'Central Warehouse', binLocation: 'Receiving & Inspection',
+        location: 'A', binLocation: 'A103',
         sourceDocumentNumber: 'DN-ROLLBACK-1', receiptEventId: 'audit-rollback-1',
         quantity: 1, condition: 'Damaged', acceptedQuantity: 0, damagedQuantity: 1, missingQuantity: 0,
       }, user), /Injected Activity failure/);
@@ -157,7 +157,7 @@ test('good, damaged, incomplete, and replacement receipts preserve stock disposi
     });
     const poReceipt = (event, source, overrides) => service.receiveInventory({
       receiptMode: 'PO', orderRequestId: order._id, orderLineId: 'audit-po-line-1',
-      location: 'Central Warehouse', binLocation: 'Receiving & Inspection',
+      location: 'A', binLocation: 'A103',
       sourceDocumentNumber: source, receiptEventId: event,
       ...overrides,
     }, user);

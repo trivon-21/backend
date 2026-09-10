@@ -15,12 +15,28 @@ const {
   generateId,
   assertRequestVersion,
 } = require('./shared');
+const {
+  inventoryCache,
+  invalidateInventoryCache,
+  invalidateInventoryScopes,
+  INVENTORY_CACHE_PREFIXES,
+} = require('../inventory-manager.cache');
+
+// Opening or progressing an RMA case moves no stock; only receiving a
+// replacement or booking a leftover return does.
+const invalidateRmaScopes = () => invalidateInventoryScopes(
+  INVENTORY_CACHE_PREFIXES.RETURNS,
+  INVENTORY_CACHE_PREFIXES.DASHBOARD,
+  INVENTORY_CACHE_PREFIXES.ACTIVITY,
+);
 
 /**
  * Fetches all leftover return records sorted by newest first.
  */
 exports.getLeftoverReturns = async () => {
-  return await LeftoverReturn.find().sort({ createdAt: -1 });
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.RETURNS}leftover-returns`, async () => {
+    return await LeftoverReturn.find().sort({ createdAt: -1 }).lean();
+  });
 };
 
 /**
@@ -44,7 +60,7 @@ exports.createLeftoverReturn = async (data, user) => {
   if (!String(data.warehousePickRequestId || '').trim() || !String(data.warehouseLineId || '').trim()) {
     throw serviceError('Completed warehouse request and line references are required', 400, 'HANDOVER_REFERENCE_REQUIRED');
   }
-  return mongoose.connection.transaction(async session => {
+  const result = await mongoose.connection.transaction(async session => {
     const reference = String(data.warehousePickRequestId).trim();
     const warehouseClauses = [{ requestId: reference }];
     if (mongoose.isValidObjectId(reference)) warehouseClauses.push({ _id: reference });
@@ -109,13 +125,18 @@ exports.createLeftoverReturn = async (data, user) => {
       condition: data.condition,
       returnedBy: user?.fullName || 'Inventory Manager',
       notes: data.notes || '',
+      location: data.location || '',
       restoredToStock: data.condition === 'good',
-      movedToQuarantine: data.condition !== 'good',
+      movedToQuarantine: ['damaged', 'scrap'].includes(data.condition),
     }], { session });
     if (data.condition === 'good') {
-      inventoryItem.available = Number(inventoryItem.available || 0) + quantityReturned;
-      inventoryItem.status = legacyStockStatus(inventoryItem.available, inventoryItem.reorderLevel);
-      await inventoryItem.save({ session });
+      const stock = await Inventory.findByIdAndUpdate(line.inventoryId, {
+        $inc: { available: quantityReturned },
+      }, { returnDocument: 'after', runValidators: true, session });
+      if (stock) {
+        stock.status = legacyStockStatus(stock.available, stock.reorderLevel);
+        await stock.save({ session });
+      }
     } else {
       await QuarantineItem.create([{
         quarantineId: generateId('QZ'),
@@ -136,15 +157,20 @@ exports.createLeftoverReturn = async (data, user) => {
     }], { session });
     return leftoverReturn;
   });
+  invalidateInventoryCache();
+  return result;
 };
 
 /**
  * Fetches all RMA cases sorted by most recent first.
  */
 exports.getRmaCases = async () => {
-  return RmaCase.find()
-    .populate('serializedAssetId', 'serialNumber status')
-    .sort({ createdAt: -1 });
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.RETURNS}rma-cases`, async () => {
+    return RmaCase.find()
+      .populate('serializedAssetId', 'serialNumber status')
+      .sort({ createdAt: -1 })
+      .lean();
+  });
 };
 
 /**
@@ -158,7 +184,7 @@ exports.createRmaCase = async (data, user) => {
   if (!serialNumber || !String(data.faultDescription || '').trim()) {
     throw serviceError('Serial number and fault description are required', 400, 'RMA_DETAILS_REQUIRED');
   }
-  return mongoose.connection.transaction(async (session) => {
+  const result = await mongoose.connection.transaction(async (session) => {
     const asset = await SerializedAsset.findOne({ normalizedSerial: normalizeSerialNumber(serialNumber) }).session(session);
     if (!asset) throw serviceError('Serial number was not found in the serialized asset registry', 404, 'SERIAL_NOT_FOUND');
     if (asset.status === 'rma') {
@@ -199,6 +225,8 @@ exports.createRmaCase = async (data, user) => {
     }], { session });
     return rmaCase;
   });
+  invalidateRmaScopes();
+  return result;
 };
 
 /**
@@ -212,7 +240,7 @@ exports.receiveRmaReplacement = async (id, data, user) => {
   const serialNumber = assertReplacementSerial(rawSerial);
   const normalizedSerial = normalizeSerialNumber(serialNumber);
 
-  return mongoose.connection.transaction(async (session) => {
+  const result = await mongoose.connection.transaction(async (session) => {
     const rmaCase = await RmaCase.findOne({ rmaId: id }).session(session);
     if (!rmaCase) throw serviceError('RMA case not found', 404, 'RMA_NOT_FOUND');
     if (!['sent-to-supplier', 'replacement-pending'].includes(rmaCase.status)) {
@@ -268,6 +296,8 @@ exports.receiveRmaReplacement = async (id, data, user) => {
       originalAsset,
     };
   });
+  invalidateInventoryCache();
+  return result;
 };
 
 /**
@@ -277,11 +307,7 @@ exports.receiveRmaReplacement = async (id, data, user) => {
 exports.updateRmaCase = async (id, data, user) => {
   assertRole(user, ['INVENTORY']);
 
-  if (['sent-to-supplier', 'replacement-pending'].includes(data.status) && data.replacementSerialNumber) {
-    return exports.receiveRmaReplacement(id, data, user);
-  }
-
-  return mongoose.connection.transaction(async (session) => {
+  const result = await mongoose.connection.transaction(async (session) => {
     const rmaCase = await RmaCase.findOne({ rmaId: id }).session(session);
     if (!rmaCase) throw serviceError('RMA case not found', 404, 'RMA_NOT_FOUND');
     if (data.status && data.status !== rmaCase.status) {
@@ -324,35 +350,39 @@ exports.updateRmaCase = async (id, data, user) => {
     }], { session });
     return rmaCase;
   });
+  invalidateRmaScopes();
+  return result;
 };
 
 /**
  * Aggregates summary stats for the returns page header.
  */
 exports.getReturnsSummary = async () => {
-  const totalReturns = await LeftoverReturn.countDocuments();
-  const restoredToStock = await LeftoverReturn.countDocuments({ restoredToStock: true });
-  const movedToQuarantine = await LeftoverReturn.countDocuments({ movedToQuarantine: true });
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.RETURNS}summary`, async () => {
+    const totalReturns = await LeftoverReturn.countDocuments();
+    const restoredToStock = await LeftoverReturn.countDocuments({ restoredToStock: true });
+    const movedToQuarantine = await LeftoverReturn.countDocuments({ movedToQuarantine: true });
 
-  const activeRmaCases = await RmaCase.countDocuments({ status: { $nin: ['closed'] } });
-  const totalRmaCases = await RmaCase.countDocuments();
+    const activeRmaCases = await RmaCase.countDocuments({ status: { $nin: ['closed'] } });
+    const totalRmaCases = await RmaCase.countDocuments();
 
-  const quarantineCount = await QuarantineItem.countDocuments({ status: 'quarantined' });
-  const disposedCount = await QuarantineItem.countDocuments({ status: 'disposed' });
+    const quarantineCount = await QuarantineItem.countDocuments({ status: 'quarantined' });
+    const disposedCount = await QuarantineItem.countDocuments({ status: 'disposed' });
 
-  return {
-    leftoverReturns: {
-      total: totalReturns,
-      restoredToStock,
-      movedToQuarantine,
-    },
-    rmaCases: {
-      total: totalRmaCases,
-      active: activeRmaCases,
-    },
-    quarantine: {
-      active: quarantineCount,
-      disposed: disposedCount,
-    },
-  };
+    return {
+      leftoverReturns: {
+        total: totalReturns,
+        restoredToStock,
+        movedToQuarantine,
+      },
+      rmaCases: {
+        total: totalRmaCases,
+        active: activeRmaCases,
+      },
+      quarantine: {
+        active: quarantineCount,
+        disposed: disposedCount,
+      },
+    };
+  });
 };
