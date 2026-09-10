@@ -79,6 +79,7 @@ const findTaskRecord = async (id) => {
 
   if (mongoose.Types.ObjectId.isValid(normalizedId)) {
     queryParts.push({ _id: new mongoose.Types.ObjectId(normalizedId) });
+    queryParts.push({ orderId: new mongoose.Types.ObjectId(normalizedId) });
   }
 
   // Also match by the string ID like SRQ-1000
@@ -86,7 +87,6 @@ const findTaskRecord = async (id) => {
   queryParts.push({ ticketId: normalizedId }); // if ticketId is stored as string in some collections
   queryParts.push({ maintenanceId: normalizedId });
   queryParts.push({ installationId: normalizedId });
-  queryParts.push({ orderId: normalizedId });
   queryParts.push({ referenceNo: normalizedId });
 
   const query = { $or: queryParts };
@@ -154,26 +154,31 @@ exports.getTasks = async (req, res) => {
 
     const teamIdStr = String(team._id);
     const mongoose = require('mongoose');
-    const teamIdObj = mongoose.Types.ObjectId.isValid(teamIdStr) ? new mongoose.Types.ObjectId(teamIdStr) : teamIdStr;
+    const isValidObjectId = mongoose.Types.ObjectId.isValid(teamIdStr);
+    const teamIdObj = isValidObjectId ? new mongoose.Types.ObjectId(teamIdStr) : null;
     const teamNamePattern = new RegExp(`^${normalized}$`, 'i');
     const fullNamePattern = new RegExp(`^${team.fullName?.trim()?.toLowerCase()}$`, 'i');
 
-    const query = {
-      $or: [
-        { assignedTeamId: teamIdObj },
-        { assignedTeamId: teamIdStr },
-        { assignedTeamName: { $regex: teamNamePattern } },
-        { assignedTeam: { $regex: teamNamePattern } },
-        { teamName: { $regex: teamNamePattern } },
-        { assignedTo: { $regex: teamNamePattern } },
-        ...(team.fullName ? [
-          { assignedTeamName: { $regex: fullNamePattern } },
-          { assignedTeam: { $regex: fullNamePattern } },
-          { teamName: { $regex: fullNamePattern } },
-          { assignedTo: { $regex: fullNamePattern } }
-        ] : [])
-      ]
-    };
+    const orClauses = [
+      { assignedTeamName: { $regex: teamNamePattern } },
+      { assignedTeam: { $regex: teamNamePattern } },
+      { teamName: { $regex: teamNamePattern } },
+      { assignedTo: { $regex: teamNamePattern } }
+    ];
+
+    if (isValidObjectId) {
+      orClauses.push({ assignedTeamId: teamIdObj });
+      orClauses.push({ assignedTeamId: teamIdStr });
+    }
+
+    if (team.fullName) {
+      orClauses.push({ assignedTeamName: { $regex: fullNamePattern } });
+      orClauses.push({ assignedTeam: { $regex: fullNamePattern } });
+      orClauses.push({ teamName: { $regex: fullNamePattern } });
+      orClauses.push({ assignedTo: { $regex: fullNamePattern } });
+    }
+
+    const query = { $or: orClauses };
 
     const [installations, requests, maintenances] = await Promise.all([
       Installation.find(query).populate('customerId', 'fullName address phoneNumber email').lean(),
