@@ -239,7 +239,7 @@ const sendPaymentSlipRejectedEmail = async (email, name, invoiceNum, reason, reu
             Re-upload Payment Slip
           </a>
           <p style="color:#dc2626;font-size:12px;">
-            Your original payment deadline still applies — please re-upload promptly to avoid auto-cancellation.
+            Your original payment deadline still applies - please re-upload promptly to avoid auto-cancellation.
           </p>
           <p>Best regards,<br><strong>AirLux Finance Team</strong></p>
         </div>
