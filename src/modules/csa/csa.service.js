@@ -190,11 +190,25 @@ exports.createCustomer = async ({ firstName, lastName, email, phoneNumber, addre
     throw new Error('First Name can only contain letters');
   }
 
-  if (lastName && lastName.trim() && !/^[a-zA-Z\s]+$/.test(lastName.trim())) {
+  if (!lastName || !lastName.trim()) {
+    throw new Error('Last Name is required');
+  }
+
+  if (!/^[a-zA-Z\s]+$/.test(lastName.trim())) {
     throw new Error('Last Name can only contain letters');
   }
 
+  if (lastName.trim().length < 2) {
+    throw new Error('Last Name must be at least 2 characters');
+  }
+
   const cleanPhone = phoneNumber ? phoneNumber.trim() : '';
+  const cleanEmail = email ? email.toLowerCase().trim() : '';
+
+  if (!cleanPhone && !cleanEmail) {
+    throw new Error('At least one contact method (Phone Number or Email Address) is required');
+  }
+
   if (cleanPhone) {
     if (!/^0\d{9}$/.test(cleanPhone)) {
       throw new Error('Phone number must be exactly 10 digits and start with 0 (e.g., 0771234567)');
@@ -205,8 +219,11 @@ exports.createCustomer = async ({ firstName, lastName, email, phoneNumber, addre
     }
   }
 
-  const cleanEmail = email ? email.toLowerCase().trim() : '';
   if (cleanEmail) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      throw new Error('Please enter a valid email format');
+    }
     const existingEmail = await User.findOne({ email: cleanEmail });
     if (existingEmail) {
       throw new Error('A customer with this email already exists');
@@ -219,7 +236,7 @@ exports.createCustomer = async ({ firstName, lastName, email, phoneNumber, addre
   }
 
   // Generate initial password hash
-  const pwdToHash = initialPassword || `AirLux@${Math.floor(1000 + Math.random() * 9000)}`;
+  const pwdToHash = initialPassword && initialPassword.trim() ? initialPassword.trim() : `AirLux@${Math.floor(1000 + Math.random() * 9000)}`;
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(pwdToHash, salt);
 
@@ -239,6 +256,23 @@ exports.createCustomer = async ({ firstName, lastName, email, phoneNumber, addre
 
   await newUser.save();
 
+  // If email was provided, dispatch welcome credentials email
+  let emailSent = false;
+  if (cleanEmail) {
+    try {
+      const { sendCustomerWelcomeEmail } = require('../shared/notification/email.service');
+      const customerFullName = `${firstName.trim()} ${(lastName || '').trim()}`.trim();
+      const mailRes = await sendCustomerWelcomeEmail({
+        email: cleanEmail,
+        customerName: customerFullName,
+        initialPassword: pwdToHash
+      });
+      emailSent = mailRes?.success || false;
+    } catch (mailErr) {
+      console.error('[createCustomer] Failed to send credentials email:', mailErr.message);
+    }
+  }
+
   return {
     customer: {
       _id: newUser._id,
@@ -248,8 +282,11 @@ exports.createCustomer = async ({ firstName, lastName, email, phoneNumber, addre
       phoneNumber: newUser.phoneNumber,
       address: newUser.address,
       gender: newUser.gender,
+      role: newUser.role,
+      isActive: newUser.isActive,
       createdAt: newUser.createdAt
     },
+    emailSent,
     generatedPassword: initialPassword ? undefined : pwdToHash
   };
 };
@@ -318,7 +355,7 @@ exports.getServiceTickets = async ({ search = '', category = '', status = '', pr
   ]);
 
   const formattedTickets = tickets.map((t) => {
-    let tId = t.ticketId || t.serviceRequestId;
+    let tId = t.ticketId || t.serviceRequestId || t.serviceRequestRef;
     const cat = (t.category || 'repair').toLowerCase();
     if (!tId) {
       const hex = t._id ? t._id.toString().slice(-4).toUpperCase() : '1001';
@@ -417,6 +454,7 @@ exports.createServiceTicket = async ({
     customerId,
     category: normalizedCategory,
     requestType: requestTypeMap[normalizedCategory] || 'Repair',
+    maintenanceType: normalizedCategory === 'maintenance' ? 'Company Initiated' : undefined,
     subject: subject && subject.trim() ? subject.trim() : `${requestTypeMap[normalizedCategory] || 'Service'} Request`,
     description: description.trim(),
     priority: (priority || 'medium').toLowerCase(),
