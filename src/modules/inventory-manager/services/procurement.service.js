@@ -9,6 +9,7 @@ const QuarantineItem = require('../../../models/QuarantineItem');
 const SerializedAsset = require('../../../models/SerializedAsset');
 const Activity = require('../../../models/Activity');
 const {
+  INVENTORY_LOCATIONS,
   legacyStockStatus,
   isValidInventoryLocation,
   normalizeStringList,
@@ -20,6 +21,7 @@ const {
   NON_PO_REASONS,
   receiptAuthorizationWorkflowStages,
 } = require('../../../utils/purchase-workflow');
+const { loadOrderRequests } = require('./purchasing.service');
 const {
   nextDiscrepancyState,
   normalizeReceiptDisposition,
@@ -42,6 +44,63 @@ const {
   validateCatalogData,
   projectSerialNumbers,
 } = require('./shared');
+const {
+  inventoryCache,
+  invalidateInventoryCache,
+  invalidateInventoryScopes,
+  INVENTORY_CACHE_PREFIXES,
+} = require('../inventory-manager.cache');
+
+const PROCUREMENT_PREFIX = INVENTORY_CACHE_PREFIXES.PROCUREMENT;
+
+// The single-endpoint getters and the bundled summary below share these loaders
+// so the two paths can never return differently shaped records.
+
+function loadProcurements() {
+  return Procurement.find()
+    .populate('inventoryId', 'name sku')
+    .populate('supplierId', 'name')
+    .populate('orderRequestId', 'requestId poNumber status')
+    .populate('receiptAuthorizationId', 'authorizationNumber status financeReviewStatus nonPoReason')
+    .populate('discrepancyId', 'discrepancyId status outstandingQuantity')
+    .populate('replacementForDiscrepancyId', 'discrepancyId status outstandingQuantity')
+    .sort({ timestamp: -1 })
+    .limit(100)
+    .lean();
+}
+
+function loadDiscrepancies(status) {
+  const query = status ? { status } : {};
+  return ReceiptDiscrepancy.find(query)
+    .populate('inventoryId', 'name sku')
+    .populate('supplierId', 'name')
+    .populate('orderRequestId', 'requestId poNumber status')
+    .populate('receiptAuthorizationId', 'authorizationNumber status')
+    .populate('replacementProcurementIds', 'sourceDocumentNumber receivedDate acceptedQuantity')
+    .sort({ createdAt: -1 })
+    .lean();
+}
+
+async function loadAuthorizations(status) {
+  const query = status ? { status } : {};
+  const authorizations = await ReceiptAuthorization.find(query)
+    .populate('inventoryId', 'name sku unit available reorderLevel itemClass subcategory brand isSerialized')
+    .populate('supplierId', 'name')
+    .sort({ createdAt: -1 })
+    .lean();
+  return authorizations.map((authorization) => ({
+    ...authorization,
+    workflowStages: receiptAuthorizationWorkflowStages(authorization),
+  }));
+}
+
+// Deliberately narrower than getInventoryList: the procurement page uses this
+// only as an id -> item lookup, so it needs neither the supplier populate nor
+// the serialized-asset join that projectSerialNumbers performs over the whole
+// catalog. Serial numbers on a receipt are typed in, never read from here.
+function loadProcurementCatalog() {
+  return Inventory.find().select('name sku unit isSerialized location binLocation').lean();
+}
 
 exports.createReceiptAuthorization = async (data, user, options = {}) => {
   assertRole(user, ['INVENTORY']);
@@ -92,7 +151,7 @@ exports.createReceiptAuthorization = async (data, user, options = {}) => {
   }
 
   try {
-    return await runInTransaction(async (session) => {
+    const created = await runInTransaction(async (session) => {
       const sessionOpt = session ? { session } : {};
       const [authorization] = await ReceiptAuthorization.create([{
         authorizationNumber: generateReference('NPO'),
@@ -123,6 +182,13 @@ exports.createReceiptAuthorization = async (data, user, options = {}) => {
 
       return authorization.populate(['inventoryId', { path: 'supplierId', select: 'name' }]);
     }, options.session);
+    // Requesting an authorization moves no stock — only procurement and the dashboard tiles change.
+    invalidateInventoryScopes(
+      INVENTORY_CACHE_PREFIXES.PROCUREMENT,
+      INVENTORY_CACHE_PREFIXES.DASHBOARD,
+      INVENTORY_CACHE_PREFIXES.ACTIVITY,
+    );
+    return created;
   } catch (error) {
     if (error.code === 11000) {
       throw serviceError('This supplier and source document already have an authorization', 409, 'DUPLICATE_SOURCE_DOCUMENT');
@@ -133,17 +199,8 @@ exports.createReceiptAuthorization = async (data, user, options = {}) => {
 
 exports.getReceiptAuthorizations = async (filters = {}, user) => {
   assertRole(user, ['INVENTORY']);
-  const query = {};
-  if (filters.status) query.status = filters.status;
-  const authorizations = await ReceiptAuthorization.find(query)
-    .populate('inventoryId', 'name sku available reorderLevel itemClass subcategory brand isSerialized')
-    .populate('supplierId', 'name')
-    .sort({ createdAt: -1 })
-    .lean();
-  return authorizations.map((authorization) => ({
-    ...authorization,
-    workflowStages: receiptAuthorizationWorkflowStages(authorization),
-  }));
+  const cacheKey = `${PROCUREMENT_PREFIX}receipt-authorizations:${filters.status || 'all'}`;
+  return await inventoryCache.get(cacheKey, () => loadAuthorizations(filters.status));
 };
 
 /** Posts an issued PO line or approved Non-PO authorization through one transaction. */
@@ -159,7 +216,7 @@ exports.receiveInventory = async (data, user) => {
   const binLocation = String(data.binLocation || '').trim();
   if (!isValidInventoryLocation(location, binLocation)) {
     throw serviceError(
-      'Select a valid warehouse and placement area for received stock',
+      'Select a valid warehouse, rack and bin for received stock',
       400,
       'INVALID_STORAGE_LOCATION',
     );
@@ -473,7 +530,7 @@ exports.receiveInventory = async (data, user) => {
       };
     });
 
-    return {
+    const payload = {
       item: await projectSerialNumbers(await Inventory.findById(result.itemId).populate('supplierId', 'name')),
       procurement: await Procurement.findById(result.procurementId)
         .populate('supplierId', 'name')
@@ -483,6 +540,8 @@ exports.receiveInventory = async (data, user) => {
         : null,
       quarantine: result.quarantineId ? await QuarantineItem.findById(result.quarantineId) : null,
     };
+    invalidateInventoryCache();
+    return payload;
   } catch (error) {
     if (error.code === 11000) {
       const field = error.keyPattern?.sku
@@ -503,25 +562,55 @@ exports.receiveInventory = async (data, user) => {
  * Fetches the most recent procurement records.
  */
 exports.getRecentProcurements = async () => {
-  return await Procurement.find()
-    .populate('inventoryId', 'name sku')
-    .populate('supplierId', 'name')
-    .populate('orderRequestId', 'requestId poNumber status')
-    .populate('receiptAuthorizationId', 'authorizationNumber status financeReviewStatus nonPoReason')
-    .populate('discrepancyId', 'discrepancyId status outstandingQuantity')
-    .populate('replacementForDiscrepancyId', 'discrepancyId status outstandingQuantity')
-    .sort({ timestamp: -1 })
-    .limit(100);
+  return await inventoryCache.get(`${PROCUREMENT_PREFIX}procurements`, loadProcurements);
 };
 
 exports.getReceiptDiscrepancies = async (filters = {}) => {
-  const query = {};
-  if (filters.status && filters.status !== 'all') query.status = filters.status;
-  return ReceiptDiscrepancy.find(query)
-    .populate('inventoryId', 'name sku')
-    .populate('supplierId', 'name')
-    .populate('orderRequestId', 'requestId poNumber status')
-    .populate('receiptAuthorizationId', 'authorizationNumber status')
-    .populate('replacementProcurementIds', 'sourceDocumentNumber receivedDate acceptedQuantity')
-    .sort({ createdAt: -1 });
+  const statusKey = filters.status && filters.status !== 'all' ? filters.status : 'all';
+  return await inventoryCache.get(
+    `${PROCUREMENT_PREFIX}receipt-discrepancies:${statusKey}`,
+    () => loadDiscrepancies(statusKey === 'all' ? undefined : statusKey),
+  );
+};
+
+/**
+ * Everything the procurement page renders, in one response behind one cache key.
+ *
+ * The page previously issued six requests whose six cache entries each went cold
+ * independently; bundling them mirrors getDashboardData and collapses the load
+ * to a single round trip.
+ */
+exports.getProcurementSummary = async (user) => {
+  assertRole(user, ['INVENTORY']);
+  if (mongoose.connection.readyState !== 1) {
+    throw serviceError(
+      'Procurement data is unavailable while the database is offline',
+      503,
+      'DATABASE_OFFLINE',
+    );
+  }
+
+  return await inventoryCache.get(`${PROCUREMENT_PREFIX}summary`, async () => {
+    const [procurements, inventoryItems, orderRequests, authorizations, discrepancies] =
+      await Promise.all([
+        loadProcurements(),
+        loadProcurementCatalog(),
+        loadOrderRequests(),
+        loadAuthorizations(),
+        loadDiscrepancies(),
+      ]);
+
+    return {
+      procurements,
+      inventoryItems,
+      orderRequests,
+      authorizations,
+      discrepancies,
+      locations: INVENTORY_LOCATIONS.map((location) => ({
+        warehouse: location.warehouse,
+        warehouseLabel: location.warehouseLabel,
+        racks: location.racks.map((rack) => ({ rackTag: rack.rackTag, bins: [...rack.bins] })),
+      })),
+    };
+  });
 };

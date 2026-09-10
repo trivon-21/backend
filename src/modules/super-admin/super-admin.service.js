@@ -72,7 +72,7 @@ async function sendOtpEmail(toEmail, userName, otp) {
   await transporter.sendMail({
     from: `AirLux <${process.env.EMAIL_USER}>`,
     to: toEmail,
-    subject: "AirLux — Verify Your Email",
+    subject: "AirLux - Verify Your Email",
     html: `
       <p>Hi ${userName},</p>
       <p>Your email verification code is:</p>
@@ -374,7 +374,7 @@ async function sendDeactivationEmail(toEmail, userName, reason, reactivationLink
   await transporter.sendMail({
     from: `AirLux <${process.env.EMAIL_USER}>`,
     to: toEmail,
-    subject: "AirLux — Account Deactivated",
+    subject: "AirLux - Account Deactivated",
     html: `
       <p>Hi ${userName},</p>
       <p>Your account has been deactivated due to the following reason:</p>
@@ -393,8 +393,8 @@ async function sendDeactivationEmail(toEmail, userName, reason, reactivationLink
  */
 async function sendReactivationDecisionEmail(toEmail, userName, approved, adminResponse, isDirectReactivation = false) {
   const subject = approved
-    ? "AirLux — Your Account Has Been Reactivated"
-    : "AirLux — Reactivation Request Status";
+    ? "AirLux - Your Account Has Been Reactivated"
+    : "AirLux - Reactivation Request Status";
 
   const approvedText = isDirectReactivation
     ? "Great news! Your account has been <strong>REACTIVATED</strong> by our administrative team."

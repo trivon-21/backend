@@ -39,6 +39,9 @@ const ReceiptDiscrepancySchema = new mongoose.Schema({
   collection: 'receipt_discrepancies',
 });
 
+ReceiptDiscrepancySchema.index({ status: 1 });
+ReceiptDiscrepancySchema.index({ createdAt: -1 });
+
 ReceiptDiscrepancySchema.pre('validate', function validateQuantities() {
   const expected = Number(this.expectedQuantity || 0);
   const accepted = Number(this.acceptedQuantity || 0);

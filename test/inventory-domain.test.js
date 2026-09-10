@@ -8,7 +8,9 @@ const {
   classifyLegacyItem,
   isValidClassification,
   INVENTORY_LOCATIONS,
-  isValidInventoryLocation
+  isValidInventoryLocation,
+  rackTagFor,
+  formatStorageLocation
 } = require('../src/utils/inventory-domain');
 
 test('derives stock status at threshold boundaries including zero reorder level', () => {
@@ -25,12 +27,23 @@ test('validates shared product-class and subcategory pairs', () => {
   assert.equal(isValidClassification('Unknown', 'Compressor'), false);
 });
 
-test('allows only fixed warehouse and placement-area pairs', () => {
+test('allows only fixed warehouse, rack and bin combinations', () => {
   assert.equal(INVENTORY_LOCATIONS.length, 3);
-  assert.equal(isValidInventoryLocation('Central Warehouse', 'Small Parts Racking'), true);
-  assert.equal(isValidInventoryLocation('Central Warehouse', 'Tool Crib'), false);
-  assert.equal(isValidInventoryLocation('Made Up Warehouse', 'Small Parts Racking'), false);
-  assert.equal(isValidInventoryLocation('Central Warehouse', 'Made Up Area'), false);
+  assert.deepEqual(INVENTORY_LOCATIONS[0].racks.map((rack) => rack.rackTag), ['R1', 'R2', 'R3', 'R4', 'R5']);
+  assert.equal(INVENTORY_LOCATIONS[0].warehouseLabel, 'Warehouse A');
+  assert.equal(isValidInventoryLocation('A', 'A201'), true);
+  assert.equal(isValidInventoryLocation('A', 'A206'), false);
+  assert.equal(isValidInventoryLocation('B', 'A201'), false);
+  assert.equal(isValidInventoryLocation('A', 'A-05'), false);
+  assert.equal(isValidInventoryLocation('Made Up Warehouse', 'A201'), false);
+});
+
+test('describes a bin as warehouse, rack and bin code', () => {
+  assert.equal(rackTagFor('A', 'A201'), 'R2');
+  assert.equal(rackTagFor('A', 'A-05'), '');
+  assert.equal(formatStorageLocation('A', 'A201'), 'Warehouse A, R2, A201');
+  assert.equal(formatStorageLocation('A', 'A-05'), 'Warehouse A, A-05');
+  assert.equal(formatStorageLocation('', ''), '');
 });
 
 test('suggests replenishment to maximum stock with a minimum of one', () => {

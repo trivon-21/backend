@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { buildAnalytics, comparisonMetric, periodWindow } = require('../src/utils/manager-metrics');
+const { buildDashboardMetrics } = require('../src/modules/manager/manager.dashboard-metrics');
 
 test('periodWindow creates inclusive reporting boundaries', () => {
   const now = new Date(2026, 7, 15, 12);
@@ -184,4 +185,46 @@ test('workload is a current assignment snapshot and stock risks are ranked', () 
   assert.deepEqual(techOne, { name: 'Tech One', active: 2, slaRisk: 2, escalated: 1, awaitingAction: 1, completedInPeriod: 0 });
   assert.equal(result.inventoryRisk.topRisks[0].status, 'out-of-stock');
   assert.equal(result.inventoryRisk.topRisks[1].status, 'low-stock');
+});
+
+test('purchase pipeline canonicalizes legacy statuses instead of dropping them', () => {
+  const now = new Date('2026-08-15T12:00:00.000Z');
+  const orders = [
+    { createdAt: '2026-08-10T08:00:00.000Z', status: 'pending-approval', totalEstimate: 100 }, // legacy alias
+    { createdAt: '2026-08-10T08:00:00.000Z', status: 'PENDING', totalEstimate: 200 }, // legacy uppercase
+    { createdAt: '2026-08-10T08:00:00.000Z', status: 'APPROVED', totalEstimate: 300 }, // legacy uppercase
+  ];
+  const result = buildAnalytics([], orders, '7d', now);
+  const byStatus = (status) => result.purchasing.currentPipeline.find((row) => row.status === status);
+  assert.equal(byStatus('pending-manager').count, 1);
+  assert.equal(byStatus('pending-manager').value, 100);
+  assert.equal(byStatus('pending-finance').count, 1);
+  assert.equal(byStatus('pending-finance').value, 200);
+  assert.equal(byStatus('approved').count, 1);
+  assert.equal(byStatus('approved').value, 300);
+});
+
+test('dashboard and analytics agree on active/unassigned tickets for the same fixture', () => {
+  const now = new Date('2026-08-15T12:00:00.000Z');
+  const tickets = [
+    { _id: '1'.repeat(24), sourceType: 'service', status: 'open', assignedTechnicianId: { _id: 'tech-1', fullName: 'Tech One' } },
+    { _id: '2'.repeat(24), sourceType: 'service', status: 'cancelled' }, // terminal — must not count as active anywhere
+    { _id: '3'.repeat(24), sourceType: 'inspection', status: 'open' }, // never unassigned, never active-non-inspection
+    { _id: '4'.repeat(24), sourceType: 'installation', status: 'in-progress', assignedTeamId: 'team-1', assignedTeamName: 'Team A', assignedTo: 'Team A' },
+    { _id: '5'.repeat(24), sourceType: 'installation', status: 'open' }, // no team — unassigned
+  ];
+
+  const dashboard = buildDashboardMetrics({ tickets, now });
+  const analytics = buildAnalytics(tickets, [], '7d', now);
+
+  // Active: everything except the cancelled ticket = 4.
+  assert.equal(dashboard.stats.openTickets.total, 4);
+  assert.equal(analytics.currentPosition.openTickets.value, 4);
+  assert.equal(dashboard.stats.openTickets.total, analytics.currentPosition.openTickets.value);
+
+  // Unassigned: the inspection ticket never counts; the fully-assigned
+  // records (1 and 4) don't; only ticket 5 (installation, no team) does.
+  assert.equal(dashboard.stats.unassignedTickets.total, 1);
+  assert.equal(analytics.currentPosition.unassignedTickets.value, 1);
+  assert.equal(dashboard.stats.unassignedTickets.total, analytics.currentPosition.unassignedTickets.value);
 });

@@ -3,7 +3,7 @@ const { Schema } = mongoose;
 
 const maintenanceSchema = new Schema(
   {
-    ticketId: { type: String, required: true, unique: true }, // e.g. MS-0001-ACT
+    ticketId: { type: String, required: true, unique: true }, // e.g. MS-0001
     maintenanceType: { type: String, enum: ['Company Initiated', 'Customer Initiated'] },
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     isUnderWarranty: { type: Boolean, default: true },
@@ -17,7 +17,7 @@ const maintenanceSchema = new Schema(
     materialList: [{ item: String, quantity: Number, estimatedCost: Number }],
     assignedTeamId: { type: Schema.Types.ObjectId, ref: 'TechTeam' },
     serviceReport: { technicianNotes: String, submittedAt: Date, photos: [String] },
-    paymentSlipUrl: { type: String, default: null },       // ← ADDED
+    paymentSlipUrl: { type: String, default: null },       
     paymentAmount: { type: Number, default: 0 },
     description: String,
     acUnitModel: String,

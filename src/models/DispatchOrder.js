@@ -26,5 +26,8 @@ const DispatchOrderSchema = new mongoose.Schema({
   collection: 'dispatch_orders',
 });
 
+DispatchOrderSchema.index({ createdAt: -1 });
+DispatchOrderSchema.index({ status: 1 });
+
 module.exports = mongoose.models.DispatchOrder
   || mongoose.model('DispatchOrder', DispatchOrderSchema);

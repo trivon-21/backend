@@ -6,7 +6,7 @@ const SerializedAsset = require('../../../models/SerializedAsset');
 const QuarantineItem = require('../../../models/QuarantineItem');
 const RmaCase = require('../../../models/RmaCase');
 const Activity = require('../../../models/Activity');
-const { toBusinessDateString } = require('../../../utils/inventory-domain');
+const { toBusinessDateString, isLoanOverdue } = require('../../../utils/inventory-domain');
 const { normalizeSerialNumber } = require('../../../utils/serialized-asset-domain');
 const { dispositionForReturnCondition } = require('../../../utils/rma-workflow');
 const {
@@ -17,6 +17,11 @@ const {
   TECHNICIAN_ROLES,
   projectSerialNumbers,
 } = require('./shared');
+const {
+  inventoryCache,
+  invalidateInventoryCache,
+  INVENTORY_CACHE_PREFIXES,
+} = require('../inventory-manager.cache');
 
 /**
  * Retrieves technician members from the configured shared database.
@@ -38,40 +43,45 @@ exports.getTechnicians = async () => {
  * Fetches all active asset loans.
  */
 exports.getAssetLoans = async () => {
-  return AssetLoan.find({ status: { $ne: 'returned' } })
-    .populate('serializedAssetId', 'serialNumber status')
-    .sort({ checkedOutAt: -1 });
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.ASSET_LOAN}loans`, async () => {
+    return await AssetLoan.find({ status: { $ne: 'returned' } })
+      .populate('serializedAssetId', 'serialNumber status')
+      .sort({ checkedOutAt: -1 })
+      .lean();
+  });
 };
 
 /**
  * Returns serialized HVAC tools with asset tags that are not currently on loan.
  */
 exports.getAvailableTools = async () => {
-  const availableAssets = await SerializedAsset.find({
-    status: 'available',
-    currentLoanId: { $in: [null, undefined] },
-    activeRmaCaseId: { $in: [null, undefined] },
-    quarantineId: { $in: [null, undefined] },
-  })
-    .select('inventoryId serialNumber')
-    .sort({ serialNumber: 1 })
-    .lean();
-  const availableByInventory = new Map();
-  for (const asset of availableAssets) {
-    const key = String(asset.inventoryId);
-    if (!availableByInventory.has(key)) availableByInventory.set(key, []);
-    availableByInventory.get(key).push(asset.serialNumber);
-  }
-  const tools = await Inventory.find({
-    _id: { $in: [...availableByInventory.keys()] },
-    itemClass: 'Tools and Test Equipment',
-    isSerialized: true,
-  }).select('name sku itemClass subcategory brand location binLocation available reorderLevel');
-  const projected = await projectSerialNumbers(tools);
-  return projected.map((tool) => ({
-    ...tool,
-    availableSerialNumbers: availableByInventory.get(String(tool._id)) || [],
-  }));
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.ASSET_LOAN}available-tools`, async () => {
+    const availableAssets = await SerializedAsset.find({
+      status: 'available',
+      currentLoanId: { $in: [null, undefined] },
+      activeRmaCaseId: { $in: [null, undefined] },
+      quarantineId: { $in: [null, undefined] },
+    })
+      .select('inventoryId serialNumber')
+      .sort({ serialNumber: 1 })
+      .lean();
+    const availableByInventory = new Map();
+    for (const asset of availableAssets) {
+      const key = String(asset.inventoryId);
+      if (!availableByInventory.has(key)) availableByInventory.set(key, []);
+      availableByInventory.get(key).push(asset.serialNumber);
+    }
+    const tools = await Inventory.find({
+      _id: { $in: [...availableByInventory.keys()] },
+      itemClass: 'Tools and Test Equipment',
+      isSerialized: true,
+    }).select('name description sku itemClass subcategory brand location binLocation available reorderLevel');
+    const projected = await projectSerialNumbers(tools);
+    return projected.map((tool) => ({
+      ...tool,
+      availableSerialNumbers: availableByInventory.get(String(tool._id)) || [],
+    }));
+  });
 };
 
 /**
@@ -85,16 +95,17 @@ exports.checkOutTool = async (data, user) => {
     throw serviceError('Select an asset tag', 400, 'ASSET_TAG_REQUIRED');
   }
   const dueDateStr = toBusinessDateString(data.dueDate);
-  const todayStr = toBusinessDateString(new Date());
-  if (!dueDateStr || dueDateStr < todayStr) {
+  if (!dueDateStr || isLoanOverdue(data.dueDate)) {
     throw serviceError('Tool due date must be a valid future date', 400, 'INVALID_DUE_DATE');
   }
-  const dueDate = new Date(`${dueDateStr}T00:00:00.000Z`);
+  const timeMatch = typeof data.dueDate === 'string' ? data.dueDate.match(/T(\d{2}:\d{2})/) : null;
+  const dueTime = timeMatch ? timeMatch[1] : '00:00';
+  const dueDate = new Date(`${dueDateStr}T${dueTime}:00.000Z`);
   const technician = await User.findOne({ _id: data.technicianId, role: { $in: TECHNICIAN_ROLES } });
   if (!technician) throw serviceError('Technician not found or role is not eligible for tool lending', 404, 'TECHNICIAN_NOT_FOUND');
   const normalizedAssetTag = normalizeSerialNumber(data.assetTag);
   try {
-    return await mongoose.connection.transaction(async (session) => {
+    const result = await mongoose.connection.transaction(async (session) => {
       const asset = await SerializedAsset.findOne({ normalizedSerial: normalizedAssetTag }).session(session);
       if (!asset || String(asset.inventoryId) !== String(data.toolId)) {
         throw serviceError('Serialized tool or asset tag not found', 404, 'TOOL_NOT_FOUND');
@@ -147,6 +158,8 @@ exports.checkOutTool = async (data, user) => {
       }], { session });
       return loan;
     });
+    invalidateInventoryCache();
+    return result;
   } catch (error) {
     if (error.code === 11000) {
       throw serviceError('This asset tag is already checked out', 409, 'ASSET_ALREADY_LOANED');
@@ -164,7 +177,7 @@ exports.returnTool = async (loanId, user, input = {}) => {
   const condition = input.condition || 'good';
   const disposition = dispositionForReturnCondition(condition);
 
-  return mongoose.connection.transaction(async (session) => {
+  const result = await mongoose.connection.transaction(async (session) => {
     const loan = await AssetLoan.findById(loanId).session(session);
     if (!loan) throw serviceError('Loan not found', 404, 'LOAN_NOT_FOUND');
     if (loan.status === 'returned') throw serviceError('This loan has already been returned', 409, 'ASSET_ALREADY_RETURNED');
@@ -246,11 +259,15 @@ exports.returnTool = async (loanId, user, input = {}) => {
     }], { session });
     return loan;
   });
+  invalidateInventoryCache();
+  return result;
 };
 
 /**
  * Retrieves all historical asset return logs.
  */
 exports.getAssetReturnLogs = async () => {
-  return await AssetLoan.find({ status: 'returned' }).sort({ returnedAt: -1 });
+  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.ASSET_LOAN}return-logs`, async () => {
+    return await AssetLoan.find({ status: 'returned' }).sort({ returnedAt: -1 }).lean();
+  });
 };

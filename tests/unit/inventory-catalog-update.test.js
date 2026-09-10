@@ -14,8 +14,8 @@ function catalogItem() {
     brand: 'Copeland',
     type: 'Single',
     unit: 'units',
-    location: 'Central Warehouse',
-    binLocation: 'Small Parts Racking',
+    location: 'A',
+    binLocation: 'A101',
     reorderLevel: 5,
     maxStockLevel: 20,
     unitCost: 100,
@@ -52,13 +52,14 @@ describe('Inventory catalog updates', () => {
     try {
       const result = await service.updateInventoryItem(String(item._id), {
         name: 'Updated Compressor',
+        description: 'High efficiency scroll compressor for R410A',
         itemClass: 'Spare Parts',
         subcategory: 'Compressor',
         brand: 'Copeland',
         type: 'Single',
         unit: 'units',
-        location: 'Central Warehouse',
-        binLocation: 'Small Parts Racking',
+        location: 'A',
+        binLocation: 'A101',
         reorderLevel: 4,
         maxStockLevel: 25,
         unitCost: 250,
@@ -67,6 +68,7 @@ describe('Inventory catalog updates', () => {
 
       assert.equal(saved, true);
       assert.equal(result.name, 'Updated Compressor');
+      assert.equal(result.description, 'High efficiency scroll compressor for R410A');
       assert.equal(result.unitCost, 250);
       assert.equal(result.pricing.costPerUnit, 250);
       assert.equal(result.capacityBtu, null);

@@ -121,6 +121,21 @@ exports.getProcurements = async (req, res) => {
 };
 
 /**
+ * Everything the procurement page needs, in one response.
+ */
+exports.getProcurementSummary = async (req, res) => {
+  try {
+    const data = await service.getProcurementSummary(req.user);
+    res.json(data);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      code: error.code || 'PROCUREMENT_SUMMARY_FAILED',
+      message: error.message || 'Failed to fetch procurement data',
+    });
+  }
+};
+
+/**
  * Retrieves all registered suppliers.
  */
 exports.getSuppliers = async (req, res) => {

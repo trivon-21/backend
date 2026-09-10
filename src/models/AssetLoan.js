@@ -20,6 +20,8 @@ const AssetLoanSchema = new mongoose.Schema({
   collection: 'asset_loans'
 });
 
+AssetLoanSchema.index({ status: 1, checkedOutAt: -1 });
+
 AssetLoanSchema.pre('validate', function synchronizeReturnState() {
   this.normalizedAssetTag = normalizeSerialNumber(this.assetTag);
   if (this.status === 'returned' && !this.returnedAt) this.returnedAt = new Date();

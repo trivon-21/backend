@@ -1,22 +1,11 @@
 'use strict';
 
-const { isLowStock } = require('../../utils/inventory-domain');
-
-const TERMINAL_STATUSES = ['resolved', 'cancelled', 'closed'];
+const { isLowStock, deriveStockStatus, findBlockedMaterialRequests } = require('../../utils/inventory-domain');
+const { isTerminal, isUnassigned, canonicalSourceType } = require('./manager.work-item-domain');
+const { isPendingManagerApproval } = require('../../utils/purchase-workflow');
 
 function priorityRank(priority) {
   return { high: 3, medium: 2, low: 1 }[String(priority).toLowerCase()] || 0;
-}
-
-function isTerminal(status) {
-  return TERMINAL_STATUSES.includes(String(status).toLowerCase());
-}
-
-function isUnassigned(ticket) {
-  return !ticket.assignedTechnicianId
-    && !ticket.assignedTo
-    && !ticket.assignedTeamId
-    && !ticket.assignedTeamName;
 }
 
 function ticketRoute(status) {
@@ -29,7 +18,6 @@ function buildDashboardMetrics({
   inventory = [],
   materialRequests = [],
   authorizations = [],
-  serviceRating30d = { average: null, responseCount: 0 },
   now = new Date(),
   user = null,
 } = {}) {
@@ -40,7 +28,9 @@ function buildDashboardMetrics({
   const activeTickets = tickets.filter((ticket) => !isTerminal(ticket.status));
 
   // Active non-inspection tickets
-  const activeNonInspectionTickets = activeTickets.filter((ticket) => ticket.sourceType !== 'inspection');
+  const activeNonInspectionTickets = activeTickets.filter((ticket) => (
+    canonicalSourceType(ticket.sourceType) !== 'inspection'
+  ));
 
   // Unassigned: active non-inspection tickets with no technician/team assigned
   const unassigned = activeNonInspectionTickets.filter(isUnassigned);
@@ -55,13 +45,11 @@ function buildDashboardMetrics({
     return due > currentDate && due <= nearDue;
   });
 
-  // Approvals: orders and non-po authorizations
-  const pendingOrders = orders.filter((order) => (
-    ['pending-manager', 'pending-approval', 'pending'].includes(String(order.status).toLowerCase())
-  ));
-  const pendingAuthorizations = authorizations.filter((auth) => (
-    ['pending', 'pending-approval', 'pending-manager'].includes(String(auth.status).toLowerCase())
-  ));
+  // Approvals: orders awaiting the Manager's own decision (excludes
+  // pending-finance — that stage belongs to Finance's queue, not the
+  // Manager's actionable approval list) and pending non-PO authorizations.
+  const pendingOrders = orders.filter((order) => isPendingManagerApproval(order.status));
+  const pendingAuthorizations = authorizations.filter((auth) => auth.status === 'pending');
 
   const pendingApprovalsTotal = pendingOrders.length + pendingAuthorizations.length;
 
@@ -84,15 +72,19 @@ function buildDashboardMetrics({
     ? Math.max(0, Math.round((currentDate.getTime() - Math.min(...allPendingCreated)) / (3600 * 1000)))
     : 0;
 
-  // Inventory calculations
-  const lowStock = inventory.filter(isLowStock);
-  const reservedItems = inventory.reduce((sum, item) => sum + Number(item.reserved || 0), 0);
-  const inventoryById = new Map(inventory.map((item) => [String(item._id), item]));
-  const blockedMaterialRequests = materialRequests.filter((request) => (
-    (request.items || []).some((line) => (
-      Number(inventoryById.get(String(line.inventoryId))?.available || 0) < Number(line.qty || 0)
-    ))
+  // Inventory calculations. Three explicit, non-overlapping counts —
+  // matching the exact definitions inventory-manager/services/dashboard
+  // .service.js uses for its own Stock Alerts card — so a Manager and an
+  // Inventory Manager looking at the same data never see different totals.
+  const belowReorderItems = inventory.filter((item) => (
+    deriveStockStatus(item.available, item.reorderLevel) === 'low-stock'
   ));
+  const outOfStockItems = inventory.filter((item) => (
+    deriveStockStatus(item.available, item.reorderLevel) === 'out-of-stock'
+  ));
+  const lowStock = inventory.filter(isLowStock); // the union: belowReorder + outOfStock
+  const reservedItems = inventory.reduce((sum, item) => sum + Number(item.reserved || 0), 0);
+  const blockedMaterialRequests = findBlockedMaterialRequests(materialRequests, inventory);
   const shortageOrderByMaterialRequest = new Map(orders
     .filter((order) => order.source === 'material-request' && order.sourceMaterialRequestId)
     .map((order) => [String(order.sourceMaterialRequestId), order]));
@@ -157,7 +149,7 @@ function buildDashboardMetrics({
     } else if (ticket.slaDueAt && new Date(ticket.slaDueAt) <= nearDue) {
       reasons.push('SLA due soon');
     }
-    if (isUnassigned(ticket) && ticket.sourceType !== 'inspection') {
+    if (isUnassigned(ticket)) {
       reasons.push('Awaiting Main Technician assignment');
     }
 
@@ -179,32 +171,47 @@ function buildDashboardMetrics({
   }
 
   for (const order of pendingOrders) {
+    const isUrgent = order.priority === 'urgent';
+    const amount = Number(order.totalEstimate || order.totalAmount || 0);
     pendingActionsMap.set(`order-${order._id}`, {
       id: `order-${order._id}`,
       sourceId: order._id,
-      type: 'order',
-      title: `Review ${order.requestId}`,
-      description: `${order.supplierName || 'Supplier'} purchase request`,
-      priority: order.priority === 'urgent' ? 'high' : 'medium',
+      type: 'approval',
+      approvalType: 'purchase',
+      category: 'approval',
+      title: `Review Purchase Request: ${order.requestId || 'Order'}`,
+      description: `${order.supplierName || 'Supplier'}${order.items?.length ? ` · ${order.items.length} line item${order.items.length === 1 ? '' : 's'}` : ''}`,
+      amount,
+      supplierName: order.supplierName || 'Supplier',
+      itemsCount: order.items?.length || 1,
+      reference: order.requestId,
+      priority: isUrgent ? 'high' : 'medium',
       reasons: ['Pending Manager Approval'],
       createdAt: order.createdAt,
-      deadline: Infinity,
+      deadline: isUrgent && order.createdAt ? new Date(order.createdAt).getTime() : Infinity,
       route: '/manager/orders',
-      queryParams: { status: 'pending-manager' },
+      queryParams: { type: 'purchase', status: 'pending-manager' },
     });
   }
 
   for (const auth of pendingAuthorizations) {
+    const isEmergency = auth.nonPoReason === 'EMERGENCY_REPAIR' || auth.priority === 'urgent';
+    const amount = Number(auth.estimatedTotal || auth.totalAmount || 0);
     pendingActionsMap.set(`auth-${auth._id}`, {
       id: `auth-${auth._id}`,
       sourceId: auth._id,
-      type: 'authorization',
-      title: `Review ${auth.authorizationNumber}`,
+      type: 'approval',
+      approvalType: 'non-po',
+      category: 'approval',
+      title: `Review Non-PO: ${auth.authorizationNumber || 'Authorization'}`,
       description: `${String(auth.nonPoReason || 'NON_PO').replaceAll('_', ' ')} · ${auth.supplierName || 'Supplier not specified'}`,
-      priority: auth.nonPoReason === 'EMERGENCY_REPAIR' ? 'high' : 'medium',
+      amount,
+      supplierName: auth.supplierName || 'Supplier not specified',
+      reference: auth.authorizationNumber,
+      priority: isEmergency ? 'high' : 'medium',
       reasons: ['Pending Non-PO Approval'],
       createdAt: auth.createdAt,
-      deadline: Infinity,
+      deadline: isEmergency && auth.createdAt ? new Date(auth.createdAt).getTime() : Infinity,
       route: '/manager/orders',
       queryParams: { type: 'non-po', status: 'pending' },
     });
@@ -238,34 +245,7 @@ function buildDashboardMetrics({
   ));
 
   const pendingActionsTotal = allPendingActions.length;
-  const pendingActions = allPendingActions.slice(0, 12);
-
-  // Recent activity: tickets + orders sorted descending by timestamp, sliced to 8
-  const ticketActivity = tickets.map((ticket) => ({
-    id: String(ticket._id),
-    sourceId: ticket._id,
-    type: ticket.status === 'escalated' ? 'escalation' : 'ticket',
-    title: `${ticket.status === 'resolved' ? 'Resolved' : 'Updated'} ${ticket.ticketId || 'Ticket'}`,
-    description: ticket.subject,
-    timestamp: ticket.updatedAt || ticket.createdAt,
-    ...ticketRoute(ticket.status),
-  }));
-
-  const orderActivity = orders.map((order) => ({
-    id: String(order._id),
-    sourceId: order._id,
-    type: 'order',
-    title: `${order.requestId || 'Order'} is ${String(order.status).replace('-', ' ')}`,
-    description: `${order.supplierName || 'Supplier'} · ${Number(order.totalEstimate || 0).toLocaleString()}`,
-    timestamp: order.updatedAt || order.createdAt,
-    route: '/manager/orders',
-    queryParams: { status: order.status },
-  }));
-
-  const recentActivity = [...ticketActivity, ...orderActivity]
-    .filter((item) => item.timestamp)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 8);
+  const pendingActions = allPendingActions.slice(0, 16);
 
   // Workload Preview by stable assignee identity
   const workloadMap = new Map();
@@ -321,13 +301,13 @@ function buildDashboardMetrics({
     stats,
     inventoryKpis: {
       reservedItems: { label: 'Reserved Items', value: reservedItems, icon: 'clipboard-check' },
-      lowStockAlerts: { label: 'Low Stock Alerts', value: lowStock.length, icon: 'triangle-alert' },
-      pendingMaterialRequests: { label: 'Pending Material Requests', value: materialRequests.length, icon: 'package-clock' },
+      belowReorderItems: { label: 'Below Reorder', value: belowReorderItems.length, icon: 'triangle-alert' },
+      outOfStockItems: { label: 'Out of Stock', value: outOfStockItems.length, icon: 'triangle-alert' },
+      stockRiskItems: { label: 'Stock Risk', value: lowStock.length, icon: 'triangle-alert' },
       blockedMaterialRequests: { label: 'Blocked Material Requests', value: blockedMaterialRequests.length, icon: 'triangle-alert' },
     },
     pendingActions,
     pendingActionsTotal,
-    recentActivity,
     workloadPreview,
   };
 }
@@ -335,6 +315,4 @@ function buildDashboardMetrics({
 module.exports = {
   buildDashboardMetrics,
   priorityRank,
-  isTerminal,
-  isUnassigned,
 };
