@@ -48,6 +48,9 @@ const serviceRequestSchema = new mongoose.Schema(
     // subject kept for backward compat
     subject: { type: String, trim: true, default: "" },
 
+    requestType: { type: String, default: "" },
+    maintenanceType: { type: String, default: "" },
+
     status: {
       type: String,
       enum: ["New", "Pending", "Finance Approved", "Finance Rejected", "Assigned", "In Progress", "Completed", "Cancelled"],
