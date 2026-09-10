@@ -3,15 +3,18 @@
  */
 const Order = require("../../../models/Order");
 const ServiceRequest = require("../../../models/ServiceRequest");
+const Maintenance = require("../../shared/maintenance/maintenance.model");
 const Inquiry = require("../../../models/Inquiry");
 
 exports.getDashboard = async (userId) => {
   try {
-    const [orders, serviceRequests, inquiries] = await Promise.all([
+    const [orders, repairRequests, maintenanceRequests, inquiries] = await Promise.all([
       Order.find({ customer: userId }).sort({ createdAt: -1 }),
-      ServiceRequest.find({ customer: userId }),
+      ServiceRequest.find({ customerId: userId, serviceType: "Repair" }),
+      Maintenance.find({ customerId: userId }),
       Inquiry.find({ customer: userId })
     ]);
+    const serviceRequests = [...repairRequests, ...maintenanceRequests];
 
     const totalPurchases = orders.length;
     const returnOrders = orders.filter(o => o.status === "Returned").length;
