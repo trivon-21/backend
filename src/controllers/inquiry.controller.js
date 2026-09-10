@@ -30,14 +30,16 @@ exports.createInquiry = async (req, res) => {
       return res.status(400).json({ message: "Message is required" });
     }
 
-    const subject = inquiryType ? `[${inquiryType}] ${message.substring(0, 60)}` : message.substring(0, 60);
+    const validTypes = ["Product", "Pricing", "Installation", "Warranty", "AMC", "Other"];
+    const normalizedType = validTypes.includes(inquiryType) ? inquiryType : "Other";
+    const subject = `[${normalizedType}] ${message.substring(0, 60)}`;
 
     const inquiry = await Inquiry.create({
       customer: req.user._id,
       name: name || "",
       email: email || "",
       phone: phone || "",
-      inquiryType: inquiryType || "Other",
+      inquiryType: normalizedType,
       subject,
       message: message.trim(),
       attachmentUrl: attachmentUrl || "",
@@ -67,7 +69,15 @@ exports.replyToInquiry = async (req, res) => {
     }
 
     inquiry.thread.push({ sender: "Customer", message: message.trim() });
-    inquiry.status = "Ongoing";
+
+    // An inquiry must remain 'Awaiting' until a CSA/Support agent sends a reply
+    const hasCsaReplied = inquiry.thread.some(msg => msg.sender === 'Support' || msg.sender === 'CSA');
+    if (!hasCsaReplied) {
+      inquiry.status = "Awaiting";
+    } else {
+      inquiry.status = "Ongoing";
+    }
+
     await inquiry.save();
     return res.json({ message: "Reply sent", inquiry });
   } catch (err) {
