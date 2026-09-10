@@ -105,6 +105,38 @@ const toCustomerIdString = (value) => {
 };
 
 /**
+ * Resolves the displayable product type from the current and legacy job shapes.
+ * Repairs and inspections commonly keep the product on a linked order, while
+ * older maintenance records may only have the installed unit available.
+ */
+const resolveProductType = (record, installedProductType = '') => {
+  const productDetails = record?.productDetails || {};
+  const product = record?.product || {};
+  const order = record?.orderId || record?.order || {};
+  const serviceTicket = record?.serviceTicketId || record?.serviceTicket || {};
+
+  const candidates = [
+    record?.productType,
+    record?.detailedProductType,
+    productDetails.detailedType,
+    productDetails.generalType,
+    product.detailedType,
+    product.generalType,
+    product.model,
+    product.name,
+    record?.acUnitModel,
+    record?.unitModel,
+    serviceTicket.acUnitModel,
+    serviceTicket.productType,
+    order.itemName,
+    order.productType,
+    installedProductType,
+  ];
+
+  return candidates.find((value) => typeof value === 'string' && value.trim())?.trim() || 'N/A';
+};
+
+/**
  * Finds a task record by either Mongo ObjectId or ticket number/string.
  * @param {import('mongoose').Model} Model
  * @param {string} id
@@ -130,7 +162,17 @@ const findTaskRecord = async (Model, id) => {
 
   if (orFilters.length === 0) return null;
 
-  return Model.findOne({ $or: orFilters }).lean();
+  const query = Model.findOne({ $or: orFilters });
+
+  if (Model.modelName === 'Repair') {
+    query
+      .populate('serviceTicketId', 'acUnitModel productType')
+      .populate('orderId', 'itemName productType');
+  } else if (Model.modelName === 'Installation' || Model.modelName === 'InspectionTicket') {
+    query.populate('orderId', 'itemName productType');
+  }
+
+  return query.lean();
 };
 
 /**
@@ -235,15 +277,25 @@ exports.getCustomerHistory = async (req, res) => {
       ServiceRequest.find({
         ...customerQuery,
         status: { $in: visibleStatuses }
-      }).populate('assignedTeam', 'teamName').lean(),
+      })
+        .populate('assignedTeam', 'teamName')
+        .populate('serviceTicketId', 'acUnitModel productType')
+        .populate('orderId', 'itemName productType')
+        .lean(),
       Installation.find({
         ...customerQuery,
         status: { $in: visibleStatuses }
-      }).populate('assignedTeam', 'teamName').lean(),
+      })
+        .populate('assignedTeam', 'teamName')
+        .populate('orderId', 'itemName productType')
+        .lean(),
       Inspection.find({
         ...customerQuery,
         status: { $in: visibleStatuses }
-      }).populate('assignedTeam', 'teamName').lean(),
+      })
+        .populate('assignedTeam', 'teamName')
+        .populate('orderId', 'itemName productType')
+        .lean(),
       Maintenance.find({
         ...customerQuery,
         status: { $in: visibleStatuses }
@@ -259,6 +311,11 @@ exports.getCustomerHistory = async (req, res) => {
     const teamFilteredInstallations = filteredInstallations.filter(item => matchesJobTeam(item, requestedTeamName));
     const teamFilteredInspections = filteredInspections.filter(item => matchesJobTeam(item, requestedTeamName));
     const teamFilteredMaintenances = filteredMaintenances.filter(item => matchesJobTeam(item, requestedTeamName));
+
+    const latestInstallation = teamFilteredInstallations
+      .slice()
+      .sort((a, b) => new Date(b.serviceDate || b.date || b.createdAt || 0).getTime() - new Date(a.serviceDate || a.date || a.createdAt || 0).getTime())[0];
+    const installedProductType = resolveProductType(latestInstallation);
 
     /**
      * Maps source-specific records into a single history DTO consumed by the UI.
@@ -280,7 +337,7 @@ exports.getCustomerHistory = async (req, res) => {
       return {
         ticketId: item.serviceRequestId || item.serviceRequestRef || item.ticketId || item.ticketRef || `#${String(item._id)}`,
         serviceType: type,
-        productType: item.productType || 'N/A',
+        productType: resolveProductType(item, installedProductType),
         date: normalizedStatus === EXECUTION_STATUS.ASSIGNED ? null : (item.scheduledDate || item.serviceDate || item.date || item.createdAt || null),
         status: normalizedStatus,
         assignedTeam: type === REQUEST_TYPES.INSPECTION
@@ -305,10 +362,6 @@ exports.getCustomerHistory = async (req, res) => {
       return bTime - aTime;
     });
 
-    const latestInstallation = teamFilteredInstallations
-      .slice()
-      .sort((a, b) => new Date(b.serviceDate || b.date || b.createdAt || 0).getTime() - new Date(a.serviceDate || a.date || a.createdAt || 0).getTime())[0];
-
     res.json({
       success: true,
       data: {
@@ -316,7 +369,7 @@ exports.getCustomerHistory = async (req, res) => {
         summary: {
           customerName: fullName,
           location: customerAddress,
-          productType: anchor.productType || latestInstallation?.productType || 'N/A',
+          productType: resolveProductType(anchor, installedProductType),
           installationDate: anchor.serviceDate || anchor.date || latestInstallation?.serviceDate || latestInstallation?.date || null
         },
         history

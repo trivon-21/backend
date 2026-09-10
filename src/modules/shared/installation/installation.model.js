@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
+require('../maintenance/maintenanceSchedule.model');
 
 const installationSchema = new Schema(
   {

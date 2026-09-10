@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
+require('../../../models/counter.model');
 
 const maintenanceSchema = new Schema(
   {
@@ -25,5 +26,17 @@ const maintenanceSchema = new Schema(
   },
   { timestamps: true, collection: 'maintenances', strict: false }
 );
+
+maintenanceSchema.pre('validate', async function () {
+  if (!this.isNew || this.ticketId) return;
+
+  const CounterModel = mongoose.model('Counter');
+  const counter = await CounterModel.findOneAndUpdate(
+    { _id: 'serviceTicket' },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  this.ticketId = `SRQ-${String(counter.seq).padStart(4, '0')}`;
+});
 
 module.exports = mongoose.model('Maintenance', maintenanceSchema);

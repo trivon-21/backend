@@ -87,6 +87,43 @@ exports.createServiceRequest = async (req, res) => {
       paymentStatus = paymentSlipUrl ? "UNDER_REVIEW" : "PENDING";
     }
 
+    // A maintenance request belongs exclusively in the maintenances
+    // collection. Do not create a duplicate service_tickets document.
+    if (serviceType === "Maintenance") {
+      const maintenance = await Maintenance.create({
+        maintenanceType: "Customer Initiated",
+        customerId: req.user._id,
+        isUnderWarranty: acWarrantyStatus === "Active",
+        date: preferredDate ? new Date(preferredDate) : new Date(),
+        status: "New",
+        acUnitModel: acUnitModel || "",
+        productType: acUnitModel || "",
+        acUnitSerial: acUnitSerial || "",
+        description: problemDescription || "",
+        serviceDescription: problemDescription || "",
+        preferredTimeSlot: preferredTimeSlot || "",
+        estimatedCharges,
+        paymentRequired,
+        paymentSlipUrl: paymentSlipUrl || null,
+        paymentAmount,
+        paymentStatus,
+      });
+
+      if (paymentSlipUrl) {
+        await createLog({
+          eventType: "SERVICE_PAYMENT_SUBMITTED",
+          paymentType: "MAINTENANCE",
+          ticketId: maintenance.ticketId,
+          customerId: req.user._id,
+          amount: paymentAmount,
+          slipUrl: paymentSlipUrl,
+          performedBy: "Customer"
+        }).catch(logErr => console.warn("Audit log error:", logErr.message));
+      }
+
+      return res.status(201).json({ message: "Maintenance request submitted successfully", serviceRequest: maintenance });
+    }
+
     const sr = await ServiceRequest.create({
       customerId: req.user._id,
       acUnitModel: acUnitModel || "",
@@ -107,36 +144,6 @@ exports.createServiceRequest = async (req, res) => {
       subject: serviceType,
       status: "New"
     });
-
-    // If Maintenance, also record in maintenances collection so Finance Officer can review and verify
-    if (serviceType === "Maintenance") {
-      try {
-        await Maintenance.create({
-          ticketId: sr.serviceRequestRef,
-          maintenanceType: "Customer Initiated",
-          customerId: req.user._id,
-          isUnderWarranty: acWarrantyStatus === "Active",
-          date: preferredDate ? new Date(preferredDate) : new Date(),
-          status: "Pending",
-          paymentSlipUrl: paymentSlipUrl || null,
-          paymentAmount
-        });
-
-        if (paymentSlipUrl) {
-          await createLog({
-            eventType: "SERVICE_PAYMENT_SUBMITTED",
-            paymentType: "MAINTENANCE",
-            ticketId: sr.serviceRequestRef,
-            customerId: req.user._id,
-            amount: paymentAmount,
-            slipUrl: paymentSlipUrl,
-            performedBy: "Customer"
-          }).catch(logErr => console.warn("Audit log error:", logErr.message));
-        }
-      } catch (maintErr) {
-        console.error("Failed to create maintenance document:", maintErr);
-      }
-    }
 
     return res.status(201).json({ message: "Service request submitted successfully", serviceRequest: sr });
   } catch (err) {

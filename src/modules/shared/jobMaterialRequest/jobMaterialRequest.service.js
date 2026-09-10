@@ -209,7 +209,7 @@ exports.listEligibleJobs = async () => {
       .populate('customerId', 'fullName email phoneNumber address').lean(),
     Repair.find({ status: { $in: eligibleLegacyStatuses } })
       .populate('customerId', 'fullName email phoneNumber address').lean(),
-    Installation.find({ status: { $in: eligibleLegacyStatuses } })
+    Installation.find({ status: { $in: [...eligibleLegacyStatuses, 'New'] } })
       .populate('customerId', 'fullName email phoneNumber address').lean(),
     Maintenance.find({ status: { $in: eligibleLegacyStatuses } })
       .populate('customerId', 'fullName email phoneNumber address').lean(),
