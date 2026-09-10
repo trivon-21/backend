@@ -21,15 +21,15 @@ async function insertInstallation() {
       // =====================================================
 
       orderId: new mongoose.Types.ObjectId(
-        "6a9ba35d6d61fc74196202df"
+        "6aa184bbddb5fab72cedcc00"
       ),
 
       inspectionTicketId: new mongoose.Types.ObjectId(
-        "6a9ba38a6a16834fdb7447d6"
+        "6aa18559d322da79f8f388fd"
       ),
 
       customerId: new mongoose.Types.ObjectId(
-        "6a8eb2c9a307890da9c3fa8b"
+        "6a86b68df09ec22a4f0089c8"
       ),
 
       // =====================================================
