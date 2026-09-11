@@ -1,6 +1,8 @@
 const DispatchOrder = require('../../../models/DispatchOrder');
 const Inventory = require('../../../models/Inventory');
 const Activity = require('../../../models/Activity');
+const Order = require('../../../models/Order');
+const InstallationOrder = require('../../../models/installationOrder.model');
 const { buildDispatchMutation } = require('../../../utils/dispatch-workflow');
 const {
   serviceError, runInTransaction, assertRole, actorName, generateReference,
@@ -33,13 +35,51 @@ async function shiftDispatchStock(items, sign, session) {
   }
 }
 
+function toDeliveryDetails(shipping) {
+  if (!shipping) return undefined;
+  const { address, city, postalCode, phone, email } = shipping;
+  if (!address && !city && !postalCode && !phone && !email) return undefined;
+  return { address, city, postalCode, phone, email };
+}
+
+// Older DispatchOrder documents (created before deliveryDetails existed on
+// the schema) have no snapshot of the customer's shipping address. Rather
+// than a one-off migration, backfill them at read time from their source
+// Order/InstallationOrder — cheap since only a handful of orders are ever
+// "to-pack"/"ready" at once, and it keeps createDispatchOrderFromOrder's
+// snapshot-on-create behavior as the fast path for everything created after.
+async function withDeliveryDetails(dispatchOrders) {
+  const missing = dispatchOrders.filter(
+    (o) => !o.deliveryDetails && o.sourceOrderId
+      && (o.sourceOrderType === 'Order' || o.sourceOrderType === 'InstallationOrder'),
+  );
+  if (!missing.length) return dispatchOrders;
+
+  const orderIds = missing.filter((o) => o.sourceOrderType === 'Order').map((o) => o.sourceOrderId);
+  const installIds = missing.filter((o) => o.sourceOrderType === 'InstallationOrder').map((o) => o.sourceOrderId);
+
+  const [orders, installOrders] = await Promise.all([
+    orderIds.length ? Order.find({ _id: { $in: orderIds } }, 'shippingDetails').lean() : [],
+    installIds.length ? InstallationOrder.find({ _id: { $in: installIds } }, 'shippingDetails').lean() : [],
+  ]);
+  const shippingById = new Map([...orders, ...installOrders].map((o) => [o._id.toString(), o.shippingDetails]));
+
+  return dispatchOrders.map((o) => {
+    if (o.deliveryDetails || !o.sourceOrderId) return o;
+    const shipping = shippingById.get(o.sourceOrderId.toString());
+    const deliveryDetails = toDeliveryDetails(shipping);
+    return deliveryDetails ? { ...o, deliveryDetails } : o;
+  });
+}
+
 /**
  * Retrieves all orders sorted by creation date.
  */
 exports.getOrders = async () => {
-  return await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.DISPATCH}orders`, async () => {
+  const orders = await inventoryCache.get(`${INVENTORY_CACHE_PREFIXES.DISPATCH}orders`, async () => {
     return await DispatchOrder.find().sort({ createdAt: -1 }).lean();
   });
+  return await withDeliveryDetails(orders);
 };
 
 /**
@@ -85,11 +125,14 @@ exports.createDispatchOrderFromOrder = async (order, customerName) => {
   });
   if (alreadyQueued) return null;
 
+  const deliveryDetails = toDeliveryDetails(order.shippingDetails);
+
   const [dispatchOrder] = await DispatchOrder.create([{
     orderId: generateReference('DSP'),
     sourceOrderId: order._id,
     sourceOrderType: 'Order',
     customer: customerName || 'Unknown Customer',
+    deliveryDetails,
     date: new Date().toISOString(),
     type: 'Buy Only Order',
     items: buyOnlyItems.map((item) => ({

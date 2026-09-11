@@ -98,10 +98,9 @@ describe('Transactional Activity History & Rollback Contract (AR-01 / Epic 18)',
       status: 'quarantined',
     });
 
-    const originalFindOneAndUpdate = QuarantineItem.findOneAndUpdate;
-    QuarantineItem.findOneAndUpdate = async (filter, update, opts) => {
-      assert.equal(opts?.session, spy.session, 'Session must be passed to QuarantineItem.findOneAndUpdate');
-      item.status = update.$set.status;
+    const originalFindOneAndDelete = QuarantineItem.findOneAndDelete;
+    QuarantineItem.findOneAndDelete = async (filter, opts) => {
+      assert.equal(opts?.session, spy.session, 'Session must be passed to QuarantineItem.findOneAndDelete');
       return item;
     };
 
@@ -119,7 +118,7 @@ describe('Transactional Activity History & Rollback Contract (AR-01 / Epic 18)',
       assert.equal(spy.isAborted(), true, 'Transaction must be aborted when Activity write fails');
       assert.equal(spy.isCommitted(), false, 'Transaction must not be committed');
     } finally {
-      QuarantineItem.findOneAndUpdate = originalFindOneAndUpdate;
+      QuarantineItem.findOneAndDelete = originalFindOneAndDelete;
     }
   });
 

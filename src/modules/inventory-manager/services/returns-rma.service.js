@@ -147,6 +147,7 @@ exports.createLeftoverReturn = async (data, user) => {
         location: data.location || '',
         source: 'leftover-return',
         sourceRefId: returnId,
+        inventoryId: inventoryItem._id,
       }], { session });
     }
     await Activity.create([{
@@ -367,7 +368,9 @@ exports.getReturnsSummary = async () => {
     const totalRmaCases = await RmaCase.countDocuments();
 
     const quarantineCount = await QuarantineItem.countDocuments({ status: 'quarantined' });
-    const disposedCount = await QuarantineItem.countDocuments({ status: 'disposed' });
+    // Disposed quarantine records are permanently removed, so the historical
+    // count is tracked via the activity log rather than a status field.
+    const disposedCount = await Activity.countDocuments({ title: 'Quarantine Item Disposed' });
 
     return {
       leftoverReturns: {

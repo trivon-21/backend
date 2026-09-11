@@ -593,7 +593,7 @@ exports.createQuarantineItem = async (req, res) => {
 };
 
 /**
- * Disposes a quarantine item.
+ * Disposes a quarantine item — permanently removes it from the system.
  */
 exports.disposeQuarantineItem = async (req, res) => {
   try {
@@ -608,7 +608,7 @@ exports.disposeQuarantineItem = async (req, res) => {
 };
 
 /**
- * Permanently deletes a quarantine item record.
+ * Returns a quarantine item's stock back to inventory and removes it from quarantine.
  */
 exports.deleteQuarantineItem = async (req, res) => {
   try {
