@@ -5,7 +5,11 @@ const ServiceTicket = require('../shared/serviceTicket/serviceTicket.model');
 const Inquiry = require('../../models/Inquiry');
 const MaintenanceSchedule = require('../shared/maintenance/maintenanceSchedule.model');
 const Maintenance = require('../shared/maintenance/maintenance.model');
+const ServiceRequest = require('../shared/repair/repair.model');
+const Installation = require('../shared/installation/installation.model');
+const Inspection = require('../shared/inspection/inspectionTicket.model');
 const Product = require('../../models/product.model');
+const Inventory = require('../../models/Inventory');
 const bcrypt = require('bcryptjs');
 
 /**
@@ -24,20 +28,35 @@ exports.getProducts = async () => {
 exports.getDashboardStats = async () => {
   const [
     totalCustomers,
-    rawServiceTickets,
+    rawRepairs,
     rawMaintenances,
+    rawInstallations,
+    rawInspections,
+    rawServiceTickets,
     awaitingInquiries,
     pendingMaintenance,
     recentInquiries,
     recentCustomers
   ] = await Promise.all([
     User.countDocuments({ role: 'CUSTOMER' }),
-    ServiceTicket.find({})
-      .populate('customerId', 'fullName lastName email phoneNumber')
+    ServiceRequest.find({})
+      .populate('customerId', 'fullName lastName name email phoneNumber address')
       .sort({ createdAt: -1 })
       .lean(),
     Maintenance.find({})
-      .populate('customerId', 'fullName lastName email phoneNumber')
+      .populate('customerId', 'fullName lastName name email phoneNumber address')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Installation.find({})
+      .populate('customerId', 'fullName lastName name email phoneNumber address')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Inspection.find({})
+      .populate('customerId', 'fullName lastName name email phoneNumber address')
+      .sort({ createdAt: -1 })
+      .lean(),
+    ServiceTicket.find({})
+      .populate('customerId', 'fullName lastName name email phoneNumber address')
       .sort({ createdAt: -1 })
       .lean(),
     Inquiry.countDocuments({ status: 'Awaiting' }),
@@ -54,28 +73,109 @@ exports.getDashboardStats = async () => {
       .lean()
   ]);
 
-  const mappedMaintenances = rawMaintenances.map(m => ({
-    _id: m._id,
-    ticketId: m.ticketId,
-    subject: m.subject || `Maintenance (${m.ticketId || ''}) - ${m.acUnitModel || m.productType || 'AirLux Split AC'}`,
-    category: 'maintenance',
-    serviceType: 'Maintenance',
-    status: m.status || 'New',
-    priority: 'medium',
-    customerId: m.customerId,
-    createdAt: m.createdAt || m.date
-  }));
+  const mappedRepairs = (rawRepairs || []).map(r => {
+    const rawId = r.serviceRequestRef || r.ticketId || (r._id ? `SRQ-${r._id.toString().slice(-4).toUpperCase()}` : 'SRQ-1001');
+    const formattedId = String(rawId).startsWith('#') ? String(rawId) : `#${rawId}`;
+    const cust = r.customerId && typeof r.customerId === 'object' ? r.customerId : {};
+    const custName = r.fullName || r.customerName || cust.fullName || cust.name || 'Customer';
+    const product = r.productType || r.acUnitModel || 'AirLux AC';
+    const status = r.status === 'Scheduled' ? 'Assigned' : (r.status || 'New');
+    return {
+      _id: r._id,
+      ticketId: formattedId,
+      customerId: { ...cust, fullName: custName },
+      customerName: custName,
+      category: 'repair',
+      serviceType: 'Repair',
+      subject: r.subject || `Repair - ${product}`,
+      status,
+      priority: r.priority || 'medium',
+      createdAt: r.createdAt || new Date()
+    };
+  });
 
-  const maintenanceTicketIds = new Set(
-    mappedMaintenances.map(m => (m.ticketId || '').replace('#', '').trim().toUpperCase())
-  );
+  const mappedMaintenances = (rawMaintenances || []).map(m => {
+    const rawId = m.ticketId || (m._id ? `MS-${m._id.toString().slice(-4).toUpperCase()}` : 'MS-1001');
+    const formattedId = String(rawId).startsWith('#') ? String(rawId) : `#${rawId}`;
+    const cust = m.customerId && typeof m.customerId === 'object' ? m.customerId : {};
+    const custName = m.customerName || cust.fullName || cust.name || 'Customer';
+    const product = m.acUnitModel || m.productType || 'AirLux Split AC';
+    return {
+      _id: m._id,
+      ticketId: formattedId,
+      customerId: { ...cust, fullName: custName },
+      customerName: custName,
+      category: 'maintenance',
+      serviceType: 'Maintenance',
+      subject: m.subject || `Maintenance (${formattedId}) - ${product}`,
+      status: m.status || 'New',
+      priority: m.priority || 'medium',
+      createdAt: m.createdAt || m.date || new Date()
+    };
+  });
 
-  const normalizedServiceTickets = [];
-  for (const t of rawServiceTickets) {
-    const ref = (t.serviceRequestRef || t.ticketId || '').replace('#', '').trim().toUpperCase();
-    if (ref && maintenanceTicketIds.has(ref)) {
-      continue;
-    }
+  const mappedInstallations = (rawInstallations || []).map(i => {
+    const rawId = i.ticketId || (i._id ? `INT-${i._id.toString().slice(-4).toUpperCase()}` : 'INT-1001');
+    const formattedId = String(rawId).startsWith('#') ? String(rawId) : `#${rawId}`;
+    const cust = i.customerId && typeof i.customerId === 'object' ? i.customerId : {};
+    const custName = i.fullName || i.customerName || cust.fullName || cust.name || 'Customer';
+    const product = i.productType || i.itemName || i.acUnitModel || 'AirLux AC System';
+    return {
+      _id: i._id,
+      ticketId: formattedId,
+      customerId: { ...cust, fullName: custName },
+      customerName: custName,
+      category: 'installation',
+      serviceType: 'Installation',
+      subject: `Installation - ${product}`,
+      status: i.status || 'Assigned',
+      priority: i.priority || 'medium',
+      createdAt: i.createdAt || i.date || new Date()
+    };
+  });
+
+  const mappedInspections = (rawInspections || []).map(ins => {
+    const rawId = ins.ticketId || ins.ticketRef || (ins._id ? `INS-${ins._id.toString().slice(-5).toUpperCase()}` : 'INS-00001');
+    const formattedId = String(rawId).startsWith('#') ? String(rawId) : `#${rawId}`;
+    const cust = ins.customerId && typeof ins.customerId === 'object' ? ins.customerId : {};
+    const custName = ins.customerName || cust.fullName || cust.name || 'Customer';
+    const product = ins.productType || (ins.orderId && (ins.orderId.itemName || ins.orderId.productType)) || 'Site Inspection';
+    const status = String(ins.status || '') === 'Scheduled' ? 'Assigned' : (ins.status || 'Assigned');
+    return {
+      _id: ins._id,
+      ticketId: formattedId,
+      customerId: { ...cust, fullName: custName },
+      customerName: custName,
+      category: 'inspection',
+      serviceType: 'Inspection',
+      subject: `Inspection - ${product}`,
+      status,
+      priority: ins.priority || 'medium',
+      createdAt: ins.createdAt || ins.date || new Date()
+    };
+  });
+
+  const knownIds = new Set();
+  const allUnified = [];
+
+  const addTicket = (ticket) => {
+    const cleanId = (ticket.ticketId || ticket._id || '').toString().replace('#', '').trim().toUpperCase();
+    if (cleanId && knownIds.has(cleanId)) return;
+    if (cleanId) knownIds.add(cleanId);
+    allUnified.push(ticket);
+  };
+
+  mappedRepairs.forEach(addTicket);
+  mappedMaintenances.forEach(addTicket);
+  mappedInstallations.forEach(addTicket);
+  mappedInspections.forEach(addTicket);
+
+  for (const t of (rawServiceTickets || [])) {
+    const anyT = t;
+    const ref = anyT.serviceRequestRef || (anyT.ticketId ? anyT.ticketId.replace('#', '') : (t._id ? t._id.toString() : ''));
+    const cleanRef = ref.trim().toUpperCase();
+    if (cleanRef && knownIds.has(cleanRef)) continue;
+
     let category = (t.category || '').toLowerCase();
     if (!category) {
       const servType = (t.serviceType || '').toLowerCase();
@@ -90,17 +190,23 @@ exports.getDashboardStats = async () => {
         category = 'repair';
       }
     }
-    normalizedServiceTickets.push({
+
+    const cust = t.customerId && typeof t.customerId === 'object' ? t.customerId : {};
+    const custName = cust.fullName || cust.name || 'Customer';
+
+    addTicket({
       ...t,
+      customerId: { ...cust, fullName: custName },
+      customerName: custName,
       category,
       serviceType: t.serviceType || (category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Repair'),
       ticketId: t.ticketId || t.serviceRequestId || (ref ? '#' + ref : '')
     });
   }
 
-  const allUnified = [...normalizedServiceTickets, ...mappedMaintenances];
-  allUnified.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  allUnified.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
+  const totalTickets = allUnified.length;
   const activeTickets = allUnified.filter(t => {
     const s = (t.status || '').toLowerCase();
     return s !== 'resolved' && s !== 'rejected' && s !== 'completed' && s !== 'cancelled';
@@ -117,6 +223,8 @@ exports.getDashboardStats = async () => {
     metrics: {
       totalCustomers,
       activeTickets,
+      totalTickets,
+      allTickets: totalTickets,
       highPriorityTickets,
       awaitingInquiries,
       pendingInquiries: awaitingInquiries,
@@ -258,6 +366,7 @@ exports.createCustomer = async ({ firstName, lastName, email, phoneNumber, addre
 
   // If email was provided, dispatch welcome credentials email
   let emailSent = false;
+  let emailError = null;
   if (cleanEmail) {
     try {
       const { sendCustomerWelcomeEmail } = require('../shared/notification/email.service');
@@ -268,8 +377,12 @@ exports.createCustomer = async ({ firstName, lastName, email, phoneNumber, addre
         initialPassword: pwdToHash
       });
       emailSent = mailRes?.success || false;
+      if (!emailSent) {
+        emailError = mailRes?.error || 'Email could not be delivered';
+      }
     } catch (mailErr) {
       console.error('[createCustomer] Failed to send credentials email:', mailErr.message);
+      emailError = mailErr.message;
     }
   }
 
@@ -287,7 +400,8 @@ exports.createCustomer = async ({ firstName, lastName, email, phoneNumber, addre
       createdAt: newUser.createdAt
     },
     emailSent,
-    generatedPassword: initialPassword ? undefined : pwdToHash
+    emailError,
+    generatedPassword: pwdToHash
   };
 };
 
@@ -634,4 +748,105 @@ exports.updateInquiryStatus = async (inquiryId, status) => {
   return Inquiry.findById(inquiryId)
     .populate('customer', 'fullName lastName email phoneNumber')
     .lean();
+};
+
+/**
+ * ── CATALOG PRODUCTS MANAGEMENT (AC Equipment) ───────────────────────────
+ */
+exports.getCatalogProducts = async (filters = {}) => {
+  const query = {
+    $or: [
+      { category: 'AC Equipment' },
+      { itemClass: 'AC Equipment' }
+    ]
+  };
+
+  if (filters.search && filters.search.trim()) {
+    const searchRegex = new RegExp(filters.search.trim(), 'i');
+    query.$and = [
+      {
+        $or: [
+          { name: searchRegex },
+          { brand: searchRegex },
+          { subcategory: searchRegex },
+          { sku: searchRegex },
+          { description: searchRegex }
+        ]
+      }
+    ];
+  }
+
+  const items = await Inventory.find(query)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return items.map(doc => ({
+    _id: doc._id,
+    name: doc.name,
+    brand: doc.brand,
+    sku: doc.sku,
+    category: doc.subcategory || doc.category || 'AC Equipment',
+    subcategory: doc.subcategory || 'Split Indoor Unit',
+    description: doc.description || '',
+    image: doc.image || 'placeholder.png',
+    images: doc.images || [],
+    features: doc.features || [],
+    capacity: doc.capacityBtu || doc.capacity || 12000,
+    price: (doc.pricing && doc.pricing.sellingPricePerUnit !== undefined)
+      ? doc.pricing.sellingPricePerUnit
+      : (doc.price !== undefined ? doc.price : (doc.pricing?.costPerUnit || doc.unitCost || 0)),
+    unitCost: doc.unitCost || doc.pricing?.costPerUnit || 0,
+    available: doc.available || 0,
+    inStock: doc.available !== undefined ? doc.available > 0 : true,
+    location: doc.location || 'Warehouse',
+    binLocation: doc.binLocation || '',
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt
+  }));
+};
+
+exports.updateCatalogProduct = async (id, { image, description, features }) => {
+  const item = await Inventory.findById(id);
+  if (!item) {
+    throw new Error('Product not found in inventory');
+  }
+
+  // Strictly update ONLY the 3 permitted presentation parameters
+  if (image !== undefined) {
+    item.image = String(image).trim();
+  }
+
+  if (description !== undefined) {
+    item.description = String(description).trim();
+  }
+
+  if (features !== undefined) {
+    if (Array.isArray(features)) {
+      item.features = features.map(f => String(f).trim()).filter(Boolean);
+    } else if (typeof features === 'string') {
+      item.features = features.split('\n').map(f => f.trim()).filter(Boolean);
+    }
+  }
+
+  item.updatedAt = new Date();
+  await item.save();
+
+  return {
+    _id: item._id,
+    name: item.name,
+    brand: item.brand,
+    sku: item.sku,
+    category: item.subcategory || item.category || 'AC Equipment',
+    subcategory: item.subcategory || 'Split Indoor Unit',
+    description: item.description,
+    image: item.image,
+    features: item.features,
+    capacity: item.capacityBtu || item.capacity || 12000,
+    price: (item.pricing && item.pricing.sellingPricePerUnit !== undefined)
+      ? item.pricing.sellingPricePerUnit
+      : (item.price !== undefined ? item.price : (item.pricing?.costPerUnit || item.unitCost || 0)),
+    available: item.available || 0,
+    inStock: item.available > 0,
+    updatedAt: item.updatedAt
+  };
 };
