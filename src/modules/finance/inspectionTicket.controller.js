@@ -149,19 +149,54 @@ exports.getOrCreateTicket = async (req, res) => {
     const Order = getOrderModel();
     const User = getUserModel();
 
-    const order = await Order.findById(orderId);
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(orderId)) {
+      order = await Order.findById(orderId);
+    }
+    if (!order) {
+      order = await Order.findOne({
+        $or: [
+          { orderReference: orderId },
+          { orderRef: orderId },
+          { orderId: orderId }
+        ]
+      });
+    }
+
+    if (!order) {
+      try {
+        const StandardOrder = mongoose.models.Order || mongoose.model("Order");
+        if (mongoose.Types.ObjectId.isValid(orderId)) {
+          order = await StandardOrder.findById(orderId);
+        }
+        if (!order) {
+          order = await StandardOrder.findOne({
+            $or: [
+              { orderReference: orderId },
+              { orderRef: orderId },
+              { orderId: orderId }
+            ]
+          });
+        }
+      } catch (_) {}
+    }
 
     if (!order) return res.status(404).json({ message: "Order not found" });
 
     const customerId = order.customer || order.userId;
     const user = customerId ? await User.findById(customerId) : null;
 
-    let ticket = await InspectionTicket.findOne({ orderId });
+    let ticket = await InspectionTicket.findOne({
+      $or: [
+        { orderId: order._id },
+        ...(mongoose.Types.ObjectId.isValid(orderId) ? [{ orderId }] : [])
+      ]
+    });
 
     if (!ticket) {
       const currentFee = await getLCharge("inspection") || 2500;
       ticket = await InspectionTicket.create({
-        orderId,
+        orderId: order._id,
         customerId,
         status:        "PENDING_PAYMENT",
         inspectionFee: currentFee,
