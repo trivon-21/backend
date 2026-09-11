@@ -17,8 +17,7 @@ const getOrderModel = () => {
     consultationCompleted: Boolean,
   }, { strict: false, timestamps: true });
 
-  // Force a unique model name to avoid any registry conflict with an
-  // existing "InstallationOrder"/"Order" model bound to the wrong collection
+
   const modelName = "InstallationOrderInvoiceLookup";
   return mongoose.models[modelName] || mongoose.model(modelName, s, "installation_orders");
 };
@@ -87,6 +86,11 @@ const getInventoryModel = () => {
       unit: String,
       unitCost: Number,
       available: Number,
+      pricing: {
+        costPerUnit: Number,
+        profitMargin: Number,
+        sellingPricePerUnit: Number,
+      },
     }, { strict: false, timestamps: true });
     return mongoose.model("Inventory", s, "inventory");
   }
@@ -124,10 +128,10 @@ const { sendInvoiceEmail, sendInvoiceAcceptedEmail, sendInvoiceRejectedEmail,
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
-// Profit margin — same 25% your original L_SellingPrice logic used
+
 const PROFIT_MARGIN = 0.25;
 
-// ── Helper: find selling price for a material name — now reads team's Inventory ─
+// ── Helper: find selling price for a material name — reads team's Inventory ─
 async function getSellingPrice(materialName) {
   const Inventory = getInventoryModel();
   const name = getMaterialName(materialName);
@@ -145,11 +149,17 @@ async function getSellingPrice(materialName) {
   }
   if (!item) return null;
 
-  const cost = item.unitCost || item.costPerUnit || 0;
+  // Prefer the inventory item's own pre-calculated selling price
+  if (item.pricing?.sellingPricePerUnit) {
+    return item.pricing.sellingPricePerUnit;
+  }
+
+  const cost = item.unitCost || item.pricing?.costPerUnit || item.costPerUnit || 0;
   if (!cost) return 0;
 
-  // Apply the same 25% profit margin your original L_SellingPrice logic used
-  return Math.round(cost * (1 + PROFIT_MARGIN));
+  // Use the item's own margin from inventory if set, otherwise fall back to 25%
+  const margin = item.pricing?.profitMargin ?? PROFIT_MARGIN;
+  return Math.round(cost * (1 + margin));
 }
 
 // ── Helper: get fixed charge by name ─────────────────────────────────────────
@@ -332,10 +342,8 @@ exports.generateInvoice = async (req, res) => {
     if (!resolvedInstallation || !resolvedInstallation.materials || resolvedInstallation.materials.length === 0) {
       return res.status(400).json({ message: "No materials found in installation record. Main technician must add materials first." });
     }
-
-    const ticket = await Ticket.findById(report.ticketId);
-    const order = await Order.findById(report.orderId);
-
+const ticket = await Ticket.findById(report.ticketId);
+const order = await Order.findById(resolvedInstallation.orderId || report.orderId);
     let user = null;
     if (resolvedInstallation.customerId) user = await User.findById(resolvedInstallation.customerId);
     if (!user && ticket?.customerId) user = await User.findById(ticket.customerId);
@@ -1108,18 +1116,15 @@ exports.generateRepairInvoice = async (req, res) => {
       });
     }
 
-    const repairType    = repair.repairType || "minor";
-    const chargeName    = repairType === "major" ? "repair_major" : "repair_minor";
-    const chargeLabel   = repairType === "major" ? "Major Repair Charge" : "Minor Repair Charge";
-    const repairCharge  = await getCharge(chargeName) || (repairType === "major" ? 15000 : 4000);
-    items.push({
-      no:          itemNo++,
-      itemName:    chargeLabel,
-      description: `Fixed ${repairType} repair service charge`,
-      qty:         1,
-      rate:        repairCharge,
-      amount:      repairCharge,
-    });
+ const repairCharge = await getCharge("Standard Repair Service Fee") || 7500;
+items.push({
+  no:          itemNo++,
+  itemName:    "Standard Repair Service Fee",
+  description: "Fixed repair service call-out charge",
+  qty:         1,
+  rate:        repairCharge,
+  amount:      repairCharge,
+});
 
     const subTotal   = items.reduce((s, i) => s + (i.amount || 0), 0);
     const grandTotal = subTotal;
@@ -1143,17 +1148,17 @@ exports.generateRepairInvoice = async (req, res) => {
     repair.status = "INVOICED";
     await repair.save();
 
-    await createLog({
-      eventType:    "INVOICE_GENERATED",
-      paymentType:  "INVOICE",
-      invoiceId:    invoice.invoiceNumber || invoice._id.toString(),
-      customerId:   repair.customerId,
-      customerName,
-      customerEmail,
-      amount:       grandTotal,
-      performedBy:  "Finance Officer",
-      notes:        `Repair invoice (${repairType})`,
-    });
+await createLog({
+  eventType:    "INVOICE_GENERATED",
+  paymentType:  "INVOICE",
+  invoiceId:    invoice.invoiceNumber || invoice._id.toString(),
+  customerId:   repair.customerId,
+  customerName,
+  customerEmail,
+  amount:       grandTotal,
+  performedBy:  "Finance Officer",
+  notes:        "Repair invoice",
+});
 
     res.json({ message: "Repair invoice generated", invoice });
   } catch (error) {
@@ -1288,9 +1293,6 @@ await syncFinanceStatus(invoice, "Finance Approved");
       performedBy: "Finance Officer",
     });
 
-    // No dedicated "payment approved" email exists yet — this is a genuinely new
-    // notification type your team hasn't built before. Log it clearly for now;
-    // a real email function needs to be added to invoiceEmail.service.js.
 if (invoice.customerEmail) {
   const { sendPaymentApprovedEmail } = require("../shared/notification/invoiceEmail.service");
   await sendPaymentApprovedEmail(

@@ -665,7 +665,13 @@ exports.sendToInventoryManager = async (req, res) => {
         if (req.body.isFreeOfCharge !== undefined) docObj.isFreeOfCharge = req.body.isFreeOfCharge;
         
         if (requestType === 'Maintenance') {
-          newEntry = new Maintenance({ ...docObj, materialList: materials || newReq.materials || [], totalEstimatedCost: 0 });
+          newEntry = new Maintenance({ 
+            ...docObj, 
+            ticketId: docObj.serviceRequestId || docObj.serviceRequestRef || docObj.ticketId || `MS-${String(docObj._id).slice(-8).toUpperCase()}`,
+            maintenanceType: 'Customer Initiated',
+            materialList: materials || newReq.materials || [], 
+            totalEstimatedCost: 0 
+          });
         } else if (requestType === REQUEST_TYPES.INSTALLATION) {
           newEntry = new Installation(docObj);
         } else {
@@ -1224,7 +1230,8 @@ exports.getNewRequests = async (req, res) => {
         const materialWorkflowStatusRegex = [
             new RegExp(`^\\s*${WORKFLOW_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${WORKFLOW_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${WORKFLOW_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const toCustomerId = (value) => {
             if (!value) return null;
@@ -1253,7 +1260,8 @@ exports.getNewRequests = async (req, res) => {
         const materialMaintenanceStatusRegex = [
             new RegExp(`^\\s*${MAINTENANCE_STATUS.PENDING}\\s*$`, 'i'),
             new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_APPROVED}\\s*$`, 'i'),
-            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i')
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.FINANCE_REJECTED}\\s*$`, 'i'),
+            new RegExp(`^\\s*${MAINTENANCE_STATUS.SENT_TO_IM}\\s*$`, 'i')
         ];
         const maintenances = await Maintenance.find({
             status: { $in: materialMaintenanceStatusRegex }
@@ -1285,34 +1293,42 @@ exports.getNewRequests = async (req, res) => {
                 const customerId = toCustomerId(item.customerId);
                 const populatedCustomer = item.customerId && typeof item.customerId === 'object' ? item.customerId : null;
                 const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+                // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+                const resolvedTicketId = item.serviceRequestRef || item.ticketId || null;
 
                 return {
                     ...item,
-                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
+                    ticketId: resolvedTicketId,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
                     location: customer?.address || item.location || item.customerAddress || '-',
                     requestType: item.serviceType || 'Repair'
                 };
-            });
+            })
+            // Exclude records that have no human-readable ticket ID
+            .filter(item => item.ticketId);
 
         const installationsFormatted = installations
             .map((item) => {
                 const customerId = toCustomerId(item.customerId);
                 const populatedCustomer = item.customerId && typeof item.customerId === 'object' ? item.customerId : null;
                 const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+                // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+                const resolvedTicketId = item.serviceRequestRef || item.ticketId || null;
 
                 return {
                     ...item,
-                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
+                    ticketId: resolvedTicketId,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
                     location: customer?.address || item.location || item.customerAddress || '-',
                     requestType: REQUEST_TYPES.INSTALLATION
                 };
-            });
+            })
+            // Exclude records that have no human-readable ticket ID
+            .filter(item => item.ticketId);
 
         const newRequestsFormatted = await Promise.all(newRequests.map(async (req) => {
             const customerId = toCustomerId(req.customerId);
@@ -1327,9 +1343,12 @@ exports.getNewRequests = async (req, res) => {
                 resolvedServiceType === 'Maintenance' ? 'Maintenance' : 'Repair'
             );
 
+            // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+            const resolvedTicketId = req.serviceRequestRef || req.ticketId || null;
+
             return {
                 ...req,
-                ticketId: req.serviceRequestRef || req._id,
+                ticketId: resolvedTicketId,
                 customerName: customer?.fullName || req.customerName || req.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                 customerEmail: customer?.email || req.customerEmail || '-',
                 customerContactNo: customer?.phoneNumber || req.customerContactNo || req.customerPhone || '-',
@@ -1342,15 +1361,20 @@ exports.getNewRequests = async (req, res) => {
             };
         }));
 
+        // Exclude NewRequest records that have no human-readable ticket ID
+        const newRequestsFiltered = newRequestsFormatted.filter(req => req.ticketId);
+
         const maintenancesFormatted = maintenances
             .map((item) => {
                 const customerId = toCustomerId(item.customerId);
                 const populatedCustomer = item.customerId && typeof item.customerId === 'object' ? item.customerId : null;
                 const customer = (customerId && customerById.get(customerId)) || populatedCustomer;
+                // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+                const resolvedTicketId = item.serviceRequestRef || item.ticketId || null;
 
                 return {
                     ...item,
-                    ticketId: item.serviceRequestRef || item.ticketId || item._id,
+                    ticketId: resolvedTicketId,
                     customerName: customer?.fullName || item.customerName || item.fullName || DEFAULTS.UNKNOWN_CUSTOMER,
                     customerEmail: customer?.email || item.customerEmail || '-',
                     customerContactNo: customer?.phoneNumber || item.customerContactNo || item.customerPhone || '-',
@@ -1359,12 +1383,14 @@ exports.getNewRequests = async (req, res) => {
                     serviceType: 'Maintenance',
                     materials: item.materialList || []
                 };
-            });
+            })
+            // Exclude records that have no human-readable ticket ID
+            .filter(item => item.ticketId);
 
-        const allRequests = [...serviceRequestsFormatted, ...installationsFormatted, ...newRequestsFormatted, ...maintenancesFormatted]
+        const allRequests = [...serviceRequestsFormatted, ...installationsFormatted, ...newRequestsFiltered, ...maintenancesFormatted]
             .filter(req => {
                 const s = (req.status || '').trim().toLowerCase();
-                return ['new', 'pending', 'finance approved', 'finance rejected'].includes(s);
+                return ['new', 'pending', 'finance approved', 'finance rejected', 'sent to im'].includes(s);
             })
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -1377,12 +1403,22 @@ const { body, validationResult } = require('express-validator');
 
 // Insert this specific validation chain
 exports.validateMaterialSubmission = [
-  body('newRequestId').notEmpty().withMessage('Ticket ID is required'),
-  body('materials').isArray({ min: 1 }).withMessage('At least one material is required'),
+  body('newRequestId').trim().notEmpty().withMessage('Ticket ID is required'),
+  body('materials').isArray({ min: 1, max: 100 }).withMessage('Between 1 and 100 material items are required'),
+  body('materials.*.inventoryId').isMongoId().withMessage('Each material must use a valid catalog item'),
+  body('materials.*.item').trim().isLength({ min: 1, max: 200 }).withMessage('Each material name is required and limited to 200 characters'),
+  body('materials.*.quantity').isInt({ min: 1, max: 10000 }).withMessage('Each material quantity must be a whole number between 1 and 10,000'),
+  body('financeNotes').optional({ values: 'falsy' }).isString().trim().isLength({ max: 2000 }).withMessage('Finance notes cannot exceed 2,000 characters'),
+  body('customerEmail').optional({ values: 'falsy' }).isEmail().withMessage('Customer email must be valid'),
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+      const details = errors.array();
+      return res.status(400).json({ success: false, message: details[0].msg, errors: details });
+    }
+    const ids = req.body.materials.map((material) => String(material.inventoryId));
+    if (new Set(ids).size !== ids.length) {
+      return res.status(400).json({ success: false, error: 'Duplicate material items are not allowed.' });
     }
     next();
   }

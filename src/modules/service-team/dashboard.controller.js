@@ -39,7 +39,6 @@ const parseActivityLimit = (value) => {
 const normalize = (value) => String(value || '').trim().toLowerCase();
 const NORMALIZED_STATUS = {
   ASSIGNED: normalize(EXECUTION_STATUS.ASSIGNED),
-  SCHEDULED: normalize(EXECUTION_STATUS.SCHEDULED),
   PENDING: normalize(WORKFLOW_STATUS.PENDING),
   FINANCE_APPROVED: normalize(WORKFLOW_STATUS.FINANCE_APPROVED),
   SENT_TO_IM: normalize(WORKFLOW_STATUS.SENT_TO_IM),
@@ -50,11 +49,10 @@ const NORMALIZED_STATUS = {
 const STATUS_PRIORITY = new Map([
   [NORMALIZED_STATUS.IN_PROGRESS, 1],
   [NORMALIZED_STATUS.ASSIGNED, 2],
-  [NORMALIZED_STATUS.SCHEDULED, 3],
-  [NORMALIZED_STATUS.PENDING, 4],
-  [NORMALIZED_STATUS.FINANCE_APPROVED, 5],
-  [NORMALIZED_STATUS.SENT_TO_IM, 6],
-  [NORMALIZED_STATUS.COMPLETED, 7],
+  [NORMALIZED_STATUS.PENDING, 3],
+  [NORMALIZED_STATUS.FINANCE_APPROVED, 4],
+  [NORMALIZED_STATUS.SENT_TO_IM, 5],
+  [NORMALIZED_STATUS.COMPLETED, 6],
 ]);
 
 const JOB_TYPE = {
@@ -102,27 +100,31 @@ exports.getDashboardSummary = async (req, res) => {
       ]
     };
 
-    const [teamInstallations, teamServiceRequests, teamMaintenances] = await Promise.all([
-      Installation.find(query).lean(),
-      ServiceRequest.find(query).lean(),
-      Maintenance.find(query).lean(),
-    ]);
-
-    const assignedStageStatuses = new Set([
+    const assignedStageRegexes = [
       NORMALIZED_STATUS.ASSIGNED,
       NORMALIZED_STATUS.SCHEDULED,
       NORMALIZED_STATUS.PENDING,
       NORMALIZED_STATUS.FINANCE_APPROVED,
       NORMALIZED_STATUS.SENT_TO_IM,
+    ].map(s => new RegExp(`^${s}$`, 'i'));
+
+    const inProgressRegex = new RegExp(`^${NORMALIZED_STATUS.IN_PROGRESS}$`, 'i');
+
+    const [
+      inProgressInstallations,
+      inProgressServiceRequests,
+      inProgressMaintenances,
+      assignedInstallations,
+      assignedServiceRequests,
+      assignedMaintenances
+    ] = await Promise.all([
+      Installation.countDocuments({ ...query, status: inProgressRegex }),
+      ServiceRequest.countDocuments({ ...query, status: inProgressRegex }),
+      Maintenance.countDocuments({ ...query, status: inProgressRegex }),
+      Installation.countDocuments({ ...query, status: { $in: assignedStageRegexes } }),
+      ServiceRequest.countDocuments({ ...query, status: { $in: assignedStageRegexes } }),
+      Maintenance.countDocuments({ ...query, status: { $in: assignedStageRegexes } }),
     ]);
-
-    const inProgressInstallations = teamInstallations.filter((item) => normalize(item.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
-    const inProgressServiceRequests = teamServiceRequests.filter((item) => normalize(item.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
-    const inProgressMaintenances = teamMaintenances.filter((item) => normalize(item.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
-
-    const assignedInstallations = teamInstallations.filter((item) => assignedStageStatuses.has(normalize(item.status))).length;
-    const assignedServiceRequests = teamServiceRequests.filter((item) => assignedStageStatuses.has(normalize(item.status))).length;
-    const assignedMaintenances = teamMaintenances.filter((item) => assignedStageStatuses.has(normalize(item.status))).length;
 
     const summary = {
       activeJobs: inProgressInstallations + inProgressServiceRequests + inProgressMaintenances,
@@ -180,40 +182,37 @@ exports.getRecentActivity = async (req, res) => {
       ]
     };
 
-    const [installs, requests, maintenances] = await Promise.all([
-      Installation.find(query).lean(),
-      ServiceRequest.find(query).lean(),
-      Maintenance.find(query).lean(),
+    const buildPipeline = (type) => [
+      { $match: query },
+      { $project: { status: { $toLower: { $trim: { input: { $ifNull: ["$status", "pending"] } } } }, updatedAt: 1, createdAt: 1 } },
+      { $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          latestTimestamp: { $max: { $ifNull: ["$updatedAt", "$createdAt"] } }
+        }
+      },
+      { $project: {
+          _id: 0,
+          type: { $literal: type },
+          status: "$_id",
+          count: 1,
+          latestTimestamp: 1
+        }
+      }
+    ];
+
+    const [installStats, serviceStats, maintenanceStats] = await Promise.all([
+      Installation.aggregate(buildPipeline(JOB_TYPE.INSTALLATION)),
+      ServiceRequest.aggregate(buildPipeline(JOB_TYPE.SERVICE)),
+      Maintenance.aggregate(buildPipeline(JOB_TYPE.MAINTENANCE)),
     ]);
 
-    const teamInstallations = installs.map((job) => ({ ...job, _type: JOB_TYPE.INSTALLATION }));
-    const teamServiceRequests = requests.map((job) => ({ ...job, _type: JOB_TYPE.SERVICE }));
-    const teamMaintenances = maintenances.map((job) => ({ ...job, _type: JOB_TYPE.MAINTENANCE }));
-
-    const grouped = new Map();
-    [...teamInstallations, ...teamServiceRequests, ...teamMaintenances].forEach((job) => {
-      const status = normalize(job.status) || NORMALIZED_STATUS.PENDING;
-      const key = `${job._type}::${status}`;
-      const timestamp = new Date(job.updatedAt || job.createdAt || 0).getTime();
-
-      if (!grouped.has(key)) {
-        grouped.set(key, {
-          type: job._type,
-          status,
-          count: 0,
-          latestTimestamp: timestamp,
-        });
-      }
-
-      const current = grouped.get(key);
-      current.count += 1;
-      current.latestTimestamp = Math.max(current.latestTimestamp, timestamp);
-    });
-
-    const activityItems = Array.from(grouped.values())
+    const activityItems = [...installStats, ...serviceStats, ...maintenanceStats]
       .sort((a, b) => {
-        if (b.latestTimestamp !== a.latestTimestamp) {
-          return b.latestTimestamp - a.latestTimestamp;
+        const aTime = a.latestTimestamp ? new Date(a.latestTimestamp).getTime() : 0;
+        const bTime = b.latestTimestamp ? new Date(b.latestTimestamp).getTime() : 0;
+        if (bTime !== aTime) {
+          return bTime - aTime;
         }
 
         const aPriority = STATUS_PRIORITY.get(a.status) || Number.MAX_SAFE_INTEGER;
@@ -229,7 +228,7 @@ exports.getRecentActivity = async (req, res) => {
         return {
           type: entry.type,
           title: `${noun} ${capitalize(entry.status)}: ${entry.count}`,
-          timestamp: new Date(entry.latestTimestamp || Date.now()),
+          timestamp: entry.latestTimestamp || new Date(),
         };
       });
 
@@ -285,17 +284,31 @@ exports.getUrgentAlerts = async (req, res) => {
       ]
     };
 
-    const [installs, requests, maintenances] = await Promise.all([
-      Installation.find(query).lean(),
-      ServiceRequest.find(query).lean(),
-      Maintenance.find(query).lean()
+    const inProgressRegex = new RegExp(`^${NORMALIZED_STATUS.IN_PROGRESS}$`, 'i');
+    const pendingRegexes = [NORMALIZED_STATUS.PENDING, NORMALIZED_STATUS.SCHEDULED].map(s => new RegExp(`^${s}$`, 'i'));
+    const completedRegex = new RegExp(`^${NORMALIZED_STATUS.COMPLETED}$`, 'i');
+
+    const [
+      inProgressCountInstallations, inProgressCountRequests, inProgressCountMaintenances,
+      pendingCountInstallations, pendingCountRequests, pendingCountMaintenances,
+      completedCountInstallations, completedCountRequests, completedCountMaintenances
+    ] = await Promise.all([
+      Installation.countDocuments({ ...query, status: inProgressRegex }),
+      ServiceRequest.countDocuments({ ...query, status: inProgressRegex }),
+      Maintenance.countDocuments({ ...query, status: inProgressRegex }),
+      Installation.countDocuments({ ...query, status: { $in: pendingRegexes } }),
+      ServiceRequest.countDocuments({ ...query, status: { $in: pendingRegexes } }),
+      Maintenance.countDocuments({ ...query, status: { $in: pendingRegexes } }),
+      Installation.countDocuments({ ...query, status: completedRegex }),
+      ServiceRequest.countDocuments({ ...query, status: completedRegex }),
+      Maintenance.countDocuments({ ...query, status: completedRegex }),
     ]);
 
-    const teamJobs = [...installs, ...requests, ...maintenances];
-    const alerts = [];
+    const inProgressCount = inProgressCountInstallations + inProgressCountRequests + inProgressCountMaintenances;
+    const pendingCount = pendingCountInstallations + pendingCountRequests + pendingCountMaintenances;
+    const completedCount = completedCountInstallations + completedCountRequests + completedCountMaintenances;
 
-    const inProgressCount = teamJobs.filter(j => normalize(j.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
-    const pendingCount = teamJobs.filter(j => normalize(j.status) === NORMALIZED_STATUS.PENDING || normalize(j.status) === NORMALIZED_STATUS.SCHEDULED).length;
+    const alerts = [];
 
     // Alert: High workload
     if (inProgressCount > 3) {
@@ -330,7 +343,6 @@ exports.getUrgentAlerts = async (req, res) => {
     }
 
     // Alert: Completed jobs needing review
-    const completedCount = teamJobs.filter(j => normalize(j.status) === NORMALIZED_STATUS.COMPLETED).length;
     if (completedCount > 0) {
       alerts.push({
         title: 'Jobs Completed',

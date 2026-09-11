@@ -112,8 +112,9 @@ async function ensureJob(jobId, lines, session) {
   const isMaintenance = String(ticket.requestType || ticket.serviceType || '').toLowerCase().includes('maintenance');
   if (isMaintenance) {
     const [job] = await Maintenance.create([{
+      ...ticket.toObject(),
       _id: ticket._id,
-      ticketId: `MS-${String(ticket._id).slice(-8).toUpperCase()}`,
+      ticketId: ticket.serviceRequestId || ticket.ticketId || `MS-${String(ticket._id).slice(-8).toUpperCase()}`,
       maintenanceType: 'Customer Initiated',
       customerId: ticket.customerId,
       date: ticket.createdAt || new Date(),
@@ -252,11 +253,14 @@ exports.listEligibleJobs = async () => {
   const mapTicket = async ticket => {
     const serviceType = ticket.requestType || ticket.serviceType || 'Repair';
     const { isUnderWarranty, isFreeOfCharge } = await getWarranty(ticket, serviceType === 'Maintenance' ? 'Maintenance' : 'Repair');
+    // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+    const resolvedTicketId = ticket.ticketId || ticket.serviceRequestId || ticket.serviceRequestRef || null;
+    if (!resolvedTicketId) return null;
     return {
-      ticketId: ticket.ticketId || ticket.serviceRequestId || ticket.serviceRequestRef || ticket._id,
+      ticketId: resolvedTicketId,
       productType: ticket.subject || ticket.category || 'N/A',
       serviceType: serviceType,
-      serviceDescription: ticket.description || '-',
+      serviceDescription: ticket.serviceDescription || ticket.description || ticket.problemDescription || ticket.subject || '-',
       requestType: String(ticket.requestType || '').toLowerCase().includes('maintenance') ? 'Maintenance' : 'Service',
       location: ticket.location || '-',
       isUnderWarranty,
@@ -268,11 +272,14 @@ exports.listEligibleJobs = async () => {
 
   const mapRepair = async job => {
     const { isUnderWarranty, isFreeOfCharge } = await getWarranty(job, 'Repair');
+    // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+    const resolvedTicketId = job.ticketId || job.serviceRequestRef || job.serviceRequestId || null;
+    if (!resolvedTicketId) return null;
     return {
-      ticketId: job.ticketId || job.serviceRequestRef || job.serviceRequestId || job._id,
+      ticketId: resolvedTicketId,
       productType: job.repairType || 'Repair',
       serviceType: 'Repair',
-      serviceDescription: job.notes || 'Repair material request',
+      serviceDescription: job.serviceDescription || job.notes || job.description || job.problemDescription || job.subject || 'Repair material request',
       requestType: 'Service',
       location: job.location || '-',
       isUnderWarranty,
@@ -282,27 +289,35 @@ exports.listEligibleJobs = async () => {
     };
   };
 
-  const mapInstallation = job => ({
-    ticketId: job.ticketId || job.serviceRequestId || job._id,
-    productType: job.productType || 'Installation',
-    serviceType: 'Installation',
-    serviceDescription: job.location || 'Installation material request',
-    requestType: 'Installation',
-    location: job.location || '-',
-    siteDetails: job.siteDetails || {},
-    isUnderWarranty: false,
-    isFreeOfCharge: false,
-    ...customerFields(job),
-    ...requestFields(job),
-  });
+  const mapInstallation = job => {
+    // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+    const resolvedTicketId = job.ticketId || job.serviceRequestId || null;
+    if (!resolvedTicketId) return null;
+    return {
+      ticketId: resolvedTicketId,
+      productType: job.productType || 'Installation',
+      serviceType: 'Installation',
+      serviceDescription: job.serviceDescription || job.description || job.problemDescription || job.subject || job.location || 'Installation material request',
+      requestType: 'Installation',
+      location: job.location || '-',
+      siteDetails: job.siteDetails || {},
+      isUnderWarranty: false,
+      isFreeOfCharge: false,
+      ...customerFields(job),
+      ...requestFields(job),
+    };
+  };
 
   const mapMaintenance = async job => {
     const { isUnderWarranty, isFreeOfCharge } = await getWarranty(job, 'Maintenance');
+    // Only use human-readable IDs — never fall back to raw ObjectId (_id)
+    const resolvedTicketId = job.ticketId || job.serviceRequestId || null;
+    if (!resolvedTicketId) return null;
     return {
-      ticketId: job.ticketId || job.serviceRequestId || job._id,
+      ticketId: resolvedTicketId,
       productType: job.maintenanceType || 'Maintenance',
       serviceType: 'Maintenance',
-      serviceDescription: 'Scheduled maintenance',
+      serviceDescription: job.serviceDescription || job.description || job.problemDescription || job.subject || 'Scheduled maintenance',
       requestType: 'Maintenance',
       location: job.location || '-',
       isUnderWarranty,
@@ -312,17 +327,18 @@ exports.listEligibleJobs = async () => {
     };
   };
 
-  const resolvedTickets = await Promise.all(tickets.map(mapTicket));
-  const resolvedRepairs = await Promise.all(repairs.filter(isEligible).map(mapRepair));
-  const resolvedInstallations = installations.filter(isEligible).map(mapInstallation);
-  const resolvedMaintenances = await Promise.all(maintenances.filter(isEligible).map(mapMaintenance));
+  const resolvedTickets = (await Promise.all(tickets.map(mapTicket))).filter(Boolean);
+  const resolvedRepairs = (await Promise.all(repairs.filter(isEligible).map(mapRepair))).filter(Boolean);
+  const resolvedInstallations = installations.filter(isEligible).map(mapInstallation).filter(Boolean);
+  const resolvedMaintenances = (await Promise.all(maintenances.filter(isEligible).map(mapMaintenance))).filter(Boolean);
 
+  // Only return tickets with 'New' status for the dropdown
   return [
     ...resolvedTickets,
     ...resolvedRepairs,
     ...resolvedInstallations,
     ...resolvedMaintenances,
-  ];
+  ].filter(item => (item.status || '').toLowerCase() === 'new' || (item.status || '') === WORKFLOW_STATUS.NEW);
 };
 
 exports.submit = async (data, user) => {

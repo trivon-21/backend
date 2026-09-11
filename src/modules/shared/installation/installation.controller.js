@@ -294,17 +294,11 @@ exports.repairMissingSchedules = async (req, res) => {
         const customer = await Customer.findById(inst.customerId).lean();
 
         const CounterModel = mongoose.model('Counter');
-        let msCounter = await CounterModel.findOneAndUpdate(
+        const msCounter = await CounterModel.findOneAndUpdate(
           { _id: 'maintenanceScheduleTicket' },
           { $inc: { seq: 1 } },
           { new: true, upsert: true }
         );
-        if (!msCounter) {
-          await CounterModel.updateOne({ _id: 'maintenanceScheduleTicket' }, { $set: { seq: 1000 } }, { upsert: true });
-          msCounter = { seq: 1000 };
-        } else if (msCounter.seq < 1000) {
-          msCounter = await CounterModel.findOneAndUpdate({ _id: 'maintenanceScheduleTicket' }, { $set: { seq: 1000 } }, { new: true });
-        }
         
         const ticketId = `MS-${String(msCounter.seq).padStart(4, '0')}`;
         const installationDate = inst.serviceDate || inst.date || inst.createdAt || new Date();

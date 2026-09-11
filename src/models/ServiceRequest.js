@@ -37,18 +37,32 @@ const serviceRequestSchema = new mongoose.Schema(
 
     estimatedCharges: { type: Number, default: 0 },
     paymentRequired: { type: Boolean, default: false },
+    paymentSlipUrl: { type: String, default: "" },
+    paymentAmount: { type: Number, default: 0 },
+    paymentStatus: {
+      type: String,
+      enum: ["PENDING", "UNDER_REVIEW", "APPROVED", "REJECTED", "NOT_REQUIRED"],
+      default: "NOT_REQUIRED"
+    },
 
     // subject kept for backward compat
     subject: { type: String, trim: true, default: "" },
 
     status: {
       type: String,
-      enum: ["New", "Pending", "Assigned", "In Progress", "Completed", "Cancelled"],
+      enum: ["New", "Pending", "Finance Approved", "Finance Rejected", "Assigned", "In Progress", "Completed", "Cancelled"],
       default: "New"
     }
   },
-  { timestamps: true, collection: "service_tickets" }
+  { timestamps: true, collection: "service_tickets", toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+serviceRequestSchema.virtual("customer", {
+  ref: "User",
+  localField: "customerId",
+  foreignField: "_id",
+  justOne: true
+});
 
 serviceRequestSchema.pre('save', async function () {
   const doc = this;

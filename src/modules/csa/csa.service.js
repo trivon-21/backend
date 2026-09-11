@@ -4,6 +4,7 @@ const InstallationOrder = require('../../models/installationOrder.model');
 const ServiceTicket = require('../shared/serviceTicket/serviceTicket.model');
 const Inquiry = require('../../models/Inquiry');
 const MaintenanceSchedule = require('../shared/maintenance/maintenanceSchedule.model');
+const Maintenance = require('../shared/maintenance/maintenance.model');
 const Product = require('../../models/product.model');
 const bcrypt = require('bcryptjs');
 
@@ -23,24 +24,24 @@ exports.getProducts = async () => {
 exports.getDashboardStats = async () => {
   const [
     totalCustomers,
-    activeTickets,
-    highPriorityTickets,
-    pendingInquiries,
+    rawServiceTickets,
+    rawMaintenances,
+    awaitingInquiries,
     pendingMaintenance,
-    recentTickets,
     recentInquiries,
     recentCustomers
   ] = await Promise.all([
     User.countDocuments({ role: 'CUSTOMER' }),
-    ServiceTicket.countDocuments({ status: { $nin: ['resolved', 'Rejected'] } }),
-    ServiceTicket.countDocuments({ priority: 'high', status: { $nin: ['resolved', 'Rejected'] } }),
-    Inquiry.countDocuments({ status: 'Ongoing' }),
-    MaintenanceSchedule.countDocuments({ status: { $in: ['New', 'Sent to CSA', 'SENT_TO_CSA'] } }),
     ServiceTicket.find({})
       .populate('customerId', 'fullName lastName email phoneNumber')
       .sort({ createdAt: -1 })
-      .limit(5)
       .lean(),
+    Maintenance.find({})
+      .populate('customerId', 'fullName lastName email phoneNumber')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Inquiry.countDocuments({ status: 'Awaiting' }),
+    MaintenanceSchedule.countDocuments({ status: { $in: ['New', 'Sent to CSA', 'SENT_TO_CSA'] } }),
     Inquiry.find({})
       .populate('customer', 'fullName lastName email phoneNumber')
       .sort({ updatedAt: -1 })
@@ -53,12 +54,72 @@ exports.getDashboardStats = async () => {
       .lean()
   ]);
 
+  const mappedMaintenances = rawMaintenances.map(m => ({
+    _id: m._id,
+    ticketId: m.ticketId,
+    subject: m.subject || `Maintenance (${m.ticketId || ''}) - ${m.acUnitModel || m.productType || 'AirLux Split AC'}`,
+    category: 'maintenance',
+    serviceType: 'Maintenance',
+    status: m.status || 'New',
+    priority: 'medium',
+    customerId: m.customerId,
+    createdAt: m.createdAt || m.date
+  }));
+
+  const maintenanceTicketIds = new Set(
+    mappedMaintenances.map(m => (m.ticketId || '').replace('#', '').trim().toUpperCase())
+  );
+
+  const normalizedServiceTickets = [];
+  for (const t of rawServiceTickets) {
+    const ref = (t.serviceRequestRef || t.ticketId || '').replace('#', '').trim().toUpperCase();
+    if (ref && maintenanceTicketIds.has(ref)) {
+      continue;
+    }
+    let category = (t.category || '').toLowerCase();
+    if (!category) {
+      const servType = (t.serviceType || '').toLowerCase();
+      const subj = (t.subject || '').toLowerCase();
+      if (servType === 'maintenance' || subj.includes('maintenance')) {
+        category = 'maintenance';
+      } else if (servType === 'installation' || subj.includes('installation')) {
+        category = 'installation';
+      } else if (servType === 'inspection' || subj.includes('inspection')) {
+        category = 'inspection';
+      } else {
+        category = 'repair';
+      }
+    }
+    normalizedServiceTickets.push({
+      ...t,
+      category,
+      serviceType: t.serviceType || (category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Repair'),
+      ticketId: t.ticketId || t.serviceRequestId || (ref ? '#' + ref : '')
+    });
+  }
+
+  const allUnified = [...normalizedServiceTickets, ...mappedMaintenances];
+  allUnified.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const activeTickets = allUnified.filter(t => {
+    const s = (t.status || '').toLowerCase();
+    return s !== 'resolved' && s !== 'rejected' && s !== 'completed' && s !== 'cancelled';
+  }).length;
+
+  const highPriorityTickets = allUnified.filter(t => {
+    const s = (t.status || '').toLowerCase();
+    return (t.priority || '').toLowerCase() === 'high' && s !== 'resolved' && s !== 'rejected' && s !== 'completed' && s !== 'cancelled';
+  }).length;
+
+  const recentTickets = allUnified.slice(0, 5);
+
   return {
     metrics: {
       totalCustomers,
       activeTickets,
       highPriorityTickets,
-      pendingInquiries,
+      awaitingInquiries,
+      pendingInquiries: awaitingInquiries,
       pendingMaintenance
     },
     recentTickets,
@@ -256,8 +317,32 @@ exports.getServiceTickets = async ({ search = '', category = '', status = '', pr
     ServiceTicket.countDocuments(query)
   ]);
 
+  const formattedTickets = tickets.map((t) => {
+    let tId = t.ticketId || t.serviceRequestId;
+    const cat = (t.category || 'repair').toLowerCase();
+    if (!tId) {
+      const hex = t._id ? t._id.toString().slice(-4).toUpperCase() : '1001';
+      const num = 1000 + (parseInt(hex, 16) % 9000);
+      if (cat === 'installation') {
+        tId = `#INT-${num}`;
+      } else if (cat === 'inspection') {
+        tId = `#INS-${String(num).padStart(5, '0')}`;
+      } else if (cat === 'maintenance') {
+        tId = `#MS-${num}`;
+      } else {
+        tId = `#SRQ-${num}`;
+      }
+    } else if (!tId.startsWith('#')) {
+      tId = `#${tId}`;
+    }
+    return {
+      ...t,
+      ticketId: tId
+    };
+  });
+
   return {
-    tickets,
+    tickets: formattedTickets,
     total,
     page: pageNum,
     totalPages: Math.ceil(total / limitNum)
@@ -290,7 +375,45 @@ exports.createServiceTicket = async ({
     inspection: 'Inspection'
   };
 
+  let prefix = 'SRQ';
+  let padLen = 4;
+  if (normalizedCategory === 'installation') {
+    prefix = 'INT';
+    padLen = 4;
+  } else if (normalizedCategory === 'inspection') {
+    prefix = 'INS';
+    padLen = 5;
+  } else if (normalizedCategory === 'maintenance') {
+    prefix = 'MS';
+    padLen = 4;
+  }
+
+  let generatedTicketId = '';
+  try {
+    const mongoose = require('mongoose');
+    require('../../../models/counter.model');
+    const CounterModel = mongoose.model('Counter');
+    let counter = await CounterModel.findOneAndUpdate(
+      { _id: `csa_${prefix}_ticket` },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    if (!counter || counter.seq < 1001) {
+      counter = await CounterModel.findOneAndUpdate(
+        { _id: `csa_${prefix}_ticket` },
+        { $set: { seq: 1001 } },
+        { new: true, upsert: true }
+      );
+    }
+    generatedTicketId = `#${prefix}-${String(counter.seq).padStart(padLen, '0')}`;
+  } catch (cErr) {
+    const count = await ServiceTicket.countDocuments({ category: normalizedCategory });
+    generatedTicketId = `#${prefix}-${String(1001 + count).padStart(padLen, '0')}`;
+  }
+
   const newTicket = new ServiceTicket({
+    ticketId: generatedTicketId,
+    serviceRequestId: generatedTicketId.replace('#', ''),
     customerId,
     category: normalizedCategory,
     requestType: requestTypeMap[normalizedCategory] || 'Repair',
@@ -308,21 +431,50 @@ exports.createServiceTicket = async ({
 
   await newTicket.save();
 
+  if (normalizedCategory === 'maintenance') {
+    try {
+      const MaintenanceSchedule = require('../shared/maintenance/maintenanceSchedule.model');
+      const { buildServiceTemplate } = require('../shared/maintenance/scheduleTemplate');
+      const schedTicketId = generatedTicketId.replace('#', '');
+      await MaintenanceSchedule.create({
+        ticketId: schedTicketId,
+        customerId: customer._id,
+        status: 'New',
+        services: buildServiceTemplate(),
+        csaNotes: `Logged via CSA Portal: ${description.trim()}`
+      });
+    } catch (schedErr) {
+      console.error('Failed to auto-create maintenance schedule from CSA ticket:', schedErr);
+    }
+  }
+
   const populated = await ServiceTicket.findById(newTicket._id)
     .populate('customerId', 'fullName lastName email phoneNumber address')
     .lean();
 
-  return populated;
+  return {
+    ...populated,
+    ticketId: generatedTicketId
+  };
 };
 
 exports.updateServiceTicketStatus = async (ticketId, { status, rejectionReason }) => {
-  const ticket = await ServiceTicket.findById(ticketId);
-  if (!ticket) throw new Error('Ticket not found');
+  // First verify the ticket exists
+  const existing = await ServiceTicket.findById(ticketId).lean();
+  if (!existing) throw new Error('Ticket not found');
 
-  if (status) ticket.status = status;
-  if (rejectionReason) ticket.rejectionReason = rejectionReason;
+  // Build only the fields we want to change — avoids triggering
+  // full Mongoose validation (which would fail on required fields
+  // like `description` that may be absent on older records).
+  const updateFields = {};
+  if (status) updateFields.status = status;
+  if (rejectionReason !== undefined) updateFields.rejectionReason = rejectionReason;
 
-  await ticket.save();
+  await ServiceTicket.findByIdAndUpdate(
+    ticketId,
+    { $set: updateFields },
+    { new: false, runValidators: false }
+  );
 
   return ServiceTicket.findById(ticketId)
     .populate('customerId', 'fullName lastName email phoneNumber address')
@@ -336,7 +488,11 @@ exports.getInquiries = async ({ search = '', status = '', page = 1, limit = 20 }
   const query = {};
 
   if (status && status !== 'ALL') {
-    query.status = status;
+    if (status === 'Ongoing') {
+      query.status = { $in: ['Ongoing', 'Addressed'] };
+    } else {
+      query.status = status;
+    }
   }
 
   if (search && search.trim()) {
@@ -374,7 +530,7 @@ exports.getInquiries = async ({ search = '', status = '', page = 1, limit = 20 }
   };
 };
 
-exports.replyToInquiry = async (inquiryId, { message, newStatus = 'Addressed' }) => {
+exports.replyToInquiry = async (inquiryId, { message, newStatus }) => {
   if (!message || !message.trim()) {
     throw new Error('Reply message is required');
   }
@@ -382,13 +538,22 @@ exports.replyToInquiry = async (inquiryId, { message, newStatus = 'Addressed' })
   const inquiry = await Inquiry.findById(inquiryId);
   if (!inquiry) throw new Error('Inquiry not found');
 
+  if (inquiry.status === 'Closed') {
+    throw new Error('Cannot reply to a closed inquiry. Please reopen the inquiry first.');
+  }
+
   inquiry.thread.push({
     sender: 'Support',
     message: message.trim()
   });
 
-  if (newStatus) {
+  // Automatically transition Awaiting -> Ongoing when CSA replies
+  if (inquiry.status === 'Awaiting') {
+    inquiry.status = 'Ongoing';
+  } else if (newStatus) {
     inquiry.status = newStatus;
+  } else if (inquiry.status !== 'Closed') {
+    inquiry.status = 'Ongoing';
   }
 
   await inquiry.save();

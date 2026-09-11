@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
-const Counter = require('../../../models/counter.model');
 
 const installationSchema = new Schema(
   {
@@ -35,7 +34,6 @@ const installationSchema = new Schema(
         'Sent to IM',
         'Materials Ready',
         'Assigned',
-        'Scheduled',
         'In Progress',
         'On Hold',
         'Completed',
@@ -65,7 +63,7 @@ installationSchema.pre('validate', async function() {
   }
 });
 
-installationSchema.pre('save', async function () {
+installationSchema.pre('save', async function (next) {
   // Generate ticketId for Installation if it doesn't exist
   if (this.isNew && !this.ticketId) {
     try {
@@ -126,6 +124,20 @@ installationSchema.pre('save', async function () {
       INSTALLATION_MAINTENANCE_STATUS,
     } = require('../../../constants/enums');
 
+    // A schedule may already exist if an earlier completion attempt created it
+    // but could not persist the reference on the installation. Reuse it instead
+    // of creating a second schedule for the same installation.
+    const existingSchedule = await MaintenanceSchedule.findOne({
+      installationId: this._id
+    }).select('_id').lean();
+
+    if (existingSchedule) {
+      this.maintenanceScheduleId = existingSchedule._id;
+      this.maintenanceStatus =
+        INSTALLATION_MAINTENANCE_STATUS.SCHEDULE_CREATED;
+      return next();
+    }
+
     // Fetch customer details for denormalized fields
     const User = mongoose.model('User');
     const customer = await User.findById(this.customerId).lean();
@@ -133,26 +145,11 @@ installationSchema.pre('save', async function () {
     // Generate unique MS- ID using the shared Counter model
     const CounterModel = mongoose.model('Counter');
 
-    let msCounter = await CounterModel.findOneAndUpdate(
+    const msCounter = await CounterModel.findOneAndUpdate(
       { _id: 'maintenanceScheduleTicket' },
       { $inc: { seq: 1 } },
       { new: true, upsert: true }
     );
-
-    if (!msCounter) {
-      await CounterModel.updateOne(
-        { _id: 'maintenanceScheduleTicket' },
-        { $set: { seq: 1000 } },
-        { upsert: true }
-      );
-      msCounter = { seq: 1000 };
-    } else if (msCounter.seq < 1000) {
-      msCounter = await CounterModel.findOneAndUpdate(
-        { _id: 'maintenanceScheduleTicket' },
-        { $set: { seq: 1000 } },
-        { new: true }
-      );
-    }
 
     const ticketId = `MS-${String(msCounter.seq).padStart(4, '0')}`;
 

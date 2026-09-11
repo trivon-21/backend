@@ -14,15 +14,15 @@ async function insertInstallationOrder() {
       // ORDER REFERENCES
       // =====================================================
 
-      orderReference: "ALX-BI-TEST03",
+      orderReference: "ALX-BI-TEST01",
 
-      orderId: "ALX-BI-TEST03-ID",
+      orderId: "ALX-BI-TEST01-ID",
 
       // =====================================================
       // CUSTOMER
       // =====================================================
 
-      userId: "6a8eb2c9a307890da9c3fa8b",
+      userId: "6a86b68df09ec22a4f0089c8",
 
       // =====================================================
       // PRODUCT
@@ -43,9 +43,9 @@ async function insertInstallationOrder() {
       // =====================================================
 
       shippingDetails: {
-        firstName: "Lamya",
-        lastName: "Nijardeen",
-        email: "lamyanijardeen@gmail.com",
+        firstName: "Nadeesha",
+        lastName: "Fernando",
+        email: "nadeesha@example.com",
         phone: "",
         address: "20 Negombo Road, Wattala",
         city: "Wattala",
