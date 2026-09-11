@@ -159,7 +159,7 @@ describe('Transactional Activity History & Rollback Contract (AR-01 / Epic 18)',
 
     try {
       await assert.rejects(
-        service.updateOrder(orderId, { status: 'ready', statusVersion: 1 }),
+        service.updateOrder(orderId, { status: 'ready', statusVersion: 1 }, { role: 'INVENTORY', fullName: 'Rollback Tester' }),
         /Injected Dispatch Activity Failure/
       );
 

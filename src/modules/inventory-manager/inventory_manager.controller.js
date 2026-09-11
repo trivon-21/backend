@@ -66,6 +66,20 @@ exports.updateItem = async (req, res) => {
 };
 
 /**
+ * Deletes an inventory item that carries no stock.
+ */
+exports.deleteItem = async (req, res) => {
+  try {
+    const data = await service.deleteInventoryItem(req.params.id);
+    if (!data) return res.status(404).json({ message: "Item not found", code: "ITEM_NOT_FOUND" });
+    res.json({ message: "Item deleted", id: req.params.id });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    res.status(status).json({ message: error.message || "Failed to delete item", code: error.code });
+  }
+};
+
+/**
  * Creates a new inventory item.
  */
 exports.createItem = async (req, res) => {
@@ -105,6 +119,43 @@ exports.receiveInventory = async (req, res) => {
     }
     console.error('Inventory receipt unexpected error:', error);
     res.status(500).json({ message: 'Failed to receive inventory', code: 'RECEIPT_FAILED' });
+  }
+};
+
+/**
+ * Establishes or corrects an item's on-hand quantity through the audited
+ * stock-adjustment workflow (opening balance, cycle-count variance, write-off).
+ */
+exports.adjustStock = async (req, res) => {
+  try {
+    const data = await service.adjustStock({ ...req.body, inventoryId: req.params.id }, req.user);
+    res.status(201).json(data);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message || 'Failed to adjust stock', code: error.code, details: error.details });
+  }
+};
+
+/**
+ * Retrieves the stock-movement ledger for a single item.
+ */
+exports.getItemStockMovements = async (req, res) => {
+  try {
+    const data = await service.getStockMovements({ inventoryId: req.params.id, limit: req.query.limit });
+    res.json(data);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message || 'Failed to fetch stock movements', code: error.code });
+  }
+};
+
+/**
+ * Retrieves the manual adjustment/write-off history across all items.
+ */
+exports.getStockAdjustments = async (req, res) => {
+  try {
+    const data = await service.getStockAdjustments({ inventoryId: req.query.inventoryId, limit: req.query.limit });
+    res.json(data);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message || 'Failed to fetch stock adjustments', code: error.code });
   }
 };
 
@@ -179,7 +230,7 @@ exports.getOrders = async (req, res) => {
  */
 exports.updateOrder = async (req, res) => {
   try {
-    const data = await service.updateOrder(req.params.id, req.body);
+    const data = await service.updateOrder(req.params.id, req.body, req.user);
     res.json(data);
   } catch (error) {
     res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({ message: error.message || "Failed to update order", code: error.code });
@@ -553,6 +604,21 @@ exports.disposeQuarantineItem = async (req, res) => {
       console.error('Quarantine dispose error:', error);
     }
     res.status(error.statusCode || 500).json({ message: error.message || "Failed to dispose quarantine item", code: error.code });
+  }
+};
+
+/**
+ * Permanently deletes a quarantine item record.
+ */
+exports.deleteQuarantineItem = async (req, res) => {
+  try {
+    const data = await service.deleteQuarantineItem(req.params.id, req.user);
+    res.json(data);
+  } catch (error) {
+    if ((error.statusCode || 500) >= 500) {
+      console.error('Quarantine delete error:', error);
+    }
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to delete quarantine item", code: error.code });
   }
 };
 

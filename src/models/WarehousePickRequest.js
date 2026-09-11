@@ -12,7 +12,14 @@ const WarehousePickItemSchema = new mongoose.Schema({
 
 const WarehousePickRequestSchema = new mongoose.Schema({
   requestId: { type: String, required: true, unique: true },
-  sourceMaterialRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'JobMaterialRequest', required: true },
+  // Required on creation only (`isNew`): every current creation path sets it, but
+  // legacy documents that predate this field (or that have no resolvable
+  // JobMaterialRequest to backfill from) must still be saveable on reserve/release/handover.
+  sourceMaterialRequestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'JobMaterialRequest',
+    required: function () { return this.isNew; },
+  },
   jobId: { type: mongoose.Schema.Types.ObjectId, required: true },
   jobType: { type: String, enum: ['Repair', 'Installation', 'Maintenance'], required: true },
   requesterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

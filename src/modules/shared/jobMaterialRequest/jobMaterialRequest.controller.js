@@ -590,8 +590,9 @@ exports.sendToInventoryManager = async (req, res) => {
   try {
     console.log("HIT sendToInventoryManager with ID:", req.params.id);
     // Remove '#' prefix if present (from UI display format)
-    const resolvedId = String(req.params.id || '').replace(/^#/, '');
+    const rawId = String(req.params.id || '').replace(/^#/, '');
     const { 
+      serviceRequestId,
       fullName, 
       customerEmail, 
       customerphoneNumber, 
@@ -600,18 +601,39 @@ exports.sendToInventoryManager = async (req, res) => {
     } = req.body;
     
     const mongoose = require('mongoose');
-    const isValidId = mongoose.Types.ObjectId.isValid(resolvedId);
-    
-    const query = {
+    const crypto = require('crypto');
+    const WarehousePickRequest = require('../../../models/WarehousePickRequest');
+    const Inventory = require('../../../models/Inventory');
+    const { invalidateInventoryCache } = require('../../inventory-manager/inventory-manager.cache');
+
+    // 1. Try finding an existing JobMaterialRequest first
+    let jmr = await JobMaterialRequest.findOne({
       $or: [
-        { ticketId: resolvedId },
-        { serviceRequestId: resolvedId },
-        { serviceRequestRef: resolvedId }
+        { requestId: rawId },
+        ...(mongoose.Types.ObjectId.isValid(rawId) ? [{ _id: rawId }, { jobId: rawId }] : [])
       ]
-    };
-    if (isValidId) {
-      query.$or.unshift({ _id: resolvedId });
+    });
+
+    const candidateJobIds = [
+      jmr?.jobId,
+      serviceRequestId,
+      rawId
+    ].filter(id => id && String(id).trim().length > 0);
+
+    const queryClauses = [];
+    for (const id of candidateJobIds) {
+      const cleanId = String(id).replace(/^#/, '');
+      queryClauses.push(
+        { ticketId: cleanId },
+        { serviceRequestId: cleanId },
+        { serviceRequestRef: cleanId }
+      );
+      if (mongoose.Types.ObjectId.isValid(cleanId)) {
+        queryClauses.push({ _id: cleanId });
+      }
     }
+
+    const query = { $or: queryClauses };
 
     // Support ServiceRequest, Installation, and Maintenance so they all follow the same workflow behavior.
     let sourceRecord = await ServiceRequest.findOne(query).lean();
@@ -656,23 +678,58 @@ exports.sendToInventoryManager = async (req, res) => {
     }
 
     if (!sourceRecord) {
-      return res.status(404).json({ success: false, message: 'Request not found' });
+      return res.status(404).json({ success: false, message: 'Linked service job or ticket not found' });
     }
 
-    const crypto = require('crypto');
-    
-    const items = (materials || sourceRecord.materials || sourceRecord.materialList || []).map(m => {
+    const jobTypeMapping = {
+      'Service': 'Repair',
+      'Repair': 'Repair',
+      'Installation': 'Installation',
+      'Maintenance': 'Maintenance'
+    };
+    const validJobType = jobTypeMapping[requestType] || 'Repair';
+
+    // 2. Prepare items with catalog references
+    const rawItems = materials || sourceRecord.materials || sourceRecord.materialList || jmr?.items || [];
+    const items = [];
+    for (const m of rawItems) {
       const qty = Number(m.quantity) || 1;
-      return {
-        lineId: crypto.randomUUID(),
-        inventoryId: m.inventoryId || new mongoose.Types.ObjectId(),
-        sku: m.sku || 'N/A',
-        itemName: m.item || m.itemName || m.name || 'Unknown Item',
+      let inventoryId = m.inventoryId;
+      let sku = m.sku;
+      let itemName = m.item || m.itemName || m.name || 'Unknown Item';
+
+      if (!inventoryId || !mongoose.Types.ObjectId.isValid(inventoryId) || !sku || sku === 'N/A') {
+        const catalogLookupClauses = [];
+        if (inventoryId && mongoose.Types.ObjectId.isValid(inventoryId)) {
+          catalogLookupClauses.push({ _id: inventoryId });
+        }
+        if (itemName && itemName !== 'Unknown Item') {
+          catalogLookupClauses.push({ name: itemName });
+        }
+        if (sku && sku !== 'N/A') {
+          catalogLookupClauses.push({ sku });
+        }
+
+        if (catalogLookupClauses.length > 0) {
+          const catalogItem = await Inventory.findOne({ $or: catalogLookupClauses }).lean();
+          if (catalogItem) {
+            inventoryId = catalogItem._id;
+            sku = catalogItem.sku;
+            itemName = catalogItem.name;
+          }
+        }
+      }
+
+      items.push({
+        lineId: m.lineId || crypto.randomUUID(),
+        inventoryId: inventoryId || new mongoose.Types.ObjectId(),
+        sku: sku || 'N/A',
+        itemName,
         quantity: qty,
-        unitPrice: m.unitPrice || 0,
-        total: m.total || 0
-      };
-    });
+        unitPrice: Number(m.unitPrice) || 0,
+        total: Number(m.total) || 0,
+      });
+    }
 
     if (items.length === 0) {
       items.push({
@@ -686,28 +743,68 @@ exports.sendToInventoryManager = async (req, res) => {
       });
     }
 
-    const jobTypeMapping = {
-      'Service': 'Repair',
-      'Repair': 'Repair',
-      'Installation': 'Installation',
-      'Maintenance': 'Maintenance'
-    };
-    const validJobType = jobTypeMapping[requestType] || 'Repair';
-
-    await JobMaterialRequest.findOneAndUpdate(
+    // 3. Upsert JobMaterialRequest
+    jmr = await JobMaterialRequest.findOneAndUpdate(
       { jobId: sourceRecord._id, jobType: validJobType },
       {
         $set: {
-          requestId: 'JMR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4),
-          requestedBy: req.user ? req.user._id : new mongoose.Types.ObjectId(),
-          requesterName: req.user ? (req.user.fullName || 'System') : 'System',
-          items: items,
-          status: 'PENDING'
+          requestId: jmr?.requestId || ('JMR-' + Date.now() + '-' + crypto.randomUUID().slice(0, 4)),
+          requestedBy: req.user ? req.user._id : (jmr?.requestedBy || new mongoose.Types.ObjectId()),
+          requesterName: req.user ? (req.user.fullName || 'System') : (jmr?.requesterName || 'System'),
+          items,
+          status: 'APPROVED',
+          fulfillmentStatus: 'PENDING',
         }
       },
       { upsert: true, new: true }
     );
 
+    // 4. Create or update WarehousePickRequest (visible in Stock Reservations)
+    let warehousePick = await WarehousePickRequest.findOne({
+      $or: [
+        { sourceMaterialRequestId: jmr._id },
+        { jobId: sourceRecord._id, jobType: validJobType }
+      ]
+    });
+
+    const warehouseItems = items.map(line => ({
+      lineId: line.lineId,
+      inventoryId: line.inventoryId,
+      name: line.itemName,
+      qty: line.quantity,
+      sku: line.sku,
+      confirmed: false,
+    }));
+
+    if (!warehousePick) {
+      const wprId = 'WPR-' + new Date().toISOString().replace(/\D/g, '').slice(0, 14) + '-' + crypto.randomUUID().slice(0, 6).toUpperCase();
+      warehousePick = await WarehousePickRequest.create({
+        requestId: wprId,
+        sourceMaterialRequestId: jmr._id,
+        jobId: sourceRecord._id,
+        jobType: validJobType,
+        requesterId: req.user ? req.user._id : jmr.requestedBy,
+        requester: req.user ? (req.user.fullName || 'Main Technician') : (jmr.requesterName || 'Main Technician'),
+        date: new Date().toISOString().slice(0, 10),
+        location: location || sourceRecord.location || sourceRecord.customerAddress || '-',
+        status: 'pending',
+        items: warehouseItems,
+      });
+    } else {
+      warehousePick.sourceMaterialRequestId = jmr._id;
+      warehousePick.items = warehouseItems;
+      warehousePick.status = 'pending';
+      if (location || sourceRecord.location) {
+        warehousePick.location = location || sourceRecord.location;
+      }
+      await warehousePick.save();
+    }
+
+    // Link warehousePickRequestId back to JobMaterialRequest
+    jmr.warehousePickRequestId = warehousePick._id;
+    await jmr.save();
+
+    // 5. Update Job record status
     let updateObj = { status: WORKFLOW_STATUS.SENT_TO_IM };
     if (materials) updateObj.materials = materials;
     if (req.body.isUnderWarranty !== undefined) updateObj.isUnderWarranty = req.body.isUnderWarranty;
@@ -737,11 +834,18 @@ exports.sendToInventoryManager = async (req, res) => {
       );
     }
 
+    try {
+      invalidateInventoryCache();
+    } catch (cacheErr) {
+      console.warn('Inventory cache invalidation warning:', cacheErr?.message);
+    }
+
     res.json({ 
       success: true, 
       message: 'Material request sent to Inventory Manager',
       data: {
-        serviceRequestId: resolvedId,
+        serviceRequestId: rawId,
+        warehouseRequestId: warehousePick.requestId,
         requestType,
         status: WORKFLOW_STATUS.SENT_TO_IM,
         location: location || sourceRecord.location || '-',

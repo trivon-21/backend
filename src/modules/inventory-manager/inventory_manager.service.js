@@ -26,6 +26,7 @@ const purchasingService = require('./services/purchasing.service');
 const returnsRmaService = require('./services/returns-rma.service');
 const quarantineService = require('./services/quarantine.service');
 const dashboardService = require('./services/dashboard.service');
+const stockAdjustmentService = require('./services/stock-adjustment.service');
 const shared = require('./services/shared');
 
 module.exports = {
@@ -35,9 +36,15 @@ module.exports = {
   getInventoryLocations: catalogService.getInventoryLocations,
   updateInventoryItem: catalogService.updateInventoryItem,
   createInventoryItem: catalogService.createInventoryItem,
+  deleteInventoryItem: catalogService.deleteInventoryItem,
   getSuppliersList: catalogService.getSuppliersList,
   createSupplier: catalogService.createSupplier,
   getSuggestedOrders: catalogService.getSuggestedOrders,
+
+  // ── Stock Adjustments & Ledger ──
+  adjustStock: stockAdjustmentService.adjustStock,
+  getStockMovements: stockAdjustmentService.getStockMovements,
+  getStockAdjustments: stockAdjustmentService.getStockAdjustments,
 
   // ── Receiving & Procurement ──
   createReceiptAuthorization: procurementService.createReceiptAuthorization,

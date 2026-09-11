@@ -22,6 +22,13 @@ const systemConfigSchema = new mongoose.Schema(
         min: 1,
         max: 365,
       },
+      rejectedRequestRetentionDays: {
+        type: Number,
+        default: 30,
+        min: 1,
+        max: 365,
+        description: 'Days a rejected purchase request or receipt authorization is kept before auto-deletion',
+      },
       defaultWarrantyMonths: {
         type: Number,
         default: 24,

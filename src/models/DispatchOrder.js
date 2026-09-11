@@ -10,7 +10,7 @@ const DispatchItemSchema = new mongoose.Schema({
 const DispatchOrderSchema = new mongoose.Schema({
   orderId: { type: String, required: true, unique: true },
   sourceOrderId: { type: mongoose.Schema.Types.ObjectId },
-  sourceOrderType: { type: String, enum: ['Order', 'InstallationOrder'] },
+  sourceOrderType: { type: String, enum: ['Order', 'InstallationOrder', 'PurchaseRequest'] },
   customer: { type: String, required: true },
   date: { type: String, required: true },
   type: { type: String, required: true },

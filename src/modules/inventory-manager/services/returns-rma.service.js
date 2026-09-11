@@ -335,7 +335,7 @@ exports.updateRmaCase = async (id, data, user) => {
         }
       } else if (['resolved', 'closed'].includes(rmaCase.status)) {
         if (asset.status === 'rma' && String(asset.activeRmaCaseId || '') === String(rmaCase._id)) {
-          asset.status = asset.preRmaStatus === 'quarantined' ? 'quarantined' : 'available';
+          asset.status = asset.preRmaStatus || 'available';
           asset.activeRmaCaseId = undefined;
           asset.preRmaStatus = undefined;
           await asset.save({ session });

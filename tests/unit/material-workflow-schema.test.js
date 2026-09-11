@@ -33,6 +33,18 @@ describe('Material workflow schemas', () => {
     assert.ok(request.validateSync().errors.sourceMaterialRequestId);
   });
 
+  it('does not require sourceMaterialRequestId when re-validating an already-persisted (legacy) warehouse request', () => {
+    const request = new WarehousePickRequest({
+      requestId: 'WPR-TEST-2', sourceMaterialRequestId: objectId(), jobId: objectId(),
+      jobType: 'Repair', requesterId: objectId(), requester: 'Fixture Technician',
+      date: '2026-08-29', location: 'Fixture site',
+      items: [{ lineId: 'line-1', inventoryId: objectId(), name: 'Filter', sku: 'FLT-1', qty: 2 }],
+    });
+    request.isNew = false; // simulates a document loaded from the DB, not one being created
+    request.sourceMaterialRequestId = undefined;
+    assert.equal(request.validateSync(), undefined);
+  });
+
   it('accepts canonical references on purchase requests and post-handover returns', () => {
     const purchase = new PurchaseRequest({
       requestId: 'REQ-TEST-1', supplierName: 'Fixture Supplier', requestedBy: 'Fixture Manager',

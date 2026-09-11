@@ -150,6 +150,25 @@ exports.updateInventoryItem = async (id, data) => {
 };
 
 /**
+ * Deletes an inventory item that carries no stock.
+ * Refuses when the item still has available or reserved quantity, so
+ * removal never silently discards stock the ledger doesn't know about.
+ */
+exports.deleteInventoryItem = async (id) => {
+  if (!mongoose.isValidObjectId(id)) return null;
+  const existing = await Inventory.findById(id);
+  if (!existing) return null;
+
+  if (existing.available > 0 || existing.reserved > 0) {
+    throw serviceError('Item still has stock on hand and cannot be deleted', 409, 'ITEM_HAS_STOCK');
+  }
+
+  await existing.deleteOne();
+  invalidateInventoryCache();
+  return existing;
+};
+
+/**
  * Creates a new inventory item and calculates its initial stock status.
  */
 exports.createInventoryItem = async (data, user, options = {}) => {

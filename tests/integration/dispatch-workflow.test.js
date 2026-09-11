@@ -7,6 +7,7 @@ const DispatchOrder = require('../../src/models/DispatchOrder');
 const Activity = require('../../src/models/Activity');
 
 const uri = process.env.INVENTORY_AUDIT_MONGO_URI;
+const inventoryUser = { role: 'INVENTORY', fullName: 'Audit Inventory Manager' };
 
 async function resetAuditDatabase() {
   if (mongoose.connection.name !== 'airlux_inventory_audit') {
@@ -40,26 +41,26 @@ test('dispatch persistence enforces the versioned state machine and server times
     await assert.rejects(
       () => service.updateOrder('AUDIT-DISPATCH-1', {
         status: 'ready', courier: 'Audit Courier', trackId: 'TRACK-1', statusVersion: 0,
-      }),
+      }, inventoryUser),
       (error) => error.code === 'DISPATCH_ITEMS_NOT_CONFIRMED',
     );
     let updated = await service.updateOrder('AUDIT-DISPATCH-1', {
       items: [{ name: 'Fabricated Unit', sku: 'AUDIT-DISPATCH-1-SKU', qty: 1, confirmed: true }],
       statusVersion: 0,
-    });
+    }, inventoryUser);
     assert.equal(updated.statusVersion, 1);
 
     await assert.rejects(
       () => service.updateOrder('AUDIT-DISPATCH-1', {
         status: 'ready', courier: 'Audit Courier', trackId: 'TRACK-1',
         lastMovedAt: new Date().toISOString(), statusVersion: 1,
-      }),
+      }, inventoryUser),
       (error) => error.code === 'SERVER_MANAGED_DISPATCH_TIMESTAMP',
     );
     const beforeReady = Date.now();
     updated = await service.updateOrder('AUDIT-DISPATCH-1', {
       status: 'ready', courier: 'Audit Courier', trackId: 'TRACK-1', statusVersion: 1,
-    });
+    }, inventoryUser);
     assert.equal(updated.status, 'ready');
     assert.equal(updated.statusVersion, 2);
     assert.ok(updated.lastMovedAt.getTime() >= beforeReady);
@@ -67,34 +68,34 @@ test('dispatch persistence enforces the versioned state machine and server times
     await assert.rejects(
       () => service.updateOrder('AUDIT-DISPATCH-1', {
         status: 'completed', statusVersion: 2,
-      }),
+      }, inventoryUser),
       (error) => error.code === 'INVALID_DISPATCH_TRANSITION',
     );
     updated = await service.updateOrder('AUDIT-DISPATCH-1', {
       courier: 'Updated Audit Courier', trackId: 'TRACK-2', statusVersion: 2,
-    });
+    }, inventoryUser);
     assert.equal(updated.statusVersion, 3);
     assert.equal(updated.courier, 'Updated Audit Courier');
 
     updated = await service.updateOrder('AUDIT-DISPATCH-1', {
       status: 'in-transit', statusVersion: 3,
-    });
+    }, inventoryUser);
     assert.equal(updated.statusVersion, 4);
     updated = await service.updateOrder('AUDIT-DISPATCH-1', {
       status: 'completed', statusVersion: 4,
-    });
+    }, inventoryUser);
     assert.equal(updated.statusVersion, 5);
     assert.ok(updated.completedAt instanceof Date);
 
     await assert.rejects(
       () => service.updateOrder('AUDIT-DISPATCH-1', {
         status: 'ready', undo: true, statusVersion: 5,
-      }),
+      }, inventoryUser),
       (error) => error.code === 'INVALID_DISPATCH_TRANSITION',
     );
     updated = await service.updateOrder('AUDIT-DISPATCH-1', {
       status: 'in-transit', undo: true, statusVersion: 5,
-    });
+    }, inventoryUser);
     assert.equal(updated.statusVersion, 6);
     assert.equal(updated.completedAt, undefined);
 
@@ -108,7 +109,7 @@ test('dispatch persistence enforces the versioned state machine and server times
     await assert.rejects(
       () => service.updateOrder('AUDIT-DISPATCH-EXPIRED', {
         status: 'to-pack', undo: true, statusVersion: 0,
-      }),
+      }, inventoryUser),
       (error) => error.code === 'DISPATCH_UNDO_EXPIRED',
     );
 
@@ -118,8 +119,8 @@ test('dispatch persistence enforces the versioned state machine and server times
       items: [{ name: 'Fabricated Unit', sku: 'AUDIT-DISPATCH-RACE-SKU', qty: 1, confirmed: true }],
     }));
     const race = await Promise.allSettled([
-      service.updateOrder('AUDIT-DISPATCH-RACE', { status: 'ready', statusVersion: 0 }),
-      service.updateOrder('AUDIT-DISPATCH-RACE', { status: 'ready', statusVersion: 0 }),
+      service.updateOrder('AUDIT-DISPATCH-RACE', { status: 'ready', statusVersion: 0 }, inventoryUser),
+      service.updateOrder('AUDIT-DISPATCH-RACE', { status: 'ready', statusVersion: 0 }, inventoryUser),
     ]);
     assert.equal(race.filter((result) => result.status === 'fulfilled').length, 1);
     const raceFailure = race.find((result) => result.status === 'rejected');

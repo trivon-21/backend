@@ -13,9 +13,13 @@ require('./modules/shared/L_bankDetails.model');
 require('./modules/shared/L_repair.model');
 require('./models/PurchaseRequest');
 
+const mongoose = require('mongoose');
+mongoose.set('updatePipeline', true);
+
 const app = require('./app');
 const { connectDb } = require('./config');
 const { schedulePaymentAutoCancelJob } = require('./jobs/paymentAutoCancelJob');
+const { scheduleRejectedRequestCleanupJob } = require('./jobs/rejectedRequestCleanupJob');
 const maintenanceNotificationService = require('./services/maintenance-notification.service');
 
 const PORT = process.env.PORT || 5000;
@@ -109,6 +113,7 @@ const startServer = async () => {
 
     try {
       schedulePaymentAutoCancelJob();
+      scheduleRejectedRequestCleanupJob();
       scheduleScheduledMaintenanceStartWatcher();
       console.log('Background jobs scheduled successfully');
     } catch (err) {

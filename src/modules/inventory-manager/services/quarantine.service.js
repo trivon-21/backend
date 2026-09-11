@@ -113,3 +113,32 @@ exports.disposeQuarantineItem = async (id, user, options = {}) => {
   invalidateInventoryCache();
   return result;
 };
+
+/**
+ * Permanently removes a quarantine item record (any status).
+ */
+exports.deleteQuarantineItem = async (id, user, options = {}) => {
+  assertRole(user, ['INVENTORY']);
+  const query = mongoose.isValidObjectId(id)
+    ? { $or: [{ _id: id }, { quarantineId: id }] }
+    : { quarantineId: id };
+
+  const result = await runInTransaction(async (session) => {
+    const sessionOpt = session ? { session } : {};
+    const deleted = await QuarantineItem.findOneAndDelete(query, sessionOpt);
+    if (!deleted) {
+      throw serviceError('Quarantine item not found', 404, 'QUARANTINE_NOT_FOUND');
+    }
+
+    await Activity.create([{
+      type: 'alert',
+      title: 'Quarantine Item Deleted',
+      description: `${deleted.quantity} ${deleted.unit || 'units'} of ${deleted.itemName} removed from quarantine by ${actorName(user, 'Inventory Manager')}`,
+      actionLabel: 'View Quarantine',
+    }], sessionOpt);
+
+    return deleted;
+  }, options.session);
+  invalidateInventoryCache();
+  return result;
+};
