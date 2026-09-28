@@ -178,3 +178,36 @@ exports.updateInquiryStatus = async (req, res) => {
     return res.status(400).json({ success: false, message: err.message });
   }
 };
+
+// ── CATALOG MANAGEMENT (AC Equipment) ──────────────────────────────────
+
+// GET /api/csa/catalog
+exports.getCatalogProducts = async (req, res) => {
+  try {
+    const { search } = req.query;
+    const products = await csaService.getCatalogProducts({ search });
+    return res.json({ success: true, count: products.length, products });
+  } catch (err) {
+    console.error('getCatalogProducts error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// PUT /api/csa/catalog/:id
+exports.updateCatalogProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { image, description, features } = req.body;
+
+    const product = await csaService.updateCatalogProduct(id, { image, description, features });
+    return res.json({
+      success: true,
+      message: 'Product catalog presentation updated successfully',
+      product,
+      data: product
+    });
+  } catch (err) {
+    console.error('updateCatalogProduct error:', err);
+    return res.status(400).json({ success: false, message: err.message });
+  }
+};

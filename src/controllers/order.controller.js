@@ -151,6 +151,7 @@ const mongoose = require('mongoose');
 const InstallationOrder = require('../models/installationOrder.model');
 const Cart = require('../models/cart.model');
 const Counter = require('../models/counter.model');
+const Inventory = require('../models/Inventory');
 const { validatePaymentSlip } = require('../services/slipValidation.service');
 
 // ── Multer setup (In-Memory for MongoDB Base64 storage) ───────────────────────
@@ -175,7 +176,7 @@ async function performInitialization(req, res, Model, prefix, purchaseType, coun
     const { userId, selectedItems, consultationCompleted } = req.body;
     if (!userId) return res.status(400).json({ success: false, message: 'userId is required' });
 
-    let cart = await Cart.findOne({ userId }).populate('items.product');
+    let cart = await Cart.findOne({ userId });
     if (!cart) {
       console.log(`[Order] No cart found for user: ${userId}. Creating empty cart.`);
       cart = new Cart({ userId, items: [] });
@@ -206,16 +207,23 @@ async function performInitialization(req, res, Model, prefix, purchaseType, coun
       return res.status(400).json({ success: false, message: 'No valid items selected' });
     }
 
-    const items = cartItems.map(item => {
-      const prod = item.product || {};
+    const items = await Promise.all(cartItems.map(async item => {
+      let prod = item.product || {};
+      if (!prod.name) {
+        const pid = prod._id || item.product;
+        const inv = await Inventory.findById(pid);
+        if (inv) prod = inv;
+      }
       return {
         productId: prod._id ? prod._id.toString() : item.product?.toString() || 'unknown',
         name: prod.name || 'Unknown Product',
-        price: prod.price || 0,
+        price: (prod.pricing && prod.pricing.sellingPricePerUnit !== undefined)
+          ? prod.pricing.sellingPricePerUnit
+          : (prod.price !== undefined ? prod.price : (prod.pricing?.costPerUnit || prod.unitCost || 0)),
         quantity: item.quantity,
         purchaseType: purchaseType
       };
-    });
+    }));
 
     let counter;
     try {

@@ -1,12 +1,20 @@
+const path = require("path");
+const dotenv = require("dotenv");
+dotenv.config({ path: path.join(__dirname, "../../../../.env") });
+
 const nodemailer = require("nodemailer");
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const getTransporter = () => {
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER || "airlux90@gmail.com",
+      pass: (process.env.EMAIL_PASS || "sfwq jrhz nucd ckjk").trim(),
+    },
+  });
+};
+
+const transporter = getTransporter();
 
 const formatDate = (dateStr) => {
   const d = new Date(dateStr);
@@ -671,11 +679,28 @@ const sendCustomerWelcomeEmail = async ({
 }) => {
   try {
     const effectiveLoginUrl = loginUrl || `${process.env.FRONTEND_URL || 'http://localhost:4200'}/login`;
+    const mailer = getTransporter();
 
-    await transporter.sendMail({
-      from: `"AirLux Customer Support" <${process.env.EMAIL_USER}>`,
+    await mailer.sendMail({
+      from: `"AirLux Customer Support" <${process.env.EMAIL_USER || 'airlux90@gmail.com'}>`,
       to: email,
       subject: `Welcome to AirLux - Your Account Login Credentials`,
+      text: `Dear ${customerName || 'Valued Customer'},
+
+Welcome to AirLux! Your customer account with AirLux HVAC Technologies has been successfully created.
+
+Your Login Credentials:
+- Login Email: ${email}
+- Initial Password: ${initialPassword}
+
+You can log in to your Customer Portal here:
+${effectiveLoginUrl}
+
+Security Recommendation:
+For your security, we advise logging in and changing your password to a personal password under your profile settings.
+
+Warm regards,
+AirLux Customer Support Team`,
       html: `
         <div style="font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
           <!-- Header Banner -->

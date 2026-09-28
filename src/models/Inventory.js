@@ -52,6 +52,43 @@ const InventorySchema = new mongoose.Schema({
   serialNumbers: [{ type: String, trim: true }],
   specsUrl: { type: String },
   status: { type: String, enum: ['critical', 'warning', 'normal'], default: 'normal' },
+  // Consumer catalog fields (for AC Equipment)
+  image: { type: String, trim: true },
+  images: { type: [String], default: [] },
+  price: { type: Number, min: 0 },
+  capacity: { type: Number, min: 0 },
+  specs: {
+    type: [
+      {
+        key: { type: String, trim: true },
+        value: { type: String, trim: true }
+      }
+    ],
+    default: []
+  },
+  warrantyInfo: {
+    comprehensive: { type: String, trim: true },
+    compressor: { type: String, trim: true },
+    covered: { type: [String], default: [] },
+    notCovered: { type: [String], default: [] }
+  },
+  features: { type: [String], default: [] },
+  reviews: {
+    type: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        userName: { type: String, required: true, trim: true },
+        rating: { type: Number, required: true, min: 1, max: 5 },
+        comment: { type: String, required: true, trim: true },
+        isVerifiedBuyer: { type: Boolean, default: true },
+        date: { type: Date, default: Date.now }
+      }
+    ],
+    default: []
+  },
+  averageRating: { type: Number, default: 0 },
+  reviewCount: { type: Number, default: 0 },
+  inStock: { type: Boolean, default: true },
 }, {
   timestamps: true,
   collection: 'inventory', // Ensuring singular/specific naming as per previous instructions

@@ -20,4 +20,8 @@ router.get('/inquiries', controller.getInquiries);
 router.post('/inquiries/:id/reply', controller.replyToInquiry);
 router.patch('/inquiries/:id/status', controller.updateInquiryStatus);
 
+// Catalog presentation management (AC Equipment)
+router.get('/catalog', controller.getCatalogProducts);
+router.put('/catalog/:id', controller.updateCatalogProduct);
+
 module.exports = router;
