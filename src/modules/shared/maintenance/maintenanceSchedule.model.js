@@ -13,7 +13,7 @@ const maintenanceScheduleSchema = new Schema(
     csaNotes: { type: String },
     customerNotes: { type: String },
   },
-  { timestamps: true, collection: 'maintenance_schedules' }
+  { timestamps: true, collection: 'maintenance_schedules', strict: false }
 );
 
 module.exports = mongoose.model('MaintenanceSchedule', maintenanceScheduleSchema);

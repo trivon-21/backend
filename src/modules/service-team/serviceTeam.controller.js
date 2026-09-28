@@ -423,7 +423,7 @@ exports.assignServiceRequestToTeam = async (req, res) => {
     const warehouseRequest = isInspection ? null : await WarehousePickRequest.findOne({
       jobId: resolvedServiceRequestId,
       jobType: warehouseJobType,
-      status: 'reserved',
+      status: { $in: ['pending', 'reserved'] },
     });
     
     const isSentToIM = existingDoc.status === WORKFLOW_STATUS.SENT_TO_IM || existingDoc.status === MAINTENANCE_STATUS.SENT_TO_IM || existingDoc.status === 'Sent to IM';
@@ -474,9 +474,8 @@ exports.assignServiceRequestToTeam = async (req, res) => {
         if (warehouseRequest) {
           const warehouseUpdate = await WarehousePickRequest.updateOne({
             _id: warehouseRequest._id,
-            status: 'reserved',
+            status: warehouseRequest.status,
             statusVersion: warehouseRequest.statusVersion,
-            assignedTeamId: { $exists: false },
           }, {
             $set: { assignedTeamId: team._id, assignedTeamName: team.teamName },
             $inc: { statusVersion: 1 },
