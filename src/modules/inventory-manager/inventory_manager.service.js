@@ -94,6 +94,7 @@ module.exports = {
   getQuarantineItems: quarantineService.getQuarantineItems,
   createQuarantineItem: quarantineService.createQuarantineItem,
   disposeQuarantineItem: quarantineService.disposeQuarantineItem,
+  deleteQuarantineItem: quarantineService.deleteQuarantineItem,
 
   // ── Dashboard & Activity ──
   getDashboardData: dashboardService.getDashboardData,
