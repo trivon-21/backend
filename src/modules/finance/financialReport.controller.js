@@ -279,7 +279,7 @@ exports.getTransactions = async (req, res) => {
     const formatted = invoices.map(inv => ({
       _id:           inv._id,
       invoiceNumber: inv.invoiceNumber,
-      customerName:  inv.customerName || "—",
+      customerName:  inv.customerName || "-",
       customerEmail: inv.customerEmail,
       orderId:       inv.orderId,
       type:          inv.invoiceType === "REPAIR" ? "Repair Invoice" : "Installation Sale",
@@ -349,7 +349,7 @@ exports.getPaymentCollections = async (req, res) => {
       date:      inv.paidAt || inv.updatedAt,
       type:      inv.invoiceType === "REPAIR" ? "Repair Invoice Payment" : "Invoice Payment",
       reference: inv.invoiceNumber,
-      customer:  inv.customerName || "—",
+      customer:  inv.customerName || "-",
       amount:    inv.grandTotal || 0,
       method:    "Bank Transfer",
       status:    "Paid",
@@ -378,7 +378,7 @@ exports.getPaymentCollections = async (req, res) => {
         ]
       });
       for (const o of orders) {
-        let customerName = "—";
+        let customerName = "-";
         try {
           const User = mongoose.model("User");
           const user = await User.findById(o.customer || o.userId);
@@ -411,7 +411,7 @@ exports.getPaymentCollections = async (req, res) => {
         ],
       });
       for (const t of tickets) {
-        let customerName = "—";
+        let customerName = "-";
         try {
           const User = mongoose.model("User");
           const user = await User.findById(t.customerId);
@@ -449,7 +449,7 @@ const maints = await Maintenance.find({
   updatedAt: { $gte: start, $lte: end },
 });
 for (const m of maints) {
-  let customerName = "—";
+  let customerName = "-";
   try {
     const User = mongoose.model("User");
     const user = await User.findById(m.customerId);
@@ -481,7 +481,7 @@ for (const m of maints) {
         date:      p.approvedAt || p.updatedAt,
         type:      "Purchase Expense",
         reference: p.requestId || (p._id ? `PR-${p._id.toString().slice(-6).toUpperCase()}` : "PR-UNKNOWN"),
-        customer:  p.requestedBy || "—",
+        customer:  p.requestedBy || "-",
         amount:    -(p.totalAmount || p.totalEstimate || 0),
         method:    "Bank Transfer",
         status:    "Approved",

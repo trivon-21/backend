@@ -1043,7 +1043,7 @@ exports.getRepairInvoiceQueue = async (req, res) => {
         }
       }
 
-      let ticketRef = "—";
+      let ticketRef = "-";
       let serviceType = "REPAIR";
       if (repair.serviceTicketId) {
         try {

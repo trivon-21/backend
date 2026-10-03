@@ -1,6 +1,7 @@
 const SystemConfig = require('../../../models/SystemConfig');
 const AuditLog = require('../../../models/AuditLog');
 const Charge = require('../../shared/L_charges.model');
+const Inventory = require('../../../models/Inventory');
 const BankDetail = require('../../../models/bankDetail.model');
 const { clearCache } = require('../../../utils/config-cache');
 const maintenanceNotificationService = require('../../../services/maintenance-notification.service');
@@ -119,6 +120,10 @@ class SystemConfigService {
           },
           { upsert: true, returnDocument: 'after' }
         );
+      } else if (key === 'profitMargin') {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+          throw new Error('Profit margin must be a number between 0 and 1 (0 to 100%)');
+        }
       } else if (key === 'quotationApprovalThreshold') {
         if (value < 0 || value > 10000000) {
           throw new Error('Quotation approval threshold must be between 0 and 10,000,000');
@@ -156,6 +161,27 @@ class SystemConfigService {
 
     if (Object.keys(changes).length === 0) {
       throw new Error('No changes made to business rules');
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, 'profitMargin')) {
+      await Inventory.updateMany({}, [
+        {
+          $set: {
+            'pricing.profitMargin': changes.profitMargin.newValue,
+            'pricing.sellingPricePerUnit': {
+              $round: [
+                {
+                  $multiply: [
+                    { $ifNull: ['$pricing.costPerUnit', { $ifNull: ['$unitCost', 0] }] },
+                    { $add: [1, changes.profitMargin.newValue] },
+                  ],
+                },
+                0,
+              ],
+            },
+          },
+        },
+      ], { updatePipeline: true });
     }
 
     config.updatedBy = performedBy;

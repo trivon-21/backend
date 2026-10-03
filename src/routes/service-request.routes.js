@@ -6,6 +6,7 @@ const ctrl = require("../controllers/service-request.controller");
 router.use(protect);
 router.get("/charges", ctrl.getCharges);
 router.get("/", ctrl.getServiceRequests);
+router.post("/validate-slip", ctrl.validateSlip);
 router.get("/:id", ctrl.getServiceRequest);
 router.post("/", ctrl.createServiceRequest);
 router.post("/:id/cancel", ctrl.cancelServiceRequest);

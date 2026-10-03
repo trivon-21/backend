@@ -3,6 +3,7 @@ const MaintenanceSchedule = require('./maintenanceSchedule.model');
 const Installation = require('../installation/installation.model');
 const ServiceRequest = require('../repair/repair.model');
 const TechTeamMember = require('../tech-teams/techTeamMember.model');
+const { sendMaintenanceScheduleEmail } = require('../notification/email.service');
 const mongoose = require('mongoose');
 
 const { 
@@ -210,7 +211,10 @@ exports.sendScheduleToCustomer = async (req, res) => {
     const { scheduleId } = req.params;
     const { customerNotes } = req.body;
 
-    const schedule = await MaintenanceSchedule.findById(scheduleId);
+    const schedule = await MaintenanceSchedule.findById(scheduleId)
+      .populate('customerId', 'fullName email phoneNumber address')
+      .populate('installationId', 'productType location serviceDate createdAt');
+
     if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
 
     // Guard: only allow sending to customer when schedule is already with CSA
@@ -232,11 +236,46 @@ exports.sendScheduleToCustomer = async (req, res) => {
       { new: true }
     );
 
-    await Installation.findByIdAndUpdate(updatedSchedule.installationId, { 
-      maintenanceStatus: INSTALLATION_MAINTENANCE_STATUS.SENT_TO_CUSTOMER 
-    });
+    const targetInstallationId = schedule.installationId?._id || schedule.installationId;
+    if (targetInstallationId) {
+      await Installation.findByIdAndUpdate(targetInstallationId, { 
+        maintenanceStatus: INSTALLATION_MAINTENANCE_STATUS.SENT_TO_CUSTOMER 
+      });
+    }
 
-    res.json({ success: true, message: 'Schedule marked as dispatched to customer.', data: updatedSchedule });
+    // Send maintenance schedule email to customer
+    const customer = schedule.customerId || {};
+    const installation = schedule.installationId || {};
+    const customerEmail = customer.email;
+
+    let emailResult = null;
+    if (customerEmail && customerEmail !== '-' && customerEmail.includes('@')) {
+      emailResult = await sendMaintenanceScheduleEmail({
+        email: customerEmail,
+        customerName: customer.fullName || 'Valued Customer',
+        ticketId: schedule.ticketId,
+        productType: installation.productType || 'AirLux AC Unit',
+        location: installation.location || customer.address || '—',
+        installationDate: installation.serviceDate || installation.createdAt || null,
+        services: (schedule.services || []).map((srv, idx) => ({
+          serviceName: srv.serviceName,
+          date: srv.date,
+          underWarranty: idx < 4
+        })),
+        customerNotes: customerNotes || ''
+      });
+    } else {
+      console.warn(`[sendScheduleToCustomer] No valid customer email found for ticket ${schedule.ticketId}`);
+    }
+
+    res.json({ 
+      success: true, 
+      message: emailResult?.success 
+        ? `Schedule sent to customer successfully. Email sent to ${customerEmail}.` 
+        : 'Schedule marked as dispatched to customer.', 
+      data: updatedSchedule,
+      emailSent: emailResult?.success || false
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
