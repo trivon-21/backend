@@ -12,7 +12,7 @@ exports.list = async (req, res) => {
     console.error('Manager orders fetch error:', error);
     res.status(error.statusCode || 503).json({
       status: 'Offline',
-      summary: { pending: 0, approved: 0, rejected: 0, pendingValue: 0 },
+      summary: { pending: 0, approved: 0, rejected: 0 },
       orders: [],
       message: error.message,
     });

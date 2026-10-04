@@ -5,6 +5,7 @@ const Supplier = require('../../../models/Supplier');
 const PurchaseRequest = require('../../../models/PurchaseRequest');
 const WarehousePickRequest = require('../../../models/WarehousePickRequest');
 const Activity = require('../../../models/Activity');
+const { createDispatchOrderFromPurchase } = require('./dispatch.service');
 const {
   canonicalPurchaseStatus,
   purchaseRequestWorkflowStages,
@@ -314,9 +315,11 @@ exports.issuePurchaseOrder = async (id, data, user, options = {}) => {
       type: 'request', title: 'Purchase Order Issued',
       description: `${request.poNumber} issued from ${request.requestId}`, actionLabel: 'Receive Stock',
     }], sessionOpt);
+    await createDispatchOrderFromPurchase(request, user, sessionOpt);
     return request;
   }, options.session);
   invalidatePurchasingScopes();
+  invalidateInventoryScopes(INVENTORY_CACHE_PREFIXES.DISPATCH);
   return result;
 };
 

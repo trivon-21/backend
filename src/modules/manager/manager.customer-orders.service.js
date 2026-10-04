@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Order = require('../../models/Order');
 const InstallationOrder = require('../../models/installationOrder.model');
 const ServiceRequest = require('../../models/ServiceRequest');
+const Inquiry = require('../../models/Inquiry');
 const User = require('../../models/User');
 
 /**
@@ -15,10 +16,11 @@ function buildRefQuery(field, ref) {
 }
 
 /**
- * Lookup past order or service request by reference or ID.
+ * Lookup past order, service request, or inquiry by reference or ID.
  * Supports Order (orderRef, orderReference, orderId, _id),
  * InstallationOrder (orderReference, orderId, _id),
- * and ServiceRequest (serviceRequestRef, _id).
+ * ServiceRequest (serviceRequestRef, _id),
+ * and Inquiry (inquiryRef, _id).
  */
 exports.lookupOrder = async (rawRef) => {
   const ref = String(rawRef || '').trim();
@@ -235,7 +237,64 @@ exports.lookupOrder = async (rawRef) => {
     };
   }
 
-  const error = new Error(`No order or service record found for reference "${ref}"`);
+  // 4. Check Inquiry (e.g. INQ-46AE2C02)
+  const inquiryConditions = [
+    buildRefQuery('inquiryRef', ref),
+  ];
+  if (isObjectId) {
+    inquiryConditions.push({ _id: new mongoose.Types.ObjectId(ref) });
+  }
+
+  const inquiry = await Inquiry.findOne({ $or: inquiryConditions })
+    .populate('customer', 'fullName lastName email phoneNumber address')
+    .lean();
+
+  if (inquiry) {
+    const customer = inquiry.customer || {};
+    return {
+      success: true,
+      data: {
+        id: String(inquiry._id),
+        category: 'Inquiry',
+        reference: inquiry.inquiryRef || `INQ-${String(inquiry._id).slice(-6).toUpperCase()}`,
+        orderType: inquiry.inquiryType || 'Other',
+        status: inquiry.status || 'Awaiting',
+        paymentStatus: 'Not Applicable',
+        orderStatus: inquiry.status || 'Awaiting',
+        customer: {
+          id: customer._id ? String(customer._id) : '',
+          fullName: customer.fullName || inquiry.name || 'Customer',
+          lastName: customer.lastName || '',
+          email: customer.email || inquiry.email || '',
+          phoneNumber: customer.phoneNumber || inquiry.phone || '',
+          address: customer.address || '',
+          city: '',
+          postalCode: '',
+        },
+        shippingDetails: {
+          address: customer.address || '',
+          phone: customer.phoneNumber || inquiry.phone || '',
+          email: customer.email || inquiry.email || '',
+        },
+        items: [],
+        inquiryDetails: {
+          inquiryType: inquiry.inquiryType || 'Other',
+          subject: inquiry.subject || '',
+          message: inquiry.message || '',
+          attachmentUrl: inquiry.attachmentUrl || '',
+          threadCount: Array.isArray(inquiry.thread) ? inquiry.thread.length : 0,
+        },
+        subtotal: 0,
+        additionalCharges: 0,
+        total: 0,
+        paymentSlip: '',
+        createdAt: inquiry.createdAt,
+        updatedAt: inquiry.updatedAt,
+      },
+    };
+  }
+
+  const error = new Error(`No order, service request, or inquiry found for reference "${ref}"`);
   error.statusCode = 404;
   throw error;
 };

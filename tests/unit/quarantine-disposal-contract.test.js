@@ -21,32 +21,29 @@ function createFakeQuarantineItem(overrides = {}) {
 }
 
 describe('Quarantine Disposal Contract (IM-016)', () => {
-  let originalFindOneAndUpdate;
+  let originalFindOneAndDelete;
   let originalFindOne;
   let originalActivityCreate;
 
   beforeEach(() => {
-    originalFindOneAndUpdate = QuarantineItem.findOneAndUpdate;
+    originalFindOneAndDelete = QuarantineItem.findOneAndDelete;
     originalFindOne = QuarantineItem.findOne;
     originalActivityCreate = Activity.create;
   });
 
   afterEach(() => {
-    QuarantineItem.findOneAndUpdate = originalFindOneAndUpdate;
+    QuarantineItem.findOneAndDelete = originalFindOneAndDelete;
     QuarantineItem.findOne = originalFindOne;
     Activity.create = originalActivityCreate;
   });
 
-  it('atomically disposes an active quarantine item and creates exactly one audit activity', async () => {
+  it('atomically disposes (permanently removes) an active quarantine item and creates exactly one audit activity', async () => {
     const item = createFakeQuarantineItem();
     let activitySaved = false;
     let savedActivityTitle = null;
 
-    QuarantineItem.findOneAndUpdate = async (filter, update) => {
+    QuarantineItem.findOneAndDelete = async (filter) => {
       if (filter.status === 'quarantined' && (filter.quarantineId === item.quarantineId || filter._id === item._id)) {
-        item.status = update.$set.status;
-        item.disposedAt = update.$set.disposedAt;
-        item.disposedBy = update.$set.disposedBy;
         return item;
       }
       return null;
@@ -61,18 +58,14 @@ describe('Quarantine Disposal Contract (IM-016)', () => {
     const user = { fullName: 'Jane Doe', role: 'INVENTORY' };
     const result = await service.disposeQuarantineItem(item.quarantineId, user);
 
-    assert.equal(result.status, 'disposed');
-    assert.equal(result.disposedBy, 'Jane Doe');
-    assert.ok(result.disposedAt instanceof Date);
+    assert.equal(result.quarantineId, item.quarantineId);
     assert.equal(activitySaved, true);
     assert.equal(savedActivityTitle, 'Quarantine Item Disposed');
   });
 
   it('rejects repeated disposal with 409 QUARANTINE_ALREADY_DISPOSED and no activity side effects', async () => {
     const alreadyDisposedItem = createFakeQuarantineItem({
-      status: 'disposed',
-      disposedAt: new Date('2026-08-01T10:00:00Z'),
-      disposedBy: 'Previous Tech',
+      status: 'returned-to-supplier',
     });
 
     let activityCreated = false;
@@ -80,8 +73,8 @@ describe('Quarantine Disposal Contract (IM-016)', () => {
       activityCreated = true;
     };
 
-    // findOneAndUpdate with status: 'quarantined' matches nothing because it's already disposed
-    QuarantineItem.findOneAndUpdate = async () => null;
+    // findOneAndDelete with status: 'quarantined' matches nothing because it's no longer quarantined
+    QuarantineItem.findOneAndDelete = async () => null;
     QuarantineItem.findOne = async () => alreadyDisposedItem;
 
     const user = { fullName: 'Jane Doe', role: 'INVENTORY' };
@@ -91,7 +84,7 @@ describe('Quarantine Disposal Contract (IM-016)', () => {
       (err) => {
         assert.equal(err.statusCode, 409);
         assert.equal(err.code, 'QUARANTINE_ALREADY_DISPOSED');
-        assert.match(err.message, /already disposed/i);
+        assert.match(err.message, /no longer in quarantine/i);
         return true;
       }
     );
@@ -100,7 +93,7 @@ describe('Quarantine Disposal Contract (IM-016)', () => {
   });
 
   it('rejects disposal of unknown quarantine item with 404 QUARANTINE_NOT_FOUND', async () => {
-    QuarantineItem.findOneAndUpdate = async () => null;
+    QuarantineItem.findOneAndDelete = async () => null;
     QuarantineItem.findOne = async () => null;
 
     const user = { fullName: 'Jane Doe', role: 'INVENTORY' };

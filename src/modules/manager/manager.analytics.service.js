@@ -22,8 +22,20 @@ exports.getAnalyticsData = async (_user, periodKey) => {
   return managerCache.get(`manager:analytics:${periodKey}`, () => buildAnalyticsPayload(periodKey));
 };
 
+// Finance's revenue rules (backend/src/modules/finance/financialReport.controller.js)
+// read Maintenance and InspectionTicket directly rather than the Manager ticket
+// read-model — mirror that here so the two portals report the same figures.
+function getMaintenanceModel() {
+  try { return mongoose.model('Maintenance'); } catch { return null; }
+}
+function getInspectionTicketModel() {
+  try { return mongoose.model('InspectionTicket'); } catch { return null; }
+}
+
 async function buildAnalyticsPayload(periodKey) {
-  const [tickets, orders, inventory, pendingRequests, procurements, authorizations, customerOrders, invoices] = await Promise.all([
+  const Maintenance = getMaintenanceModel();
+  const InspectionTicket = getInspectionTicketModel();
+  const [tickets, orders, inventory, pendingRequests, procurements, authorizations, customerOrders, invoices, maintenance, inspectionTickets] = await Promise.all([
     loadManagerTickets(),
     PurchaseRequest.find({ status: { $ne: 'draft' } }).lean(),
     Inventory.find().lean(),
@@ -36,6 +48,15 @@ async function buildAnalyticsPayload(periodKey) {
     Invoice.find()
       .select('_id orderId invoiceType grandTotal status paidAt acceptedAt updatedAt')
       .lean(),
+    Maintenance
+      ? Maintenance.find({ status: 'Finance Approved' }).select('_id status paymentAmount approvedAt updatedAt').lean()
+      : [],
+    InspectionTicket
+      ? InspectionTicket.find({
+          status: { $nin: ['PENDING_PAYMENT', 'PAYMENT_UNDER_REVIEW', 'PAYMENT_REJECTED'] },
+          approvedAt: { $exists: true, $ne: null },
+        }).select('_id status inspectionFee approvedAt updatedAt').lean()
+      : [],
   ]);
   const generatedAt = new Date();
   const pendingRequestsCount = pendingRequests.length;
@@ -51,6 +72,8 @@ async function buildAnalyticsPayload(periodKey) {
     pendingRequestsCount,
     customerOrders,
     invoices,
+    maintenance,
+    inspectionTickets,
   );
 
   return {

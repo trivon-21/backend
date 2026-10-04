@@ -7,6 +7,10 @@ const modelDefinitions = {
   SystemConfig: { module: '../src/models/SystemConfig', risk: 'standard' },
   Inventory: { module: '../src/models/Inventory', risk: 'standard' },
   Activity: { module: '../src/models/Activity', risk: 'standard' },
+  StockMovement: { module: '../src/models/StockMovement', risk: 'medium' },
+  InstallationOrder: { module: '../src/models/installationOrder.model', risk: 'standard' },
+  ServiceRequest: { module: '../src/models/ServiceRequest', risk: 'standard' },
+  Inquiry: { module: '../src/models/Inquiry', risk: 'standard' },
   Supplier: { module: '../src/models/Supplier', risk: 'standard' },
   Procurement: { module: '../src/models/Procurement', risk: 'medium' },
   ReceiptDiscrepancy: { module: '../src/models/ReceiptDiscrepancy', risk: 'high' },
@@ -55,6 +59,13 @@ const managerEndpoints = [
   endpoint('manager', 'PATCH', '/orders/:id', 'Purchase decision', true, 'manager.orders.service.decideOrder', ['PurchaseRequest', 'Activity', 'Inventory', 'Supplier']),
   endpoint('manager', 'GET', '/receipt-authorizations', 'Non-PO approvals', true, 'manager.orders.service.listReceiptAuthorizations', ['ReceiptAuthorization', 'Inventory', 'Supplier']),
   endpoint('manager', 'POST', '/receipt-authorizations/:id/decision', 'Non-PO decision', true, 'manager.orders.service.decideReceiptAuthorization', ['ReceiptAuthorization', 'Activity', 'Inventory', 'Supplier']),
+  endpoint('manager', 'GET', '/orders/lookup', 'Customer order lookup', true, 'manager.customer-orders.service.lookupOrder', ['Order', 'InstallationOrder', 'ServiceRequest', 'Inquiry', 'User']),
+  endpoint('manager', 'GET', '/recent-orders', 'Recent customer orders', true, 'manager.customer-orders.service.getRecentCustomerOrders', ['Order', 'InstallationOrder', 'ServiceRequest', 'Inquiry', 'User']),
+  endpoint('manager', 'GET', '/customers', 'Customer list', true, 'manager.customers.service.getCustomers', ['User', 'Order', 'InstallationOrder', 'ServiceRequest', 'ManagerInstallation', 'Inquiry']),
+  endpoint('manager', 'GET', '/customers/:id', 'Customer detail', true, 'manager.customers.service.getCustomerDetails', ['User', 'Order', 'InstallationOrder', 'ServiceRequest', 'ManagerInstallation', 'Inquiry']),
+  endpoint('manager', 'GET', '/inventory', 'Read-only inventory list', true, 'inventory_manager.service.getInventoryList', ['Inventory', 'SerializedAsset', 'Supplier', 'User']),
+  endpoint('manager', 'GET', '/inventory/locations', 'Read-only storage locations', true, 'inventory_manager.service.getInventoryLocations', []),
+  endpoint('manager', 'GET', '/inventory/:id', 'Read-only inventory detail', true, 'inventory_manager.service.getInventoryItem', ['Inventory', 'SerializedAsset', 'Supplier', 'User']),
 ];
 
 const inventoryEndpoints = [
@@ -65,6 +76,10 @@ const inventoryEndpoints = [
   endpoint('inventory', 'PUT', '/item/:id', 'Inventory master-data update', false, 'inventory_manager.service.updateInventoryItem', ['Inventory', 'Supplier', 'User']),
   endpoint('inventory', 'PATCH', '/item/:id', 'Inventory master-data update', true, 'inventory_manager.service.updateInventoryItem', ['Inventory', 'SerializedAsset', 'Supplier', 'User']),
   endpoint('inventory', 'POST', '/item', 'Inventory catalog creation', true, 'inventory_manager.service.createInventoryItem', ['Inventory', 'Supplier', 'User']),
+  endpoint('inventory', 'DELETE', '/item/:id', 'Inventory deletion (zero stock only)', true, 'inventory_manager.service.deleteInventoryItem', ['Inventory']),
+  endpoint('inventory', 'POST', '/item/:id/stock-adjustments', 'Stock adjustment', true, 'inventory_manager.service.adjustStock', ['Inventory', 'StockMovement', 'Activity', 'User']),
+  endpoint('inventory', 'GET', '/item/:id/stock-movements', 'Item stock ledger', true, 'inventory_manager.service.getStockMovements', ['StockMovement', 'Inventory', 'User']),
+  endpoint('inventory', 'GET', '/stock-adjustments', 'Stock adjustment history', true, 'inventory_manager.service.getStockAdjustments', ['StockMovement', 'Inventory', 'User']),
   endpoint('inventory', 'POST', '/receipts', 'Goods receipt', true, 'inventory_manager.service.receiveInventory', ['Inventory', 'SerializedAsset', 'PurchaseRequest', 'Supplier', 'ReceiptAuthorization', 'Procurement', 'ReceiptDiscrepancy', 'QuarantineItem', 'Activity', 'User']),
   endpoint('inventory', 'GET', '/suppliers', 'Supplier list', true, 'inventory_manager.service.getSuppliersList', ['Supplier', 'User']),
   endpoint('inventory', 'POST', '/suppliers', 'Supplier creation', true, 'inventory_manager.service.createSupplier', ['Supplier', 'User']),
@@ -105,6 +120,7 @@ const inventoryEndpoints = [
   endpoint('inventory', 'GET', '/quarantine', 'Quarantine list', true, 'inventory_manager.service.getQuarantineItems', ['QuarantineItem', 'User']),
   endpoint('inventory', 'POST', '/quarantine', 'Quarantine creation', true, 'inventory_manager.service.createQuarantineItem', ['QuarantineItem', 'Inventory', 'User']),
   endpoint('inventory', 'PATCH', '/quarantine/:id/dispose', 'Quarantine disposal', true, 'inventory_manager.service.disposeQuarantineItem', ['QuarantineItem', 'User']),
+  endpoint('inventory', 'DELETE', '/quarantine/:id', 'Quarantine return to stock', true, 'inventory_manager.service.deleteQuarantineItem', ['QuarantineItem', 'Inventory', 'Activity', 'User']),
 ];
 
 const collectionUsage = {

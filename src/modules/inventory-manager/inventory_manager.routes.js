@@ -20,7 +20,13 @@ router.put("/item/:id", controller.updateItem);
 router.patch("/item/:id", controller.updateItem);
 // Create item
 router.post("/item", controller.createItem);
+// Delete item (only when it carries no stock)
+router.delete("/item/:id", controller.deleteItem);
 router.post("/receipts", controller.receiveInventory);
+// Stock Adjustments & Ledger
+router.post("/item/:id/stock-adjustments", controller.adjustStock);
+router.get("/item/:id/stock-movements", controller.getItemStockMovements);
+router.get("/stock-adjustments", controller.getStockAdjustments);
 // Suppliers
 router.get("/suppliers", controller.getSuppliers);
 router.post("/suppliers", controller.createSupplier);
@@ -72,5 +78,6 @@ router.post("/rma-cases/:id/replacement", controller.receiveRmaReplacement);
 router.get("/quarantine", controller.getQuarantineItems);
 router.post("/quarantine", controller.createQuarantineItem);
 router.patch("/quarantine/:id/dispose", controller.disposeQuarantineItem);
+router.delete("/quarantine/:id", controller.deleteQuarantineItem);
 
 module.exports = router;

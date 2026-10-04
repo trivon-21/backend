@@ -15,6 +15,7 @@
     "workflow:migrate-orders": "node scripts/migrate-order-compatibility.js",
     "workflow:migrate-serialized-assets": "node scripts/migrate-serialized-assets.js",
     "workflow:reconcile-indexes": "node scripts/reconcile-manager-inventory-indexes.js",
+    "workflow:backfill-warehouse-pick-source": "node scripts/backfill-warehouse-pick-source.js",
     "schema:snapshot": "node scripts/export-schema-snapshot.js",
     "schema:audit": "npm run schema:snapshot && node scripts/audit-schema-snapshot.js --schema-report ../schema-report-new.json"
   },

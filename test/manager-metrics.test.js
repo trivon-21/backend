@@ -67,6 +67,16 @@ test('financial analytics reconcile collected revenue, received spend, and curre
     { sourceType: 'inspection-ticket', sourceStatus: 'INSPECTION_SCHEDULED', inspectionFee: 50, approvedAt: '2026-08-14T10:00:00.000Z' },
     { sourceType: 'maintenance', paymentStatus: 'UNDER_REVIEW', serviceFee: 75 },
   ];
+  // Revenue for service/maintenance/inspection now comes from the same
+  // collections/fields Finance's financialReport.controller.js reads
+  // (Maintenance status:"Finance Approved"/paymentAmount, InspectionTicket
+  // denylist status/inspectionFee), not from the ticket read-model above.
+  const maintenance = [
+    { status: 'Finance Approved', paymentAmount: 200, approvedAt: '2026-08-14T09:00:00.000Z' },
+  ];
+  const inspectionTickets = [
+    { status: 'INSPECTED', inspectionFee: 50, approvedAt: '2026-08-14T10:00:00.000Z' },
+  ];
   const purchaseOrders = [{
     status: 'partially-received', totalEstimate: 500,
     items: [{ orderedQuantity: 5, receivedQuantity: 2, unitCost: 100 }],
@@ -89,13 +99,20 @@ test('financial analytics reconcile collected revenue, received spend, and curre
 
   const result = buildAnalytics(
     tickets, purchaseOrders, '7d', now, procurements, authorizations, [], 0, customerOrders, invoices,
+    maintenance, inspectionTickets,
   );
 
   assert.equal(result.financial.collectedRevenue.current, 1750);
   assert.equal(result.financial.procurementSpend.current, 400);
   assert.equal(result.financial.operatingContribution.current, 1350);
+  // Matches Finance's /outstanding endpoint exactly: Invoice.status === "ACCEPTED" only.
   assert.deepEqual(
     { count: result.financial.outstandingReceivables.count, value: result.financial.outstandingReceivables.value },
+    { count: 1, value: 600 },
+  );
+  // Broader internal view — invoices, orders and tickets awaiting payment.
+  assert.deepEqual(
+    { count: result.financial.allOutstandingReceivables.count, value: result.financial.allOutstandingReceivables.value },
     { count: 3, value: 975 },
   );
   assert.deepEqual(

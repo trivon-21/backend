@@ -12,6 +12,7 @@ const {
   isValidInventoryLocation,
   normalizeStringList,
 } = require('../../../utils/inventory-domain');
+const { runInTransaction } = require('../../../utils/transaction');
 
 const MASTER_DATA_FIELDS = [
   'name', 'description', 'itemClass', 'subcategory', 'brand', 'manufacturerPartNumber', 'type', 'unit',
@@ -98,28 +99,6 @@ function assertRequestVersion(request, version) {
   if (version !== undefined && Number(version) !== Number(request.statusVersion)) {
     throw serviceError('The material request changed; reload before trying again', 409, 'STALE_MATERIAL_REQUEST');
   }
-}
-
-async function runInTransaction(work, externalSession) {
-  if (externalSession !== undefined) {
-    return await work(externalSession);
-  }
-  if (typeof mongoose.connection?.transaction === 'function' && mongoose.connection.readyState === 1) {
-    try {
-      return await mongoose.connection.transaction(work);
-    } catch (err) {
-      if (
-        err.message?.includes('Transaction numbers are only allowed on a replica set') ||
-        err.message?.includes('replica set') ||
-        err.codeName === 'IllegalOperation' ||
-        err.code === 20
-      ) {
-        return await work(null);
-      }
-      throw err;
-    }
-  }
-  return await work(null);
 }
 
 async function affectedWorkExists(type, id) {

@@ -210,6 +210,84 @@ function findBlockedMaterialRequests(materialRequests, inventory) {
   ));
 }
 
+/**
+ * Collapses pick-request lines that target the same inventory item into a
+ * single required quantity, so a kit with two lines against one SKU is
+ * checked and reserved once instead of racing against itself.
+ *
+ * @param {Array<{ lineId: string, inventoryId: unknown, sku?: string, qty: number }>} lines
+ * @returns {Array<{ inventoryId: string, totalQty: number, lineIds: string[], sku: string }>}
+ */
+function aggregateReservationLines(lines) {
+  const groups = new Map();
+  for (const line of lines || []) {
+    const key = String(line.inventoryId);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.totalQty += Number(line.qty) || 0;
+      existing.lineIds.push(line.lineId);
+    } else {
+      groups.set(key, {
+        inventoryId: key,
+        totalQty: Number(line.qty) || 0,
+        lineIds: [line.lineId],
+        sku: line.sku,
+      });
+    }
+  }
+  return [...groups.values()];
+}
+
+/**
+ * Compares aggregated reservation groups against known stock and returns the
+ * groups that are short, each carrying every contributing lineId.
+ *
+ * @param {ReturnType<typeof aggregateReservationLines>} groups
+ * @param {Map<string, { available?: number, name?: string }>} stockByInventoryId
+ * @returns {Array<{ inventoryId: string, lineIds: string[], sku: string, name: string, required: number, available: number, shortage: number }>}
+ */
+function computeKitShortages(groups, stockByInventoryId) {
+  const shortages = [];
+  for (const group of groups) {
+    const stock = stockByInventoryId.get(group.inventoryId);
+    const available = Number(stock?.available || 0);
+    if (available < group.totalQty) {
+      shortages.push({
+        inventoryId: group.inventoryId,
+        lineIds: group.lineIds,
+        sku: stock?.sku || group.sku,
+        name: stock?.name || '',
+        required: group.totalQty,
+        available,
+        shortage: group.totalQty - available,
+      });
+    }
+  }
+  return shortages;
+}
+
+// Mirrors legacyStockStatus() as a Mongo aggregation-pipeline expression, so
+// a pipeline-style findOneAndUpdate can derive `status` from the post-image
+// in the same round trip instead of a separate read-modify-write. Both must
+// agree on every value of `available`/`reorderLevel` — see the parity test.
+const STOCK_STATUS_PIPELINE_EXPR = {
+  $switch: {
+    branches: [
+      { case: { $lte: [{ $ifNull: ['$available', 0] }, 0] }, then: 'critical' },
+      {
+        case: {
+          $lte: [
+            { $ifNull: ['$available', 0] },
+            { $max: [0, { $ifNull: ['$reorderLevel', 0] }] },
+          ],
+        },
+        then: 'warning',
+      },
+    ],
+    default: 'normal',
+  },
+};
+
 module.exports = {
   ITEM_CLASSES,
   ITEM_SUBCATEGORIES,
@@ -233,4 +311,7 @@ module.exports = {
   isLoanOverdue,
   isLoanDueWithinDays,
   findBlockedMaterialRequests,
+  aggregateReservationLines,
+  computeKitShortages,
+  STOCK_STATUS_PIPELINE_EXPR,
 };

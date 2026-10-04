@@ -142,8 +142,11 @@ function currentPurchaseCommitment(orders) {
   );
 }
 
-function financialRevenueEntries(tickets, customerOrders, invoices) {
+function financialRevenueEntries(customerOrders, invoices, maintenance, inspectionTickets) {
   const entries = [];
+  // Finance's own getRevenueSummary does not de-dup an order that is both
+  // invoice-PAID and status/paymentStatus-Confirmed, which double-counts it.
+  // We deliberately keep this de-dup rather than reproducing that bug.
   const paidInvoiceOrderIds = new Set(
     invoices.filter((invoice) => invoice.status === 'PAID' && invoice.orderId).map((invoice) => String(invoice.orderId)),
   );
@@ -156,19 +159,34 @@ function financialRevenueEntries(tickets, customerOrders, invoices) {
     if (paidInvoiceOrderIds.has(String(order._id || ''))) continue;
     entries.push({ source: 'Product order payments', value: orderAmount(order), at: order.approvedAt || order.updatedAt, fallbackDate: !order.approvedAt });
   }
-  for (const ticket of tickets) {
-    if (['service', 'maintenance'].includes(ticket.sourceType) && ticket.paymentStatus === 'APPROVED') {
-      entries.push({ source: 'Service payments', value: Number(ticket.serviceFee || 0), at: ticket.approvedAt || ticket.updatedAt, fallbackDate: !ticket.approvedAt });
-    }
-    if (ticket.sourceType === 'inspection-ticket'
-      && ['PAYMENT_CONFIRMED', 'INSPECTION_SCHEDULED', 'ONGOING', 'REPORT_RECORDED', 'INSPECTED'].includes(ticket.sourceStatus)) {
-      entries.push({ source: 'Inspection payments', value: Number(ticket.inspectionFee || 0), at: ticket.approvedAt || ticket.updatedAt, fallbackDate: !ticket.approvedAt });
-    }
+  // Sourced from the same collections/fields/status rules as
+  // financialReport.controller.js's getRevenueSummary (Maintenance
+  // status:"Finance Approved"/paymentAmount, InspectionTicket denylist
+  // status/inspectionFee) so Manager and Finance report the same revenue.
+  for (const record of maintenance) {
+    entries.push({ source: 'Service payments', value: Number(record.paymentAmount || 0), at: record.approvedAt || record.updatedAt, fallbackDate: !record.approvedAt });
+  }
+  for (const ticket of inspectionTickets) {
+    entries.push({ source: 'Inspection payments', value: Number(ticket.inspectionFee || 0), at: ticket.approvedAt || ticket.updatedAt, fallbackDate: !ticket.approvedAt });
   }
   return entries.filter((entry) => entry.value > 0 && validDate(entry.at));
 }
 
-function outstandingReceivables(tickets, customerOrders, invoices) {
+// Matches Finance's /outstanding endpoint exactly (Invoice.status === "ACCEPTED"
+// only) so this figure is directly comparable to the Finance dashboard's
+// "Outstanding" number.
+function outstandingReceivables(invoices) {
+  const entries = invoices
+    .filter((invoice) => invoice.status === 'ACCEPTED')
+    .map((invoice) => Number(invoice.grandTotal || 0));
+  return { count: entries.length, value: sum(entries, (value) => value) };
+}
+
+// Broader internal view: invoices, customer orders, and service/inspection
+// tickets awaiting payment or under finance review. Not directly comparable
+// to Finance's narrower /outstanding number — kept separate and labeled
+// distinctly in the Manager UI.
+function allOutstandingReceivables(tickets, customerOrders, invoices) {
   const entries = [];
   const outstandingInvoiceOrderIds = new Set(
     invoices.filter((invoice) => ['ACCEPTED', 'PAYMENT_UNDER_REVIEW'].includes(invoice.status) && invoice.orderId)
@@ -325,6 +343,8 @@ function buildAnalytics(
   pendingMaterialRequests = 0,
   customerOrders = [],
   invoices = [],
+  maintenance = [],
+  inspectionTickets = [],
 ) {
   const window = periodWindow(periodKey, now);
   const { period, currentStart, currentEnd, previousStart, previousEnd } = window;
@@ -336,7 +356,7 @@ function buildAnalytics(
   const previousSubmissions = orders.filter((order) => inWindow(orderSubmissionAt(order), previousStart, previousEnd));
   const currentDecisions = decisionEvents(orders, currentStart, currentEnd);
   const previousDecisions = decisionEvents(orders, previousStart, previousEnd);
-  const revenueEntries = financialRevenueEntries(tickets, customerOrders, invoices);
+  const revenueEntries = financialRevenueEntries(customerOrders, invoices, maintenance, inspectionTickets);
   const currentRevenueEntries = revenueEntries.filter((entry) => inWindow(entry.at, currentStart, currentEnd, true));
   const previousRevenueEntries = revenueEntries.filter((entry) => inWindow(entry.at, previousStart, previousEnd));
   const currentProcurements = procurements.filter((receipt) => inWindow(receipt.receivedDate || receipt.createdAt, currentStart, currentEnd, true));
@@ -408,7 +428,8 @@ function buildAnalytics(
     row.value += Number(receipt.totalCost || 0);
     spendModeMap.set(label, row);
   }
-  const receivables = outstandingReceivables(tickets, customerOrders, invoices);
+  const receivables = outstandingReceivables(invoices);
+  const broadReceivables = allOutstandingReceivables(tickets, customerOrders, invoices);
   const paymentReview = pendingPaymentReview(tickets, customerOrders, invoices);
   const financeSnapshot = (item) => ({ ...item, scope: 'current-snapshot', asOf: new Date(now) });
   const unreconciledNonPo = authorizations.filter((item) =>
@@ -506,6 +527,7 @@ function buildAnalytics(
     procurementSpend: comparisonMetric(totalProcurementValue, previousProcurementValue),
     operatingContribution: comparisonMetric(contribution, previousContribution, 'higher-is-better'),
     outstandingReceivables: financeSnapshot(receivables),
+    allOutstandingReceivables: financeSnapshot(broadReceivables),
     pendingPaymentReview: financeSnapshot(paymentReview),
     purchaseCommitments: snapshotMetric(currentPurchaseCommitment(orders), now),
     unreconciledNonPo: financeSnapshot({
