@@ -19,17 +19,17 @@ async function insertInstallation() {
       // =====================================================
       // REFERENCES
       // =====================================================
-
+ticketId: "INT-1022",
       orderId: new mongoose.Types.ObjectId(
-        "6aa184bbddb5fab72cedcc00"
+        "6ab745191bfb81994c745821"
       ),
 
       inspectionTicketId: new mongoose.Types.ObjectId(
-        "6aa18559d322da79f8f388fd"
+        "6ab746bb1bfb81994c745a1f"
       ),
 
       customerId: new mongoose.Types.ObjectId(
-        "6a86b68df09ec22a4f0089c8"
+        "6a86b68df09ec22a4f0089cc"
       ),
 
       // =====================================================

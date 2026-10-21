@@ -1043,34 +1043,39 @@ exports.getRepairInvoiceQueue = async (req, res) => {
         }
       }
 
-      let ticketRef = "-";
+
+      let ticketRef = `REP-${repair._id.toString().slice(-5).toUpperCase()}`;
       let serviceType = "REPAIR";
+
       if (repair.serviceTicketId) {
         try {
           const ServiceTicket = mongoose.model("ServiceTicket");
           const ticket = await ServiceTicket.findById(repair.serviceTicketId);
+
           if (ticket) {
-            ticketRef   = `SVC-${ticket._id.toString().slice(-5).toUpperCase()}`;
+            ticketRef = `SVC-${ticket._id.toString().slice(-5).toUpperCase()}`;
             serviceType = ticket.serviceType || "REPAIR";
           }
         } catch {}
       }
 
       result.push({
-        repairId:       repair._id,
-        serviceTicketId:repair.serviceTicketId,
+        repairId: repair._id,
+        serviceTicketId: repair.serviceTicketId,
         ticketRef,
-        customerId:     repair.customerId,
+        ticketId: ticketRef,
+        customerId: repair.customerId,
         customerName,
         customerEmail,
         customerAddress,
-        repairType:     repair.repairType || "minor",
+        repairType: repair.repairType || "minor",
         materialsCount: repair.materials.length,
-        location:       repair.location || "",
-        date:           repair.updatedAt || repair.createdAt,
-        notes:          repair.notes || "",
+        location: repair.location || "",
+        date: repair.updatedAt || repair.createdAt,
+        notes: repair.notes || "",
       });
     }
+
 
     res.json(result);
   } catch (error) {

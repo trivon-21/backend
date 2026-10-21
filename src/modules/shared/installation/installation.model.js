@@ -1,6 +1,7 @@
+
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
-
+require('../../../models/counter.model');
 const installationSchema = new Schema(
   {
     ticketId: { type: String, unique: true },
