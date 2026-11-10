@@ -34,7 +34,11 @@ function canonicalPurchaseStatus(status) {
     APPROVED: 'approved',
     REJECTED: 'rejected',
   };
-  return legacyMap[status] || status;
+  if (!status) return status;
+  if (legacyMap[status]) return legacyMap[status];
+  const trimmed = String(status).trim();
+  if (legacyMap[trimmed]) return legacyMap[trimmed];
+  return trimmed.toLowerCase();
 }
 
 /**

@@ -44,13 +44,11 @@ function assertVersion(record, statusVersion) {
 }
 
 function summarize(orders) {
-  const pending = orders.filter((order) => canonicalPurchaseStatus(order.status) === 'pending-manager');
   return {
-    pending: pending.length,
+    pending: orders.filter((order) => canonicalPurchaseStatus(order.status) === 'pending-manager').length,
     awaitingFinance: orders.filter((order) => isPendingFinanceApproval(order.status)).length,
     approved: orders.filter((order) => ['approved', 'ordered', 'partially-received', 'received'].includes(canonicalPurchaseStatus(order.status))).length,
     rejected: orders.filter((order) => canonicalPurchaseStatus(order.status) === 'rejected').length,
-    pendingValue: pending.reduce((sum, order) => sum + Number(order.totalEstimate || 0), 0),
   };
 }
 

@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const OrderModel = require("../../models/Order");
 const { sendBuyOnlyRejectionEmail, sendBuyOnlyApprovalEmail } = require("../shared/notification/email.service");
 const { createLog } = require("./auditLog.controller");
+const { createDispatchOrderFromOrder } = require("../inventory-manager/services/dispatch.service");
+const { invalidateInventoryScopes, INVENTORY_CACHE_PREFIXES } = require("../inventory-manager/inventory-manager.cache");
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
 const getOrderModel = () => OrderModel;
@@ -174,6 +176,11 @@ exports.approvePayment = async (req, res) => {
 
     if (customerEmail) {
       await sendBuyOnlyApprovalEmail(customerEmail, customerName, orderRef);
+    }
+
+    const dispatchOrder = await createDispatchOrderFromOrder(updatedOrder, customerName);
+    if (dispatchOrder) {
+      invalidateInventoryScopes(INVENTORY_CACHE_PREFIXES.DISPATCH);
     }
 
     const formatted = await formatOrder(updatedOrder);

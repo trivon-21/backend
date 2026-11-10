@@ -99,7 +99,7 @@ async function loadAuthorizations(status) {
 // the serialized-asset join that projectSerialNumbers performs over the whole
 // catalog. Serial numbers on a receipt are typed in, never read from here.
 function loadProcurementCatalog() {
-  return Inventory.find().select('name sku unit isSerialized location binLocation').lean();
+  return Inventory.find().select('name sku unit isSerialized location binLocation unitCost available itemClass subcategory').lean();
 }
 
 exports.createReceiptAuthorization = async (data, user, options = {}) => {
