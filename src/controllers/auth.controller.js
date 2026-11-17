@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const nodemailer = require("nodemailer");
+const nodemailer = require('../config/mailer');
 const User = require("../models/User");
 const LoggingService = require("../utils/logging-service");
 
@@ -659,7 +659,7 @@ exports.mockLogin = (req, res) => {
     userRole: role // e.g. 'Super Admin' or 'Finance Officer'
   };
 
-  const token = jwt.sign(payload, process.env.JWT_SECRET || 'airlux_secret_key', { expiresIn: '1d' });
+  const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
 
   res.json({
     success: true,

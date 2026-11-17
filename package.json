@@ -16,7 +16,9 @@
     "workflow:migrate-serialized-assets": "node scripts/migrate-serialized-assets.js",
     "workflow:reconcile-indexes": "node scripts/reconcile-manager-inventory-indexes.js",
     "schema:snapshot": "node scripts/export-schema-snapshot.js",
-    "schema:audit": "npm run schema:snapshot && node scripts/audit-schema-snapshot.js --schema-report ../schema-report-new.json"
+    "schema:audit": "npm run schema:snapshot && node scripts/audit-schema-snapshot.js --schema-report ../schema-report-new.json",
+    "test:hosting": "node --test tests/hosting/*.test.js",
+    "seed:demo": "node scripts/seed-demo.js"
   },
   "keywords": [],
   "author": "",
@@ -45,5 +47,10 @@
   "devDependencies": {
     "mocha": "^10.2.0",
     "nodemon": "^3.1.11"
-  }
+  },
+  "engines": {
+    "node": ">=24.15.0 <25",
+    "npm": ">=11 <12"
+  },
+  "packageManager": "npm@11.21.2"
 }

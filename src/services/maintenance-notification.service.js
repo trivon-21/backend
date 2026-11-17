@@ -1,4 +1,4 @@
-const nodemailer = require('nodemailer');
+const nodemailer = require('../config/mailer');
 const User = require('../models/User');
 
 class MaintenanceNotificationService {

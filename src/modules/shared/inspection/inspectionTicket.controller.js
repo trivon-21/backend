@@ -709,7 +709,7 @@ exports.rescheduleInspection = async (req, res) => {
 };
 
 // ── CRON: 8AM daily reminder ──────────────────────────────────────────────────
-cron.schedule("0 8 * * *", async () => {
+exports.scheduleInspectionReminders = () => cron.schedule("0 8 * * *", async () => {
   try {
     const InspectionTicket = getTicketModel();
     const User = getUserModel();
