@@ -64,3 +64,9 @@ Feature branches: frontend feat/spartan-demo; backend feat/demo-hosting. Baselin
 
 ## Handoff
 Implementation is on the feature branches listed above. Review docs/assets in the frontend for the pilot previews. Continue with hosting account connections and isolated demo environment setup; do not claim a public URL until it is verified. After deployment, update this document with the real URLs, frontend/backend SHAs, hosted smoke-test results, and rollback targets. Keep unrelated portal migration and existing backend diagnostic failures in follow-up tasks.
+
+## Organization follow-up
+
+Organization guidelines are recorded in [docs/ORGANIZATION.md](ORGANIZATION.md). The dev ruleset currently requires zero approvals but restricts updates to a single always-bypass actor; baseline merging is blocked for the current maintainer. Recommended remediation is normal PR/CI protection, with force-push/deletion protections retained, rather than routine administrator bypass.
+
+GOV-01 (pending, authorized ruleset editor): review overlapping rules, agree the policy, apply it to both repos, complete the baseline PRs, retarget the implementation PRs, and then establish dev as default with exact working CI gates. Organization permissions, project boards, reviewer assignments, and hosting ownership have not been changed by the documentation update.

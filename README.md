@@ -18,3 +18,6 @@ After configuring only an isolated demo database, set `DEMO_PASSWORD` (at least 
 The required CI workflow runs hosting checks. The separate, manually triggered **Existing suite diagnostics** workflow runs the full legacy/domain suites and reports failures as failures. Their known baseline issues are not release-validation successes. Render's deployment gate applies to the required hosting workflow; run diagnostics before promoting a demo to a production release.
 
 Render setup order: set the Atlas URI and exact HTTPS frontend origin(s), deploy and verify `/healthz`, seed from your local terminal using the same isolated database, then configure Vercel's `AIRLUX_API_URL`. Add the final frontend origin to `FRONTEND_URL` if it differs. Seeding is never part of server startup or deploy builds.
+
+## Organization and contribution workflow
+See [organization guidelines](docs/ORGANIZATION.md) for the proposed branch/CI policy, roles, PR practices, release coordination, team credit, and one-hour development routine. Settings recommendations are tracked separately from the application migration.

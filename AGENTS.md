@@ -1,9 +1,10 @@
 # Airlux backend: agent instructions
 
-Read README.md and docs/MIGRATION.md before editing. Update the task board and handoff at the end of each task.
+Read README.md, docs/MIGRATION.md, and docs/ORGANIZATION.md before editing. Update the task board and handoff at the end of each task.
 
 ## Working agreements
 - Team-owned application in trivon-21. Preserve original authorship, workflows, API paths, status values, and permissions.
+- Organization settings in the guide are recommendations: do not apply permission/ruleset changes as part of an unrelated task. Do not bypass protected refs to get a merge through.
 - Integrate through short-lived branches targeting `dev`; `main` is for verified releases. Do not reset history or bulk-merge old branches.
 - Pin dependencies and lockfiles. Use Node 24 (see .nvmrc) and npm 11. Never bypass peer dependencies.
 - Work in coherent tasks that a developer can review in a one-hour session. Avoid unrelated rewrites.
