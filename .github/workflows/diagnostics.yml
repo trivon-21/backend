@@ -1,0 +1,26 @@
+name: Existing suite diagnostics
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  existing-suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NODE_ENV: test
+      BACKGROUND_JOBS_ENABLED: 'false'
+      MAIL_MODE: log
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [test:domain, test:legacy]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm install -g npm@11.21.2
+      - run: npm ci
+      - run: npm run ${{ matrix.suite }}

@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: airlux-demo-api
+    runtime: node
+    plan: free
+    branch: dev
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_VERSION
+        value: 24.22.3
+      - key: NODE_ENV
+        value: production
+      - key: DEMO_MODE
+        value: "true"
+      - key: BACKGROUND_JOBS_ENABLED
+        value: "false"
+      - key: MAIL_MODE
+        value: log
+      - key: MONGO_DB_NAME
+        value: airlux_demo_staging
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGO_URI
+        sync: false
+      - key: FRONTEND_URL
+        sync: false

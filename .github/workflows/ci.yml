@@ -1,0 +1,25 @@
+name: Backend checks
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+permissions:
+  contents: read
+jobs:
+  hosting:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      DEMO_MODE: 'true'
+      BACKGROUND_JOBS_ENABLED: 'false'
+      MAIL_MODE: log
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm install -g npm@11.21.2
+      - run: npm ci
+      - run: npm run test:hosting
