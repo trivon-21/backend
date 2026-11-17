@@ -20,7 +20,7 @@ The original team designed and implemented the application and business workflow
 - Keep two repositories. dev is integration; main is release. No full contributor-branch consolidation in this sprint.
 - Vercel frontend + Render Free backend + isolated Atlas demo data. Free hosting is a demo, not guaranteed background processing.
 - Preserve existing payment-slip persistence; do not add storage migration unless an active filesystem dependency blocks hosting.
-- CI reports existing test failures honestly; required hosting checks must pass.
+- CI reports existing test failures honestly; required hosting checks must pass. PR validation also accepts dev-new temporarily while the protected baseline PRs await merge.
 
 ## Tasks
 | ID | Task | Status | Acceptance |
@@ -59,7 +59,7 @@ Implemented continuation work: tracked Codex guidance and a one-hour task plan; 
 Vercel, Render, and Atlas connections are not configured in this session. Connect the accounts, supply an isolated Atlas URI and demo password through local/platform secrets, configure Render's exact frontend origin(s), verify backend health, seed demo data, then set Vercel AIRLUX_API_URL and deploy. Use the native Git integrations for subsequent dev updates. Existing diagnostic failures must be resolved before a production release; the required demo CI checks are deliberately separate from those diagnostics.
 
 ### Branch and release evidence
-Feature branches: frontend feat/spartan-demo; backend feat/demo-hosting. Baseline PRs: [frontend #73](https://github.com/trivon-21/frontend/pull/73), [backend #71](https://github.com/trivon-21/backend/pull/71). Direct push and normal PR merge were rejected by existing branch rules. No administrator bypass was used. Remote dev/default branches remain unchanged. Implementation PRs temporarily target dev-new to isolate the code review; retarget to dev after an authorized maintainer merges the baseline PRs. Change the default branch to dev only after that baseline is established. No attribution has been rewritten. Historical source contains a deleted .env; use fresh demo secrets and review any old credentials separately without republishing them.
+Feature branches: frontend feat/spartan-demo; backend feat/demo-hosting. Baseline PRs: [frontend #73](https://github.com/trivon-21/frontend/pull/73), [backend #71](https://github.com/trivon-21/backend/pull/71). Direct push and normal PR merge were rejected by existing branch rules. No administrator bypass was used. Remote dev/default branches remain unchanged. Implementation PRs: [frontend #74](https://github.com/trivon-21/frontend/pull/74), [backend #72](https://github.com/trivon-21/backend/pull/72). They temporarily target dev-new to isolate the code review; retarget to dev after an authorized maintainer merges the baseline PRs. Change the default branch to dev only after that baseline is established. No attribution has been rewritten. Historical source contains a deleted .env; use fresh demo secrets and review any old credentials separately without republishing them.
 
 ## Handoff
 Implementation is on the feature branches listed above. Review docs/assets in the frontend for the pilot previews. Continue with hosting account connections and isolated demo environment setup; do not claim a public URL until it is verified. After deployment, update this document with the real URLs, frontend/backend SHAs, hosted smoke-test results, and rollback targets. Keep unrelated portal migration and existing backend diagnostic failures in follow-up tasks.
