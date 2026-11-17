@@ -53,6 +53,7 @@ Implemented continuation work: tracked Codex guidance and a one-hour task plan; 
 - Existing legacy suite remains 99 passing / 3 failing (schema expectations, purchase-report query timeout, service history); domain suite remains 78 passing / 1 failing (audit-scope coverage). The diagnostic Mocha run additionally executed 14 Node tests and waited for existing query timers. These are not reported as passing release checks.
 - Deployment build passed with a synthetic HTTPS API URL; missing, HTTP/localhost, incorrect-path, and query-bearing API settings were rejected.
 - Spartan healthcheck passed all checks; its optional Prettier formatting step was unavailable and made no changes.
+- Real login verification also exposed an existing non-blocking audit-log enum mismatch for the INVENTORY role: login succeeds, but its audit entry is rejected. Track this as a follow-up; no audit behavior is silently changed in the hosting work.
 - No public deployment or production database migration has been performed.
 
 ### Deployment prerequisites
