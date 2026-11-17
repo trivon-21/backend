@@ -4,7 +4,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const admin = require("firebase-admin");
-const nodemailer = require("nodemailer");
+const nodemailer = require('../../config/mailer');
 const User = require("../../models/User");
 
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -48,6 +48,7 @@ function signToken(user, rememberMe = true) {
 }
 
 function getEmailTransporter() {
+  if (nodemailer.mailIsDisabled()) return nodemailer.createTransport({});
   const emailUser = String(process.env.EMAIL_USER || "").trim();
   // Gmail app passwords are often copied with spaces; strip them safely.
   const emailPass = String(process.env.EMAIL_PASS || "").replace(/\s+/g, "");

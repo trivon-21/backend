@@ -4,7 +4,7 @@ const cron = require("node-cron");
 const PDFDocument = require("pdfkit");
 const { createLog } = require("./auditLog.controller");
 
-// Lazy model loaders 
+// Lazy model loaders
 
 const getOrderModel = () => {
   const s = new mongoose.Schema({
@@ -1365,7 +1365,7 @@ await syncFinanceStatus(invoice, "Finance Rejected");
 };
 
 // ── CRON JOBS ─────────────────────────────────────────────────────────────────
-cron.schedule("0 9 * * *", async () => {
+exports.scheduleInvoiceReminders = () => cron.schedule("0 9 * * *", async () => {
   const now = new Date();
   console.log("Running invoice cron jobs...");
 

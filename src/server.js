@@ -1,149 +1,33 @@
 const path = require('path');
-const dotenv = require('dotenv');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const { validateRuntime } = require('./config/runtime');
 
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+async function startServer() {
+  validateRuntime();
+  // Register legacy shared model collections used by finance and reporting flows.
+  require('./modules/shared/L_installations.model');
+  require('./modules/shared/L_inventories.model');
+  require('./modules/shared/L_charges.model');
+  require('./modules/shared/L_sellingPrice.model');
+  require('./modules/shared/L_serviceReport.model');
+  require('./modules/shared/L_bankDetails.model');
+  require('./modules/shared/L_repair.model');
+  require('./models/PurchaseRequest');
 
-// Register legacy shared model collections used by finance and reporting flows.
-require('./modules/shared/L_installations.model');
-require('./modules/shared/L_inventories.model');
-require('./modules/shared/L_charges.model');
-require('./modules/shared/L_sellingPrice.model');
-require('./modules/shared/L_serviceReport.model');
-require('./modules/shared/L_bankDetails.model');
-require('./modules/shared/L_repair.model');
-require('./models/PurchaseRequest');
-
-const app = require('./app');
-const { connectDb } = require('./config');
-const { schedulePaymentAutoCancelJob } = require('./jobs/paymentAutoCancelJob');
-const maintenanceNotificationService = require('./services/maintenance-notification.service');
-
-const PORT = process.env.PORT || 5000;
-
-/**
- * Startup repair job — runs once after DB connects.
- * Scans for completed Installations with no linked MaintenanceSchedule and
- * creates the missing records. Safe: never deletes data, never throws to crash boot.
- */
-const runStartupRepair = async () => {
-  try {
-    const Installation = require('./modules/shared/installation/installation.model');
-    const MaintenanceSchedule = require('./modules/shared/maintenance/maintenanceSchedule.model');
-    const Counter = require('./models/counter.model');
-    const { buildServiceTemplate, buildScheduleEndDate } = require('./modules/shared/maintenance/scheduleTemplate');
-    const Customer = require('./modules/user/user.model');
-    const {
-      EXECUTION_STATUS,
-      MAINTENANCE_SCHEDULE_STATUS,
-      INSTALLATION_MAINTENANCE_STATUS
-    } = require('./constants/enums');
-
-    const orphaned = await Installation.find({
-      status: EXECUTION_STATUS.COMPLETED,
-      maintenanceScheduleId: null
-    }).lean();
-
-    if (orphaned.length === 0) {
-      console.log('✅ Startup repair: all completed installations already have a MaintenanceSchedule.');
-    } else {
-      console.log(`⚙️  Startup repair: found ${orphaned.length} completed installation(s) with no schedule — creating now...`);
-      let created = 0;
-      for (const inst of orphaned) {
-        try {
-          const customer = await Customer.findById(inst.customerId).lean();
-          if (!customer) continue;
-
-          const services = buildServiceTemplate(new Date(inst.date || inst.serviceDate || inst.createdAt));
-          const scheduleEndDate = buildScheduleEndDate(new Date(inst.date || inst.serviceDate || inst.createdAt));
-          const counter = await Counter.findOneAndUpdate(
-            { _id: 'maintenanceScheduleTicket' },
-            { $inc: { seq: 1 } },
-            { new: true, upsert: true }
-          );
-
-          const newSchedule = new MaintenanceSchedule({
-            customerId: customer._id,
-            customerName: customer.name,
-            customerEmail: customer.email,
-            customerPhone: customer.contactNo,
-            productType: inst.productType,
-            location: inst.location,
-            ticketId: `MS-${String(counter.seq).padStart(4, '0')}`,
-            status: MAINTENANCE_SCHEDULE_STATUS.NEW,
-            services,
-            scheduleEndDate,
-            installationId: inst._id,
-            installationDate: inst.date || inst.serviceDate || inst.createdAt
-          });
-
-          const saved = await newSchedule.save();
-          await Installation.findByIdAndUpdate(inst._id, {
-            maintenanceScheduleId: saved._id,
-            maintenanceStatus: INSTALLATION_MAINTENANCE_STATUS.PENDING_CSA
-          });
-          created++;
-        } catch (err) {
-          console.error(`Error repairing installation ${inst._id}:`, err);
-        }
-      }
-      console.log(`Startup repair complete. Created ${created} missing schedules.`);
-    }
-  } catch (err) {
-    console.error('⚠️ Startup repair encountered an error (non-fatal):', err.message);
-  }
-};
-
-function scheduleScheduledMaintenanceStartWatcher() {
-  const runCheck = async () => {
-    try {
-      await maintenanceNotificationService.processScheduledMaintenanceStartNotifications();
-    } catch (error) {
-      console.error('Scheduled maintenance start watcher failed:', error.message);
-    }
+  const app = require('./app');
+  const mongoose = require('mongoose');
+  await require('./config/db')();
+  const stopJobs = require('./jobs').startBackgroundJobs();
+  const server = app.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log('Airlux API listening'));
+  const shutdown = () => {
+    stopJobs();
+    server.close(() => mongoose.disconnect().catch(console.error));
   };
-
-  runCheck();
-  setInterval(runCheck, 60 * 1000);
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
+  return server;
 }
-
-function scheduleGlobalNotificationWatcher() {
-  const superAdminService = require('./modules/super-admin/super-admin.service');
-  const runCheck = async () => {
-    try {
-      await superAdminService.processScheduledNotifications();
-    } catch (error) {
-      console.error('Scheduled global notification watcher failed:', error.message);
-    }
-  };
-
-  runCheck();
-  setInterval(runCheck, 30 * 1000);
+if (require.main === module) {
+  startServer().catch(error => { console.error('Server startup failed:', error.message); process.exitCode = 1; });
 }
-
-const startServer = async () => {
-  try {
-    await connectDb();
-    console.log('MongoDB connected');
-
-    // Existing records are deliberately left untouched at startup. New
-    // schedules are created only when an installation reaches Completed.
-
-    try {
-      schedulePaymentAutoCancelJob();
-      scheduleScheduledMaintenanceStartWatcher();
-      scheduleGlobalNotificationWatcher();
-      console.log('Background jobs scheduled successfully');
-    } catch (err) {
-      console.warn('Warning: Could not schedule background jobs:', err.message);
-    }
-
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error('Server startup failed:', error.message);
-    process.exit(1);
-  }
-};
-
-startServer();
+module.exports = { startServer };
