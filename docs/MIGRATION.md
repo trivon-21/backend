@@ -9,7 +9,7 @@ Continue the team-created application within Trivon. Deliver a hosted synthetic-
 The original team designed and implemented the application and business workflows. Sathnuwan Dassana is continuing development, UI migration, deployment preparation, and maintenance. Preserve all Git authorship. Planned work is not completed contribution evidence.
 
 ## Baseline
-- Both local dev branches fast-forwarded from origin/dev to origin/dev-new. GitHub protects dev and requires PRs; no direct update or rules bypass is used. Remote/default changes are recorded below after confirmation.
+- The current application baseline is merged into remote dev through PRs. dev is the default in both repositories. PR, required GitHub Actions checks, up-to-date branches, resolved review threads, deletion protection, and force-push protection are enforced.
 - Frontend baseline: production build and 207 unit tests passed in an isolated audit.
 - Backend baseline: npm ci lock mismatch; diagnostic legacy tests 99 pass / 3 fail and lingering work; domain tests 78 pass / 1 fail. Diagnostic install was not lockfile-reproducible.
 - No root AI instructions were present on dev-new.
@@ -20,23 +20,23 @@ The original team designed and implemented the application and business workflow
 - Keep two repositories. dev is integration; main is release. No full contributor-branch consolidation in this sprint.
 - Vercel frontend + Render Free backend + isolated Atlas demo data. Free hosting is a demo, not guaranteed background processing.
 - Preserve existing payment-slip persistence; do not add storage migration unless an active filesystem dependency blocks hosting.
-- CI reports existing test failures honestly; required hosting checks must pass. PR validation also accepts dev-new temporarily while the protected baseline PRs await merge.
+- CI reports existing test failures honestly; required hosting checks must pass. PR validation targets dev and main. The temporary dev-new target was removed after baseline integration.
 
 ## Tasks
 | ID | Task | Status | Acceptance |
 |---|---|---|---|
-| S01 | Baseline, guidance, and branch setup | Local complete; protected baseline PR pending | Tracked docs; clean history; defaults unchanged until reviewed |
-| S02 | Angular 21 upgrade | Implemented locally | Build/tests pass |
-| S03 | Angular 22 and icon upgrade | Implemented locally | Compatible peer dependencies; build/tests pass |
-| S04 | Tailwind 4 migration | Implemented locally | Existing styles remain usable |
-| S05 | Spartan generation | Implemented locally | Real generated components render |
-| S06 | Airlux theme | Implemented locally | Semantic tokens and legacy compatibility |
-| S07 | Dispatch list migration | Implemented locally | Search/actions use Spartan |
-| S08 | Dispatch dialogs | Implemented locally | API behavior, keyboard focus, and errors preserved |
-| S09 | Backend installation/config | Implemented locally | Reproducible ci; safe demo config |
+| S01 | Baseline, guidance, and branch setup | Configured remotely | Tracked docs; clean history; defaults unchanged until reviewed |
+| S02 | Angular 21 upgrade | Implemented; linked PR | Build/tests pass |
+| S03 | Angular 22 and icon upgrade | Implemented; linked PR | Compatible peer dependencies; build/tests pass |
+| S04 | Tailwind 4 migration | Implemented; linked PR | Existing styles remain usable |
+| S05 | Spartan generation | Implemented; linked PR | Real generated components render |
+| S06 | Airlux theme | Implemented; linked PR | Semantic tokens and legacy compatibility |
+| S07 | Dispatch list migration | Implemented; linked PR | Search/actions use Spartan |
+| S08 | Dispatch dialogs | Implemented; linked PR | API behavior, keyboard focus, and errors preserved |
+| S09 | Backend installation/config | Implemented; linked PR | Reproducible ci; safe demo config |
 | S10 | Render configuration | Configured; account connection pending | Ready endpoint and reproducible service configuration |
 | S11 | Vercel configuration | Configured; account connection pending | Build-time API URL; nested route refresh |
-| S12 | CI | Implemented locally | Frontend build/tests; backend hosting checks; visible legacy failures |
+| S12 | CI | Implemented; linked PR | Frontend build/tests; backend hosting checks; visible legacy failures |
 | S13 | Verification | Local checks passed; hosted checks pending | Builds, HTTP contracts, mobile/keyboard checks |
 | S14 | Release and evidence | Screenshots ready; public release pending | Published URLs and PR/release links, or explicitly recorded external blockers |
 
@@ -60,13 +60,13 @@ Implemented continuation work: tracked Codex guidance and a one-hour task plan; 
 Vercel, Render, and Atlas connections are not configured in this session. Connect the accounts, supply an isolated Atlas URI and demo password through local/platform secrets, configure Render's exact frontend origin(s), verify backend health, seed demo data, then set Vercel AIRLUX_API_URL and deploy. Use the native Git integrations for subsequent dev updates. Existing diagnostic failures must be resolved before a production release; the required demo CI checks are deliberately separate from those diagnostics.
 
 ### Branch and release evidence
-Feature branches: frontend feat/spartan-demo; backend feat/demo-hosting. Baseline PRs: [frontend #73](https://github.com/trivon-21/frontend/pull/73), [backend #71](https://github.com/trivon-21/backend/pull/71). Direct push and normal PR merge were rejected by existing branch rules. No administrator bypass was used. Remote dev/default branches remain unchanged. Implementation PRs: [frontend #74](https://github.com/trivon-21/frontend/pull/74), [backend #72](https://github.com/trivon-21/backend/pull/72). They temporarily target dev-new to isolate the code review; retarget to dev after an authorized maintainer merges the baseline PRs. Change the default branch to dev only after that baseline is established. No attribution has been rewritten. Historical source contains a deleted .env; use fresh demo secrets and review any old credentials separately without republishing them.
+Baseline PRs [frontend #73](https://github.com/trivon-21/frontend/pull/73) and [backend #71](https://github.com/trivon-21/backend/pull/71) were merged normally with merge commits, preserving authorship. Implementation PRs [frontend #74](https://github.com/trivon-21/frontend/pull/74) and [backend #72](https://github.com/trivon-21/backend/pull/72) target dev; their live status records checks and merge results. dev is now the default branch in both repos. No history was reset and no administrator merge bypass was used. Historical source contains a deleted .env; use fresh demo secrets and review any old credentials separately without republishing them.
 
 ## Handoff
-Implementation is on the feature branches listed above. Review docs/assets in the frontend for the pilot previews. Continue with hosting account connections and isolated demo environment setup; do not claim a public URL until it is verified. After deployment, update this document with the real URLs, frontend/backend SHAs, hosted smoke-test results, and rollback targets. Keep unrelated portal migration and existing backend diagnostic failures in follow-up tasks.
+Review the linked PR statuses and start subsequent feature branches from the latest dev after implementation merges. Continue with hosting account access and isolated demo environment setup; do not claim a public URL until it is verified. After deployment, record the real URLs, paired SHAs, hosted smoke-test results, and rollback targets. Keep remaining portal migration and existing backend diagnostic failures in follow-up tasks.
 
 ## Organization follow-up
 
-Organization guidelines are recorded in [docs/ORGANIZATION.md](ORGANIZATION.md). The dev ruleset currently requires zero approvals but restricts updates to a single always-bypass actor; baseline merging is blocked for the current maintainer. Recommended remediation is normal PR/CI protection, with force-push/deletion protections retained, rather than routine administrator bypass.
+GOV-01 (applied 2026-11-18 at the user's request): removed Restrict updates from both dev rulesets; retained PR, deletion, force-push protections and existing bypass membership; required resolved conversations; added strict required GitHub Actions checks (frontend build-and-test, backend hosting, app ID 15368); merged the baseline PRs; retargeted implementation PRs; set dev as default. The old update lock had blocked ordinary merges even with zero required approvals. Normal baseline merges verified the correction without an administrator override.
 
-GOV-01 (pending, authorized ruleset editor): review overlapping rules, agree the policy, apply it to both repos, complete the baseline PRs, retarget the implementation PRs, and then establish dev as default with exact working CI gates. Organization permissions, project boards, reviewer assignments, and hosting ownership have not been changed by the documentation update.
+The main rulesets retain their intentional release freeze until history reconciliation and release verification. Organization membership and existing bypass actors were not changed. GOV-02 remains pending for broader governance: recovery ownership/access review, hosting ownership, and release readiness. See [organization guidelines](ORGANIZATION.md).
