@@ -1,0 +1,31 @@
+const mongoose = require('mongoose');
+const { normalizeSerialNumber } = require('../utils/serialized-asset-domain');
+
+const AssetLoanSchema = new mongoose.Schema({
+  toolId: { type: mongoose.Schema.Types.ObjectId, ref: 'ManagerInventoryItem', required: true },
+  serializedAssetId: { type: mongoose.Schema.Types.ObjectId, ref: 'SerializedAsset', index: true },
+  toolName: { type: String, required: true, trim: true },
+  assetTag: { type: String, required: true, trim: true },
+  normalizedAssetTag: { type: String, index: true },
+  technicianId: { type: String, required: true },
+  technicianUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  technicianName: { type: String, required: true, trim: true },
+  checkedOutAt: { type: Date, default: Date.now },
+  dueDate: { type: Date, required: true },
+  status: { type: String, enum: ['on-loan', 'returned'], default: 'on-loan' },
+  returnedAt: { type: Date },
+  condition: { type: String, enum: ['good', 'damaged', 'incomplete'], default: 'good' },
+}, { 
+  timestamps: true,
+  collection: 'asset_loans'
+});
+
+AssetLoanSchema.index({ status: 1, checkedOutAt: -1 });
+
+AssetLoanSchema.pre('validate', function synchronizeReturnState() {
+  this.normalizedAssetTag = normalizeSerialNumber(this.assetTag);
+  if (this.status === 'returned' && !this.returnedAt) this.returnedAt = new Date();
+  if (this.status === 'on-loan') this.returnedAt = undefined;
+});
+
+module.exports = mongoose.model('AssetLoan', AssetLoanSchema);

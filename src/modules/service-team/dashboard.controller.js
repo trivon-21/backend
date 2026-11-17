@@ -1,5 +1,6 @@
 const Installation = require('../shared/installation/installation.model');
 const ServiceRequest = require('../shared/repair/repair.model');
+const Maintenance = require('../shared/maintenance/maintenance.model');
 const TechTeam = require('../shared/tech-teams/techTeam.model');
 const { DEFAULT_TEAM_NAME } = require('../../config/app.config');
 const {
@@ -38,7 +39,6 @@ const parseActivityLimit = (value) => {
 const normalize = (value) => String(value || '').trim().toLowerCase();
 const NORMALIZED_STATUS = {
   ASSIGNED: normalize(EXECUTION_STATUS.ASSIGNED),
-  SCHEDULED: normalize(EXECUTION_STATUS.SCHEDULED),
   PENDING: normalize(WORKFLOW_STATUS.PENDING),
   FINANCE_APPROVED: normalize(WORKFLOW_STATUS.FINANCE_APPROVED),
   SENT_TO_IM: normalize(WORKFLOW_STATUS.SENT_TO_IM),
@@ -49,52 +49,91 @@ const NORMALIZED_STATUS = {
 const STATUS_PRIORITY = new Map([
   [NORMALIZED_STATUS.IN_PROGRESS, 1],
   [NORMALIZED_STATUS.ASSIGNED, 2],
-  [NORMALIZED_STATUS.SCHEDULED, 3],
-  [NORMALIZED_STATUS.PENDING, 4],
-  [NORMALIZED_STATUS.FINANCE_APPROVED, 5],
-  [NORMALIZED_STATUS.SENT_TO_IM, 6],
-  [NORMALIZED_STATUS.COMPLETED, 7],
+  [NORMALIZED_STATUS.PENDING, 3],
+  [NORMALIZED_STATUS.FINANCE_APPROVED, 4],
+  [NORMALIZED_STATUS.SENT_TO_IM, 5],
+  [NORMALIZED_STATUS.COMPLETED, 6],
 ]);
 
 const JOB_TYPE = {
   SERVICE: REQUEST_TYPES.SERVICE.toLowerCase(),
   INSTALLATION: REQUEST_TYPES.INSTALLATION.toLowerCase(),
+  MAINTENANCE: 'maintenance',
 };
 
 /**
- * GET: Dashboard summary - counts of active jobs, service requests, and installations
+ * GET: Dashboard summary - counts of active jobs, service requests, installations, and maintenances
  */
 exports.getDashboardSummary = async (req, res) => {
   try {
     const requestedTeamName = getRequestedTeamName(req, DEFAULT_TEAM_NAME);
-    const [installs, requests] = await Promise.all([
-      Installation.find({}).lean(),
-      ServiceRequest.find({}).lean()
-    ]);
+    
+    const { resolveTeam, normalizeTeamName } = require('../../utils/team.utils');
+    const team = await resolveTeam(requestedTeamName);
 
-    const assignedStageStatuses = new Set([
+    if (!team) {
+      return res.json({ success: true, data: { activeJobs: 0, serviceRequests: 0, installations: 0, maintenances: 0, inProgressServiceRequests: 0, inProgressInstallations: 0, inProgressMaintenances: 0 } });
+    }
+
+    const normalized = normalizeTeamName(requestedTeamName);
+
+    const teamIdStr = String(team._id);
+    const mongoose = require('mongoose');
+    const teamIdObj = mongoose.Types.ObjectId.isValid(teamIdStr) ? new mongoose.Types.ObjectId(teamIdStr) : teamIdStr;
+    const teamNamePattern = new RegExp(`^${normalized}$`, 'i');
+    const fullNamePattern = new RegExp(`^${team.fullName?.trim()?.toLowerCase()}$`, 'i');
+
+    const query = {
+      $or: [
+        { assignedTeamId: teamIdObj },
+        { assignedTeamId: teamIdStr },
+        { assignedTeamName: { $regex: teamNamePattern } },
+        { assignedTeam: { $regex: teamNamePattern } },
+        { teamName: { $regex: teamNamePattern } },
+        { assignedTo: { $regex: teamNamePattern } },
+        ...(team.fullName ? [
+          { assignedTeamName: { $regex: fullNamePattern } },
+          { assignedTeam: { $regex: fullNamePattern } },
+          { teamName: { $regex: fullNamePattern } },
+          { assignedTo: { $regex: fullNamePattern } }
+        ] : [])
+      ]
+    };
+
+    const assignedStageRegexes = [
       NORMALIZED_STATUS.ASSIGNED,
       NORMALIZED_STATUS.SCHEDULED,
       NORMALIZED_STATUS.PENDING,
       NORMALIZED_STATUS.FINANCE_APPROVED,
       NORMALIZED_STATUS.SENT_TO_IM,
+    ].map(s => new RegExp(`^${s}$`, 'i'));
+
+    const inProgressRegex = new RegExp(`^${NORMALIZED_STATUS.IN_PROGRESS}$`, 'i');
+
+    const [
+      inProgressInstallations,
+      inProgressServiceRequests,
+      inProgressMaintenances,
+      assignedInstallations,
+      assignedServiceRequests,
+      assignedMaintenances
+    ] = await Promise.all([
+      Installation.countDocuments({ ...query, status: inProgressRegex }),
+      ServiceRequest.countDocuments({ ...query, status: inProgressRegex }),
+      Maintenance.countDocuments({ ...query, status: inProgressRegex }),
+      Installation.countDocuments({ ...query, status: { $in: assignedStageRegexes } }),
+      ServiceRequest.countDocuments({ ...query, status: { $in: assignedStageRegexes } }),
+      Maintenance.countDocuments({ ...query, status: { $in: assignedStageRegexes } }),
     ]);
 
-    const teamInstallations = installs.filter((job) => matchesJobTeam(job, requestedTeamName));
-    const teamServiceRequests = requests.filter((job) => matchesJobTeam(job, requestedTeamName));
-
-    const inProgressInstallations = teamInstallations.filter((item) => normalize(item.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
-    const inProgressServiceRequests = teamServiceRequests.filter((item) => normalize(item.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
-
-    const assignedInstallations = teamInstallations.filter((item) => assignedStageStatuses.has(normalize(item.status))).length;
-    const assignedServiceRequests = teamServiceRequests.filter((item) => assignedStageStatuses.has(normalize(item.status))).length;
-
     const summary = {
-      activeJobs: inProgressInstallations + inProgressServiceRequests,
+      activeJobs: inProgressInstallations + inProgressServiceRequests + inProgressMaintenances,
       serviceRequests: assignedServiceRequests,
       installations: assignedInstallations,
+      maintenances: assignedMaintenances,
       inProgressServiceRequests,
-      inProgressInstallations
+      inProgressInstallations,
+      inProgressMaintenances,
     };
 
     res.json({ success: true, data: summary });
@@ -111,43 +150,69 @@ exports.getRecentActivity = async (req, res) => {
     const requestedTeamName = getRequestedTeamName(req, DEFAULT_TEAM_NAME);
     const limit = parseActivityLimit(req.query.limit);
 
-    const [installs, requests] = await Promise.all([
-      Installation.find({}).lean(),
-      ServiceRequest.find({}).lean()
+    const { resolveTeam, normalizeTeamName } = require('../../utils/team.utils');
+    const team = await resolveTeam(requestedTeamName);
+
+    if (!team) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const normalized = normalizeTeamName(requestedTeamName);
+
+    const teamIdStr = String(team._id);
+    const mongoose = require('mongoose');
+    const teamIdObj = mongoose.Types.ObjectId.isValid(teamIdStr) ? new mongoose.Types.ObjectId(teamIdStr) : teamIdStr;
+    const teamNamePattern = new RegExp(`^${normalized}$`, 'i');
+    const fullNamePattern = new RegExp(`^${team.fullName?.trim()?.toLowerCase()}$`, 'i');
+
+    const query = {
+      $or: [
+        { assignedTeamId: teamIdObj },
+        { assignedTeamId: teamIdStr },
+        { assignedTeamName: { $regex: teamNamePattern } },
+        { assignedTeam: { $regex: teamNamePattern } },
+        { teamName: { $regex: teamNamePattern } },
+        { assignedTo: { $regex: teamNamePattern } },
+        ...(team.fullName ? [
+          { assignedTeamName: { $regex: fullNamePattern } },
+          { assignedTeam: { $regex: fullNamePattern } },
+          { teamName: { $regex: fullNamePattern } },
+          { assignedTo: { $regex: fullNamePattern } }
+        ] : [])
+      ]
+    };
+
+    const buildPipeline = (type) => [
+      { $match: query },
+      { $project: { status: { $toLower: { $trim: { input: { $ifNull: ["$status", "pending"] } } } }, updatedAt: 1, createdAt: 1 } },
+      { $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          latestTimestamp: { $max: { $ifNull: ["$updatedAt", "$createdAt"] } }
+        }
+      },
+      { $project: {
+          _id: 0,
+          type: { $literal: type },
+          status: "$_id",
+          count: 1,
+          latestTimestamp: 1
+        }
+      }
+    ];
+
+    const [installStats, serviceStats, maintenanceStats] = await Promise.all([
+      Installation.aggregate(buildPipeline(JOB_TYPE.INSTALLATION)),
+      ServiceRequest.aggregate(buildPipeline(JOB_TYPE.SERVICE)),
+      Maintenance.aggregate(buildPipeline(JOB_TYPE.MAINTENANCE)),
     ]);
 
-    const teamInstallations = installs
-      .filter((job) => matchesJobTeam(job, requestedTeamName))
-      .map((job) => ({ ...job, _type: JOB_TYPE.INSTALLATION }));
-
-    const teamServiceRequests = requests
-      .filter((job) => matchesJobTeam(job, requestedTeamName))
-      .map((job) => ({ ...job, _type: JOB_TYPE.SERVICE }));
-
-    const grouped = new Map();
-    [...teamInstallations, ...teamServiceRequests].forEach((job) => {
-      const status = normalize(job.status) || NORMALIZED_STATUS.PENDING;
-      const key = `${job._type}::${status}`;
-      const timestamp = new Date(job.updatedAt || job.createdAt || 0).getTime();
-
-      if (!grouped.has(key)) {
-        grouped.set(key, {
-          type: job._type,
-          status,
-          count: 0,
-          latestTimestamp: timestamp,
-        });
-      }
-
-      const current = grouped.get(key);
-      current.count += 1;
-      current.latestTimestamp = Math.max(current.latestTimestamp, timestamp);
-    });
-
-    const activityItems = Array.from(grouped.values())
+    const activityItems = [...installStats, ...serviceStats, ...maintenanceStats]
       .sort((a, b) => {
-        if (b.latestTimestamp !== a.latestTimestamp) {
-          return b.latestTimestamp - a.latestTimestamp;
+        const aTime = a.latestTimestamp ? new Date(a.latestTimestamp).getTime() : 0;
+        const bTime = b.latestTimestamp ? new Date(b.latestTimestamp).getTime() : 0;
+        if (bTime !== aTime) {
+          return bTime - aTime;
         }
 
         const aPriority = STATUS_PRIORITY.get(a.status) || Number.MAX_SAFE_INTEGER;
@@ -155,13 +220,15 @@ exports.getRecentActivity = async (req, res) => {
         return aPriority - bPriority;
       })
       .map((entry) => {
-        const isInstallation = entry.type === JOB_TYPE.INSTALLATION;
-        const noun = isInstallation ? REQUEST_TYPES.INSTALLATION : 'Service Requests';
+        let noun = 'Jobs';
+        if (entry.type === JOB_TYPE.INSTALLATION) noun = REQUEST_TYPES.INSTALLATION;
+        else if (entry.type === JOB_TYPE.SERVICE) noun = 'Service Requests';
+        else if (entry.type === JOB_TYPE.MAINTENANCE) noun = 'Maintenance Jobs';
 
         return {
           type: entry.type,
           title: `${noun} ${capitalize(entry.status)}: ${entry.count}`,
-          timestamp: new Date(entry.latestTimestamp || Date.now()),
+          timestamp: entry.latestTimestamp || new Date(),
         };
       });
 
@@ -179,17 +246,69 @@ exports.getRecentActivity = async (req, res) => {
 exports.getUrgentAlerts = async (req, res) => {
   try {
     const requestedTeamName = getRequestedTeamName(req, DEFAULT_TEAM_NAME);
-    const [installs, requests, teams] = await Promise.all([
-      Installation.find({}).lean(),
-      ServiceRequest.find({}).lean(),
-      TechTeam.find({}).lean()
+    
+    const { resolveTeam, normalizeTeamName } = require('../../utils/team.utils');
+    const team = await resolveTeam(requestedTeamName);
+
+    if (!team) {
+      return res.json({ success: true, data: [{
+        title: 'No Urgent Alerts',
+        subtitle: 'All systems operating normally',
+        action: 'Review',
+        urgent: false
+      }] });
+    }
+
+    const normalized = normalizeTeamName(requestedTeamName);
+
+    const teamIdStr = String(team._id);
+    const mongoose = require('mongoose');
+    const teamIdObj = mongoose.Types.ObjectId.isValid(teamIdStr) ? new mongoose.Types.ObjectId(teamIdStr) : teamIdStr;
+    const teamNamePattern = new RegExp(`^${normalized}$`, 'i');
+    const fullNamePattern = new RegExp(`^${team.fullName?.trim()?.toLowerCase()}$`, 'i');
+
+    const query = {
+      $or: [
+        { assignedTeamId: teamIdObj },
+        { assignedTeamId: teamIdStr },
+        { assignedTeamName: { $regex: teamNamePattern } },
+        { assignedTeam: { $regex: teamNamePattern } },
+        { teamName: { $regex: teamNamePattern } },
+        { assignedTo: { $regex: teamNamePattern } },
+        ...(team.fullName ? [
+          { assignedTeamName: { $regex: fullNamePattern } },
+          { assignedTeam: { $regex: fullNamePattern } },
+          { teamName: { $regex: fullNamePattern } },
+          { assignedTo: { $regex: fullNamePattern } }
+        ] : [])
+      ]
+    };
+
+    const inProgressRegex = new RegExp(`^${NORMALIZED_STATUS.IN_PROGRESS}$`, 'i');
+    const pendingRegexes = [NORMALIZED_STATUS.PENDING, NORMALIZED_STATUS.SCHEDULED].map(s => new RegExp(`^${s}$`, 'i'));
+    const completedRegex = new RegExp(`^${NORMALIZED_STATUS.COMPLETED}$`, 'i');
+
+    const [
+      inProgressCountInstallations, inProgressCountRequests, inProgressCountMaintenances,
+      pendingCountInstallations, pendingCountRequests, pendingCountMaintenances,
+      completedCountInstallations, completedCountRequests, completedCountMaintenances
+    ] = await Promise.all([
+      Installation.countDocuments({ ...query, status: inProgressRegex }),
+      ServiceRequest.countDocuments({ ...query, status: inProgressRegex }),
+      Maintenance.countDocuments({ ...query, status: inProgressRegex }),
+      Installation.countDocuments({ ...query, status: { $in: pendingRegexes } }),
+      ServiceRequest.countDocuments({ ...query, status: { $in: pendingRegexes } }),
+      Maintenance.countDocuments({ ...query, status: { $in: pendingRegexes } }),
+      Installation.countDocuments({ ...query, status: completedRegex }),
+      ServiceRequest.countDocuments({ ...query, status: completedRegex }),
+      Maintenance.countDocuments({ ...query, status: completedRegex }),
     ]);
 
-    const teamJobs = [...installs, ...requests].filter((job) => matchesJobTeam(job, requestedTeamName));
-    const alerts = [];
+    const inProgressCount = inProgressCountInstallations + inProgressCountRequests + inProgressCountMaintenances;
+    const pendingCount = pendingCountInstallations + pendingCountRequests + pendingCountMaintenances;
+    const completedCount = completedCountInstallations + completedCountRequests + completedCountMaintenances;
 
-    const inProgressCount = teamJobs.filter(j => normalize(j.status) === NORMALIZED_STATUS.IN_PROGRESS).length;
-    const pendingCount = teamJobs.filter(j => normalize(j.status) === NORMALIZED_STATUS.PENDING || normalize(j.status) === NORMALIZED_STATUS.SCHEDULED).length;
+    const alerts = [];
 
     // Alert: High workload
     if (inProgressCount > 3) {
@@ -212,7 +331,7 @@ exports.getUrgentAlerts = async (req, res) => {
     }
 
     // Alert: Team availability
-    const activeTeam = teams.find((team) => matchesTeamName(team.teamName || team.fullName || team.team, requestedTeamName));
+    const activeTeam = team;
     const isTeamBusyFromLiveJobs = inProgressCount > 0;
     if (activeTeam && isTeamBusyFromLiveJobs) {
       alerts.push({
@@ -224,7 +343,6 @@ exports.getUrgentAlerts = async (req, res) => {
     }
 
     // Alert: Completed jobs needing review
-    const completedCount = teamJobs.filter(j => normalize(j.status) === NORMALIZED_STATUS.COMPLETED).length;
     if (completedCount > 0) {
       alerts.push({
         title: 'Jobs Completed',

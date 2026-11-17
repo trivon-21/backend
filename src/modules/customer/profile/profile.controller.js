@@ -17,7 +17,7 @@ exports.updateProfile = async (req, res) => {
     const result = await profileService.updateProfile(req.user._id, req.body);
     return res.json(result);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return res.status(err.status || 500).json({ message: err.message });
   }
 };
 

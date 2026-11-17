@@ -72,7 +72,7 @@ async function sendOtpEmail(transporter, toEmail, userName, otp) {
   await transporter.sendMail({
     from: `AirLux <${process.env.EMAIL_USER}>`,
     to: toEmail,
-    subject: "AirLux — Verify Your Email",
+    subject: "AirLux - Verify Your Email",
     html: `
       <p>Hi ${userName},</p>
       <p>Your email verification code is:</p>
@@ -667,7 +667,7 @@ exports.forgotPassword = async (email) => {
     await transporter.sendMail({
       from: `AirLux <${String(process.env.EMAIL_USER || "").trim()}>`,
       to: recipientEmail,
-      subject: "AirLux — Password Reset Request",
+      subject: "AirLux - Password Reset Request",
       html: `
         <p>Hi ${user.fullName},</p>
         <p>You requested a password reset. Click the link below to reset your password:</p>

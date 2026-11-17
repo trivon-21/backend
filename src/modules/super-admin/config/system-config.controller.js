@@ -8,9 +8,12 @@ class SystemConfigController {
   async getSystemConfig(req, res) {
     try {
       const config = await systemConfigService.getSystemConfig();
+      const bankDetails = await systemConfigService.getBankDetails();
+      const configObj = config.toObject ? config.toObject() : { ...config };
+      configObj.bankDetails = bankDetails;
       res.status(200).json({
         success: true,
-        data: config,
+        data: configObj,
       });
     } catch (error) {
       console.error('Error getting system config:', error);
@@ -260,6 +263,73 @@ class SystemConfigController {
       res.status(500).json({
         success: false,
         message: error.message || 'Failed to get audit logs',
+      });
+    }
+  }
+
+  /**
+   * GET /api/super-admin/system-config/bank-details
+   * Get bank details
+   */
+  async getBankDetails(req, res) {
+    try {
+      const bankDetails = await systemConfigService.getBankDetails();
+      res.status(200).json({
+        success: true,
+        data: bankDetails,
+      });
+    } catch (error) {
+      console.error('Error getting bank details:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to get bank details',
+      });
+    }
+  }
+
+  /**
+   * PUT /api/super-admin/system-config/bank-details
+   * Update bank details
+   */
+  async updateBankDetails(req, res) {
+    try {
+      const { bankDetails, reason } = req.body;
+
+      if (!bankDetails || typeof bankDetails !== 'object') {
+        return res.status(400).json({
+          success: false,
+          message: 'bankDetails object is required',
+        });
+      }
+
+      const ipAddress = req.ip || req.connection.remoteAddress;
+      const userAgent = req.get('user-agent');
+      const performedByRole = req.user.role || 'SUPER_ADMIN';
+
+      const updated = await systemConfigService.updateBankDetails(
+        bankDetails,
+        req.user._id,
+        reason,
+        ipAddress,
+        userAgent,
+        performedByRole
+      );
+
+      // Return full updated system config with bankDetails
+      const config = await systemConfigService.getSystemConfig();
+      const configObj = config.toObject ? config.toObject() : { ...config };
+      configObj.bankDetails = updated;
+
+      res.status(200).json({
+        success: true,
+        message: 'Bank details updated successfully',
+        data: configObj,
+      });
+    } catch (error) {
+      console.error('Error updating bank details:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to update bank details',
       });
     }
   }

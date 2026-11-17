@@ -11,7 +11,7 @@ require('./modules/shared/L_sellingPrice.model');
 require('./modules/shared/L_serviceReport.model');
 require('./modules/shared/L_bankDetails.model');
 require('./modules/shared/L_repair.model');
-require('./modules/shared/L_purchaseRequest.model');
+require('./models/PurchaseRequest');
 
 const app = require('./app');
 const { connectDb } = require('./config');
@@ -29,6 +29,7 @@ const runStartupRepair = async () => {
   try {
     const Installation = require('./modules/shared/installation/installation.model');
     const MaintenanceSchedule = require('./modules/shared/maintenance/maintenanceSchedule.model');
+    const Counter = require('./models/counter.model');
     const { buildServiceTemplate, buildScheduleEndDate } = require('./modules/shared/maintenance/scheduleTemplate');
     const Customer = require('./modules/user/user.model');
     const {
@@ -54,6 +55,12 @@ const runStartupRepair = async () => {
 
           const services = buildServiceTemplate(new Date(inst.date || inst.serviceDate || inst.createdAt));
           const scheduleEndDate = buildScheduleEndDate(new Date(inst.date || inst.serviceDate || inst.createdAt));
+          const counter = await Counter.findOneAndUpdate(
+            { _id: 'maintenanceScheduleTicket' },
+            { $inc: { seq: 1 } },
+            { new: true, upsert: true }
+          );
+
           const newSchedule = new MaintenanceSchedule({
             customerId: customer._id,
             customerName: customer.name,
@@ -61,7 +68,7 @@ const runStartupRepair = async () => {
             customerPhone: customer.contactNo,
             productType: inst.productType,
             location: inst.location,
-            ticketId: `MS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            ticketId: `MS-${String(counter.seq).padStart(4, '0')}`,
             status: MAINTENANCE_SCHEDULE_STATUS.NEW,
             services,
             scheduleEndDate,
@@ -79,7 +86,7 @@ const runStartupRepair = async () => {
           console.error(`Error repairing installation ${inst._id}:`, err);
         }
       }
-      console.log(`✅ Startup repair complete. Created ${created} missing schedules.`);
+      console.log(`Startup repair complete. Created ${created} missing schedules.`);
     }
   } catch (err) {
     console.error('⚠️ Startup repair encountered an error (non-fatal):', err.message);
@@ -99,17 +106,32 @@ function scheduleScheduledMaintenanceStartWatcher() {
   setInterval(runCheck, 60 * 1000);
 }
 
+function scheduleGlobalNotificationWatcher() {
+  const superAdminService = require('./modules/super-admin/super-admin.service');
+  const runCheck = async () => {
+    try {
+      await superAdminService.processScheduledNotifications();
+    } catch (error) {
+      console.error('Scheduled global notification watcher failed:', error.message);
+    }
+  };
+
+  runCheck();
+  setInterval(runCheck, 30 * 1000);
+}
+
 const startServer = async () => {
   try {
     await connectDb();
     console.log('MongoDB connected');
 
-    // Run the repair job after DB is ready, before accepting traffic
-    await runStartupRepair();
+    // Existing records are deliberately left untouched at startup. New
+    // schedules are created only when an installation reaches Completed.
 
     try {
       schedulePaymentAutoCancelJob();
       scheduleScheduledMaintenanceStartWatcher();
+      scheduleGlobalNotificationWatcher();
       console.log('Background jobs scheduled successfully');
     } catch (err) {
       console.warn('Warning: Could not schedule background jobs:', err.message);

@@ -44,10 +44,13 @@ const InstallationOrderSchema = new mongoose.Schema({
     default: 'Pending Review'
   },
   inspectionFee: { type: Number, default: 0 },
+  paymentSlip: { type: String, default: '' },
+  paymentSlipUrl: { type: String, default: '' },
+  paymentStatus: { type: String, default: 'Pending' },
   consultationCompleted: {
     type: Boolean,
     default: false
   }
-}, { timestamps: true });
+}, { timestamps: true, collection: 'installation_orders' });
 
-module.exports = mongoose.model('InstallationOrder', InstallationOrderSchema);
+module.exports = mongoose.models.InstallationOrder || mongoose.model('InstallationOrder', InstallationOrderSchema, 'installation_orders');

@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const ServiceRequest = require('../repair/repair.model');
 const Installation = require('../installation/installation.model');
 const Inspection = require('../inspection/inspectionTicket.model');
+const Maintenance = require('../maintenance/maintenance.model');
 const ServiceReport = require('../../technician/technician.model');
 const Customer = require('../../user/user.model');
 const { getLocalApiBaseUrl, DEFAULT_TEAM_NAME } = require('../../../config/app.config');
@@ -122,6 +123,12 @@ const findTaskRecord = async (Model, id) => {
   if (mongoose.Types.ObjectId.isValid(normalizedId)) {
     orFilters.push({ _id: new mongoose.Types.ObjectId(normalizedId) });
   }
+  orFilters.push({ ticketId: normalizedId });
+  orFilters.push({ ticketRef: normalizedId });
+  orFilters.push({ serviceRequestRef: normalizedId });
+  orFilters.push({ serviceRequestId: normalizedId });
+
+  if (orFilters.length === 0) return null;
 
   return Model.findOne({ $or: orFilters }).lean();
 };
@@ -155,7 +162,9 @@ exports.getCustomerHistory = async (req, res) => {
       ? Installation
       : source === REQUEST_TYPES.INSPECTION.toLowerCase()
         ? Inspection
-        : ServiceRequest;
+        : source === REQUEST_TYPES.MAINTENANCE.toLowerCase()
+          ? Maintenance
+          : ServiceRequest;
 
     /**
      * Prefers the declared source collection to keep lookup semantics predictable.
@@ -170,13 +179,14 @@ exports.getCustomerHistory = async (req, res) => {
      * This fallback improves resilience for mixed legacy identifiers.
      */
     const loadFromAnyCollection = async () => {
-      const [serviceAnchor, installationAnchor, inspectionAnchor] = await Promise.all([
+      const [serviceAnchor, installationAnchor, inspectionAnchor, maintenanceAnchor] = await Promise.all([
         findTaskRecord(ServiceRequest, id),
         findTaskRecord(Installation, id),
-        findTaskRecord(Inspection, id)
+        findTaskRecord(Inspection, id),
+        findTaskRecord(Maintenance, id)
       ]);
 
-      return serviceAnchor || installationAnchor || inspectionAnchor || null;
+      return serviceAnchor || installationAnchor || inspectionAnchor || maintenanceAnchor || null;
     };
 
     const anchor = (await loadBySource()) || (await loadFromAnyCollection());
@@ -189,7 +199,8 @@ exports.getCustomerHistory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No record found for the provided source and id.' });
     }
 
-    const anchorCustomerIdStr = toCustomerIdString(anchor.customerId);
+    const rawAnchorCustomer = anchor.customerId || anchor.customer || anchor.userId;
+    const anchorCustomerIdStr = toCustomerIdString(rawAnchorCustomer);
     const anchorCustomerId = anchorCustomerIdStr;
 
     const customerDoc = await resolveCustomerById(anchorCustomerId);
@@ -204,54 +215,70 @@ exports.getCustomerHistory = async (req, res) => {
       customerIdCandidates.push(new mongoose.Types.ObjectId(anchorCustomerIdStr));
     }
 
-    const customerIdQuery = { customerId: { $in: customerIdCandidates } };
+    const customerQuery = {
+      $or: [
+        { customerId: { $in: customerIdCandidates } },
+        { customer: { $in: customerIdCandidates } },
+        { userId: { $in: customerIdCandidates } }
+      ]
+    };
 
     /**
      * Filters records to the same anchor customer regardless of source schema.
      */
-    const isSameCustomer = (item) => toCustomerIdString(item?.customerId) === anchorCustomerIdStr;
+    const isSameCustomer = (item) => {
+      const itemCustomer = item?.customerId || item?.customer || item?.userId;
+      return toCustomerIdString(itemCustomer) === anchorCustomerIdStr;
+    };
 
-    const [services, installations, inspections] = await Promise.all([
+    const [services, installations, inspections, maintenances] = await Promise.all([
       ServiceRequest.find({
-        ...customerIdQuery,
+        ...customerQuery,
         status: { $in: visibleStatuses }
       }).populate('assignedTeam', 'teamName').lean(),
       Installation.find({
-        ...customerIdQuery,
+        ...customerQuery,
         status: { $in: visibleStatuses }
       }).populate('assignedTeam', 'teamName').lean(),
       Inspection.find({
-        ...customerIdQuery,
+        ...customerQuery,
         status: { $in: visibleStatuses }
       }).populate('assignedTeam', 'teamName').lean(),
+      Maintenance.find({
+        ...customerQuery,
+        status: { $in: visibleStatuses }
+      }).populate('assignedTeam', 'teamName').lean()
     ]);
 
     const filteredServices = services.filter(isSameCustomer);
     const filteredInstallations = installations.filter(isSameCustomer);
     const filteredInspections = inspections.filter(isSameCustomer);
+    const filteredMaintenances = maintenances.filter(isSameCustomer);
 
-    const teamFilteredServices = filteredServices;
-    const teamFilteredInstallations = filteredInstallations;
-    const teamFilteredInspections = filteredInspections;
+    const teamFilteredServices = filteredServices.filter(item => matchesJobTeam(item, requestedTeamName));
+    const teamFilteredInstallations = filteredInstallations.filter(item => matchesJobTeam(item, requestedTeamName));
+    const teamFilteredInspections = filteredInspections.filter(item => matchesJobTeam(item, requestedTeamName));
+    const teamFilteredMaintenances = filteredMaintenances.filter(item => matchesJobTeam(item, requestedTeamName));
 
     /**
      * Maps source-specific records into a single history DTO consumed by the UI.
      * Keeping this mapper local ensures status and warranty rules stay consistent.
      */
     const toHistoryItem = (item, type) => {
-      const rawStatus = String(item.status || EXECUTION_STATUS.SCHEDULED).trim();
+      const rawStatus = String(item.status || EXECUTION_STATUS.ASSIGNED).trim();
       const normalizedKey = rawStatus.toLowerCase();
       const statusMap = {
         [EXECUTION_STATUS.ASSIGNED.toLowerCase()]: EXECUTION_STATUS.ASSIGNED,
         [EXECUTION_STATUS.COMPLETED.toLowerCase()]: EXECUTION_STATUS.COMPLETED,
         [EXECUTION_STATUS.IN_PROGRESS.toLowerCase()]: EXECUTION_STATUS.IN_PROGRESS,
-        [EXECUTION_STATUS.SCHEDULED.toLowerCase()]: EXECUTION_STATUS.SCHEDULED,
+        scheduled: EXECUTION_STATUS.ASSIGNED,
         [EXECUTION_STATUS.ON_HOLD.toLowerCase()]: EXECUTION_STATUS.ON_HOLD,
+        'inspected': EXECUTION_STATUS.COMPLETED,
       };
-      const normalizedStatus = statusMap[normalizedKey] || EXECUTION_STATUS.SCHEDULED;
+      const normalizedStatus = statusMap[normalizedKey] || EXECUTION_STATUS.ASSIGNED;
 
       return {
-        ticketId: `#${String(item._id)}`,
+        ticketId: item.serviceRequestId || item.serviceRequestRef || item.ticketId || item.ticketRef || `#${String(item._id)}`,
         serviceType: type,
         productType: item.productType || 'N/A',
         date: normalizedStatus === EXECUTION_STATUS.ASSIGNED ? null : (item.scheduledDate || item.serviceDate || item.date || item.createdAt || null),
@@ -262,7 +289,7 @@ exports.getCustomerHistory = async (req, res) => {
         warrantyStatus: type === REQUEST_TYPES.INSPECTION
           ? 'Warranty Period not started yet'
           : type === REQUEST_TYPES.INSTALLATION
-            ? 'Warranty Activated'
+            ? (normalizedStatus === EXECUTION_STATUS.COMPLETED ? 'Warranty Activated' : 'Warranty Period not started yet')
             : (item.isUnderWarranty ? 'Warranty Claimed' : 'Warranty Not Claimed')
       };
     };
@@ -271,6 +298,7 @@ exports.getCustomerHistory = async (req, res) => {
       ...teamFilteredServices.map((item) => toHistoryItem(item, REQUEST_TYPES.SERVICE)),
       ...teamFilteredInstallations.map((item) => toHistoryItem(item, REQUEST_TYPES.INSTALLATION)),
       ...teamFilteredInspections.map((item) => toHistoryItem(item, REQUEST_TYPES.INSPECTION)),
+      ...teamFilteredMaintenances.map((item) => toHistoryItem(item, REQUEST_TYPES.MAINTENANCE)),
     ].sort((a, b) => {
       const aTime = a.date ? new Date(a.date).getTime() : Number.NEGATIVE_INFINITY;
       const bTime = b.date ? new Date(b.date).getTime() : Number.NEGATIVE_INFINITY;
@@ -279,14 +307,14 @@ exports.getCustomerHistory = async (req, res) => {
 
     const latestInstallation = teamFilteredInstallations
       .slice()
-      .sort((a, b) => new Date(b.date || b.serviceDate || b.createdAt || 0).getTime() - new Date(a.date || a.serviceDate || a.createdAt || 0).getTime())[0];
+      .sort((a, b) => new Date(b.serviceDate || b.date || b.createdAt || 0).getTime() - new Date(a.serviceDate || a.date || a.createdAt || 0).getTime())[0];
 
     res.json({
       success: true,
       data: {
         customerId: anchorCustomerIdStr,
         summary: {
-          fullName,
+          customerName: fullName,
           location: customerAddress,
           productType: anchor.productType || latestInstallation?.productType || 'N/A',
           installationDate: anchor.serviceDate || anchor.date || latestInstallation?.serviceDate || latestInstallation?.date || null

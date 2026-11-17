@@ -1,14 +1,22 @@
+const mongoose = require('mongoose');
 const Cart = require('../models/cart.model');
 const Product = require('../models/product.model');
+const Inventory = require('../models/Inventory');
 
 // Helper to calculate cart totals
 async function calculateCart(cart) {
   let subtotal = 0;
   let units = 0;
   for (const item of cart.items) {
-    const product = await Product.findById(item.product);
+    let product = await Inventory.findById(item.product);
+    if (!product) {
+      product = await Product.findById(item.product);
+    }
     if (product) {
-      subtotal += product.price * item.quantity;
+      const price = (product.pricing && product.pricing.sellingPricePerUnit !== undefined)
+        ? product.pricing.sellingPricePerUnit
+        : (product.price !== undefined ? product.price : (product.pricing?.costPerUnit || product.unitCost || 0));
+      subtotal += price * item.quantity;
       units += item.quantity;
     }
   }
@@ -24,33 +32,76 @@ async function calculateCart(cart) {
 exports.getCart = async (req, res) => {
   try {
     const userId = req.params.userId;
-    let cart = await Cart.findOne({ userId }).populate('items.product');
+    let cart = await Cart.findOne({ userId });
     if (!cart) {
       cart = new Cart({ userId, items: [] });
       await cart.save();
     }
 
-    // Auto-remove items whose product has gone out of stock
+    const populatedItems = [];
     const removedItems = [];
-    const validItems = [];
+
+    // Populate each item's product details from Inventory (primary) or Product (fallback)
     for (const item of cart.items) {
-      const prod = item.product;
-      // prod is populated; check inStock (treat missing/null product as out-of-stock)
-      if (prod && typeof prod === 'object' && prod.inStock === false) {
-        removedItems.push(prod.name || 'Unknown Product');
+      const prodId = (item.product?._id || item.product || '').toString();
+      let prodDoc = null;
+      if (mongoose.Types.ObjectId.isValid(prodId)) {
+        prodDoc = await Inventory.findById(prodId);
+        if (!prodDoc) {
+          prodDoc = await Product.findById(prodId);
+        }
+      }
+
+      if (prodDoc) {
+        const inStock = prodDoc.available !== undefined ? (prodDoc.available > 0) : (prodDoc.inStock !== false);
+        if (!inStock) {
+          removedItems.push(prodDoc.name || 'Out of stock product');
+        } else {
+          populatedItems.push({
+            _id: item._id,
+            product: {
+              _id: prodDoc._id,
+              name: prodDoc.name,
+              brand: prodDoc.brand,
+              category: prodDoc.subcategory || prodDoc.category,
+              price: (prodDoc.pricing && prodDoc.pricing.sellingPricePerUnit !== undefined)
+                ? prodDoc.pricing.sellingPricePerUnit
+                : (prodDoc.price !== undefined ? prodDoc.price : (prodDoc.pricing?.costPerUnit || prodDoc.unitCost || 0)),
+              image: prodDoc.image || 'assets/placeholder.png',
+              capacity: prodDoc.capacityBtu || prodDoc.capacity || 12000,
+              inStock: true
+            },
+            quantity: item.quantity,
+            purchaseType: item.purchaseType || 'buy_only'
+          });
+        }
       } else {
-        validItems.push(item);
+        removedItems.push('Unknown Product');
       }
     }
 
+    // Auto-remove invalid or out of stock items from the DB cart
     if (removedItems.length > 0) {
-      cart.items = validItems;
+      const validIds = new Set(populatedItems.map(p => p.product._id.toString()));
+      cart.items = cart.items.filter(i => {
+        const pid = (i.product?._id || i.product || '').toString();
+        return validIds.has(pid);
+      });
       cart.markModified('items');
       await cart.save();
     }
 
     const calculations = await calculateCart(cart);
-    res.json({ cart, ...calculations, removedItems });
+    res.json({
+      cart: {
+        _id: cart._id,
+        userId: cart.userId,
+        items: populatedItems,
+        additionalCharges: cart.additionalCharges || 0
+      },
+      ...calculations,
+      removedItems
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -82,14 +133,21 @@ exports.addOrUpdateItem = async (req, res) => {
   }
 };
 
-
 // Remove item from cart
 exports.removeItem = async (req, res) => {
   try {
     const { userId, productId } = req.body;
     let cart = await Cart.findOne({ userId });
     if (!cart) return res.status(404).json({ error: 'Cart not found' });
-    cart.items = cart.items.filter(i => i.product.toString() !== productId);
+    cart.items = cart.items.filter(i => {
+      const pid = (i.product?._id || i.product || '').toString();
+      const itemId = (i._id || '').toString();
+      if (!productId || productId === 'null' || productId === 'undefined') {
+        return false;
+      }
+      return pid !== productId && itemId !== productId;
+    });
+    cart.markModified('items');
     await cart.save();
     const calculations = await calculateCart(cart);
     res.json({ cart, ...calculations });

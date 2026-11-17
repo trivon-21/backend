@@ -13,7 +13,7 @@ const getUserModel = () => {
       fullName: String, lastName: String,
       email: String, phoneNumber: String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("User", s);
+    return mongoose.model("User", s, "users");
   }
 };
 

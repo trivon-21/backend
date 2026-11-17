@@ -9,6 +9,31 @@ const systemConfigSchema = new mongoose.Schema(
         min: 0,
         max: 10000000,
       },
+      standardMaintenanceFee: {
+        type: Number,
+        default: 6000,
+        min: 0,
+        description: 'Standard Maintenance Service Fee (LKR) synced with charges collection',
+      },
+      standardRepairFee: {
+        type: Number,
+        default: 7500,
+        min: 0,
+        description: 'Standard Repair Service Fee (LKR) synced with charges collection',
+      },
+      standardSiteInspectionFee: {
+        type: Number,
+        default: 5000,
+        min: 0,
+        description: 'Standard Site Inspection Fee (LKR) synced with charges collection',
+      },
+      profitMargin: {
+        type: Number,
+        default: 0.25,
+        min: 0,
+        max: 1,
+        description: 'Default inventory profit margin as a decimal (0.25 = 25%)',
+      },
       logRetentionDays: {
         type: Number,
         default: 30,

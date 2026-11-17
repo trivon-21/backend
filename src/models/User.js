@@ -61,7 +61,7 @@ const userSchema = new mongoose.Schema(
       {
         type: {
           type: String,
-          enum: ["order", "inquiry", "service", "feedback", "general"],
+          enum: ["order", "inquiry", "service", "feedback", "general", "system_alert", "announcement"],
           default: "general"
         },
         title: { type: String, required: true, trim: true },

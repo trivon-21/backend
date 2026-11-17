@@ -40,7 +40,6 @@ exports.getLogs = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-    // Enrich: resolve customer name + build performedByDisplay
     let User = null;
     try { User = mongoose.model("User"); } catch {}
 

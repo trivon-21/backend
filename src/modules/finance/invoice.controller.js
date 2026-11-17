@@ -5,17 +5,23 @@ const PDFDocument = require("pdfkit");
 const { createLog } = require("./auditLog.controller");
 
 // Lazy model loaders 
+
 const getOrderModel = () => {
-  try { return mongoose.model("Order"); }
-  catch {
-    const s = new mongoose.Schema({
-      orderRef: String,
-      customer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      itemName: String, quantity: Number, amount: Number, orderType: String,
-    }, { strict: false, timestamps: true });
-    return mongoose.model("Order", s);
-  }
+  const s = new mongoose.Schema({
+    orderReference: String,
+    userId:   mongoose.Schema.Types.ObjectId,
+    items: Array,
+    subtotal: Number, total: Number,
+    inspectionFee: Number,
+    status: String,
+    consultationCompleted: Boolean,
+  }, { strict: false, timestamps: true });
+
+
+  const modelName = "InstallationOrderInvoiceLookup";
+  return mongoose.models[modelName] || mongoose.model(modelName, s, "installation_orders");
 };
+
 
 const getUserModel = () => {
   try { return mongoose.model("User"); }
@@ -24,14 +30,25 @@ const getUserModel = () => {
       fullName: String, lastName: String, email: String,
       phoneNumber: String, role: String, address: String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("User", s);
+    return mongoose.model("User", s, "users");
   }
 };
 
 const getReportModel = () => {
   try { return mongoose.model("InspectionReport"); }
-  catch { return null; }
+  catch {
+    const s = new mongoose.Schema({
+      ticketId: mongoose.Schema.Types.ObjectId,
+      orderId: mongoose.Schema.Types.ObjectId,
+      inspectorId: mongoose.Schema.Types.ObjectId,
+      inspectorName: String,
+      status: String,
+      submittedAt: Date,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("InspectionReport", s, "inspection_reports");
+  }
 };
+
 
 const getTicketModel = () => {
   try { return mongoose.model("InspectionTicket"); }
@@ -40,7 +57,7 @@ const getTicketModel = () => {
       customerId: mongoose.Schema.Types.ObjectId,
       orderId: mongoose.Schema.Types.ObjectId,
     }, { strict: false, timestamps: true });
-    return mongoose.model("InspectionTicket", s);
+    return mongoose.model("InspectionTicket", s, "inspection_tickets");
   }
 };
 
@@ -54,7 +71,7 @@ const getLInstallationModel = () => {
       materials: [{ item: String, quantity: mongoose.Schema.Types.Mixed }],
       status: String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("L_Installation", s);
+    return mongoose.model("L_Installation", s, "installations");
   }
 };
 
@@ -69,6 +86,11 @@ const getInventoryModel = () => {
       unit: String,
       unitCost: Number,
       available: Number,
+      pricing: {
+        costPerUnit: Number,
+        profitMargin: Number,
+        sellingPricePerUnit: Number,
+      },
     }, { strict: false, timestamps: true });
     return mongoose.model("Inventory", s, "inventory");
   }
@@ -95,7 +117,7 @@ const getLChargeModel = () => {
     const s = new mongoose.Schema({
       name: String, amount: Number, type: String, description: String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("L_Charge", s);
+    return mongoose.model("L_Charge", s, "charges");
   }
 };
 
@@ -106,10 +128,10 @@ const { sendInvoiceEmail, sendInvoiceAcceptedEmail, sendInvoiceRejectedEmail,
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
-// Profit margin — same 25% your original L_SellingPrice logic used
+
 const PROFIT_MARGIN = 0.25;
 
-// ── Helper: find selling price for a material name — now reads team's Inventory ─
+// ── Helper: find selling price for a material name — reads team's Inventory ─
 async function getSellingPrice(materialName) {
   const Inventory = getInventoryModel();
   const name = getMaterialName(materialName);
@@ -127,11 +149,17 @@ async function getSellingPrice(materialName) {
   }
   if (!item) return null;
 
-  const cost = item.unitCost || item.costPerUnit || 0;
+  // Prefer the inventory item's own pre-calculated selling price
+  if (item.pricing?.sellingPricePerUnit) {
+    return item.pricing.sellingPricePerUnit;
+  }
+
+  const cost = item.unitCost || item.pricing?.costPerUnit || item.costPerUnit || 0;
   if (!cost) return 0;
 
-  // Apply the same 25% profit margin your original L_SellingPrice logic used
-  return Math.round(cost * (1 + PROFIT_MARGIN));
+  // Use the item's own margin from inventory if set, otherwise fall back to 25%
+  const margin = item.pricing?.profitMargin ?? PROFIT_MARGIN;
+  return Math.round(cost * (1 + margin));
 }
 
 // ── Helper: get fixed charge by name ─────────────────────────────────────────
@@ -314,10 +342,8 @@ exports.generateInvoice = async (req, res) => {
     if (!resolvedInstallation || !resolvedInstallation.materials || resolvedInstallation.materials.length === 0) {
       return res.status(400).json({ message: "No materials found in installation record. Main technician must add materials first." });
     }
-
-    const ticket = await Ticket.findById(report.ticketId);
-    const order = await Order.findById(report.orderId);
-
+const ticket = await Ticket.findById(report.ticketId);
+const order = await Order.findById(resolvedInstallation.orderId || report.orderId);
     let user = null;
     if (resolvedInstallation.customerId) user = await User.findById(resolvedInstallation.customerId);
     if (!user && ticket?.customerId) user = await User.findById(ticket.customerId);
@@ -441,7 +467,7 @@ exports.getPendingInvoices = async (req, res) => {
       status: "DRAFT",
       invoiceType: { $ne: "REPAIR" }
     }).sort({ createdAt: -1 });
-    res.json(invoices);
+    res.json(await attachOrderRef(invoices));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
   }
@@ -655,7 +681,7 @@ exports.getAcceptedInvoices = async (req, res) => {
       status: { $in: ["ACCEPTED", "REJECTION_CANCELLED"] },
       invoiceType: { $ne: "REPAIR" }
     }).sort({ acceptedAt: -1 });
-    res.json(invoices);
+    res.json(await attachOrderRef(invoices));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
   }
@@ -668,7 +694,7 @@ exports.getRejectedInvoices = async (req, res) => {
       status: "REJECTED",
       invoiceType: { $ne: "REPAIR" }
     }).sort({ rejectedAt: -1 });
-    res.json(invoices);
+    res.json(await attachOrderRef(invoices));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
   }
@@ -688,7 +714,7 @@ exports.getPaidInvoices = async (req, res) => {
       return obj;
     });
 
-    res.json(result);
+    res.json(await attachOrderRef(result));
   } catch (error) {
     res.status(500).json({ message: "Failed", error: error.message });
   }
@@ -720,6 +746,28 @@ exports.markAsPaid = async (req, res) => {
     res.status(500).json({ message: "Failed", error: error.message });
   }
 };
+
+// ── Helper: resolve real order reference for display ──────────────────────────
+async function resolveOrderRef(orderId) {
+  if (!orderId) return null;
+  try {
+    const Order = getOrderModel();
+    const order = await Order.findById(orderId);
+    return order?.orderReference || order?.orderRef || null;
+  } catch {
+    return null;
+  }
+}
+
+async function attachOrderRef(invoices) {
+  const list = Array.isArray(invoices) ? invoices : [invoices];
+  const enriched = await Promise.all(list.map(async (inv) => {
+    const obj = inv.toObject ? inv.toObject() : inv;
+    obj.orderRef = await resolveOrderRef(obj.orderId);
+    return obj;
+  }));
+  return Array.isArray(invoices) ? enriched : enriched[0];
+}
 
 // ── AUTO CANCEL HELPER ────────────────────────────────────────────────────────
 async function processAutoCancelJobs() {
@@ -756,7 +804,7 @@ exports.getAutoCancelledInvoices = async (req, res) => {
       status: "AUTO_CANCELLED",
       invoiceType: { $ne: "REPAIR" }
     }).sort({ cancelledAt: -1 });
-    res.json(invoices);
+    res.json(await attachOrderRef(invoices));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch", error: error.message });
   }
@@ -772,7 +820,7 @@ exports.getDashboardStats = async (req, res) => {
       Invoice.countDocuments({ status: { $in: ["REJECTED", "AUTO_CANCELLED"] }, invoiceType: { $ne: "REPAIR" } }),
     ]);
     const recent = await Invoice.find({ invoiceType: { $ne: "REPAIR" } }).sort({ updatedAt: -1 }).limit(20);
-    res.json({ accepted, pending, paid, rejected, tableData: recent });
+    res.json({ accepted, pending, paid, rejected, tableData: await attachOrderRef(recent) });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch stats", error: error.message });
   }
@@ -917,9 +965,52 @@ const getLRepairModel = () => {
       location:        String,
       status:          String,
     }, { strict: false, timestamps: true });
-    return mongoose.model("L_Repair", s);
+    return mongoose.model("L_Repair", s, "repairs");
   }
 };
+//----------------------------------
+// ── Model loaders for status sync (Finance Approved / Finance Rejected) ───────
+const getInstallationModelForSync = () => {
+  try { return mongoose.model("Installation"); }
+  catch {
+    const s = new mongoose.Schema({
+      orderId: mongoose.Schema.Types.ObjectId,
+      inspectionTicketId: mongoose.Schema.Types.ObjectId,
+      status: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("Installation", s, "installations");
+  }
+};
+
+const getRepairModelForSync = () => {
+  try { return mongoose.model("Repair"); }
+  catch {
+    const s = new mongoose.Schema({
+      status: String,
+    }, { strict: false, timestamps: true });
+    return mongoose.model("Repair", s, "repairs");
+  }
+};
+
+// ── Sync the Installation/Repair record's status after a finance decision ─────
+async function syncFinanceStatus(invoice, newStatus) {
+  try {
+    if (invoice.invoiceType === "REPAIR" && invoice.repairId) {
+      const Repair = getRepairModelForSync();
+      await Repair.findByIdAndUpdate(invoice.repairId, { status: newStatus });
+    } else if (invoice.invoiceType !== "REPAIR" && invoice.orderId) {
+      const Installation = getInstallationModelForSync();
+      await Installation.findOneAndUpdate(
+        { orderId: invoice.orderId },
+        { status: newStatus }
+      );
+    }
+  } catch (e) {
+    console.error("syncFinanceStatus error (non-blocking):", e.message);
+  }
+}
+
+//----------------------------
 
 // ── GET repair invoice queue ──────────────────────────────────────────────────
 exports.getRepairInvoiceQueue = async (req, res) => {
@@ -952,34 +1043,39 @@ exports.getRepairInvoiceQueue = async (req, res) => {
         }
       }
 
-      let ticketRef = "—";
+
+      let ticketRef = `REP-${repair._id.toString().slice(-5).toUpperCase()}`;
       let serviceType = "REPAIR";
+
       if (repair.serviceTicketId) {
         try {
           const ServiceTicket = mongoose.model("ServiceTicket");
           const ticket = await ServiceTicket.findById(repair.serviceTicketId);
+
           if (ticket) {
-            ticketRef   = `SVC-${ticket._id.toString().slice(-5).toUpperCase()}`;
+            ticketRef = `SVC-${ticket._id.toString().slice(-5).toUpperCase()}`;
             serviceType = ticket.serviceType || "REPAIR";
           }
         } catch {}
       }
 
       result.push({
-        repairId:       repair._id,
-        serviceTicketId:repair.serviceTicketId,
+        repairId: repair._id,
+        serviceTicketId: repair.serviceTicketId,
         ticketRef,
-        customerId:     repair.customerId,
+        ticketId: ticketRef,
+        customerId: repair.customerId,
         customerName,
         customerEmail,
         customerAddress,
-        repairType:     repair.repairType || "minor",
+        repairType: repair.repairType || "minor",
         materialsCount: repair.materials.length,
-        location:       repair.location || "",
-        date:           repair.updatedAt || repair.createdAt,
-        notes:          repair.notes || "",
+        location: repair.location || "",
+        date: repair.updatedAt || repair.createdAt,
+        notes: repair.notes || "",
       });
     }
+
 
     res.json(result);
   } catch (error) {
@@ -1025,18 +1121,15 @@ exports.generateRepairInvoice = async (req, res) => {
       });
     }
 
-    const repairType    = repair.repairType || "minor";
-    const chargeName    = repairType === "major" ? "repair_major" : "repair_minor";
-    const chargeLabel   = repairType === "major" ? "Major Repair Charge" : "Minor Repair Charge";
-    const repairCharge  = await getCharge(chargeName) || (repairType === "major" ? 15000 : 4000);
-    items.push({
-      no:          itemNo++,
-      itemName:    chargeLabel,
-      description: `Fixed ${repairType} repair service charge`,
-      qty:         1,
-      rate:        repairCharge,
-      amount:      repairCharge,
-    });
+ const repairCharge = await getCharge("Standard Repair Service Fee") || 7500;
+items.push({
+  no:          itemNo++,
+  itemName:    "Standard Repair Service Fee",
+  description: "Fixed repair service call-out charge",
+  qty:         1,
+  rate:        repairCharge,
+  amount:      repairCharge,
+});
 
     const subTotal   = items.reduce((s, i) => s + (i.amount || 0), 0);
     const grandTotal = subTotal;
@@ -1060,17 +1153,17 @@ exports.generateRepairInvoice = async (req, res) => {
     repair.status = "INVOICED";
     await repair.save();
 
-    await createLog({
-      eventType:    "INVOICE_GENERATED",
-      paymentType:  "INVOICE",
-      invoiceId:    invoice.invoiceNumber || invoice._id.toString(),
-      customerId:   repair.customerId,
-      customerName,
-      customerEmail,
-      amount:       grandTotal,
-      performedBy:  "Finance Officer",
-      notes:        `Repair invoice (${repairType})`,
-    });
+await createLog({
+  eventType:    "INVOICE_GENERATED",
+  paymentType:  "INVOICE",
+  invoiceId:    invoice.invoiceNumber || invoice._id.toString(),
+  customerId:   repair.customerId,
+  customerName,
+  customerEmail,
+  amount:       grandTotal,
+  performedBy:  "Finance Officer",
+  notes:        "Repair invoice",
+});
 
     res.json({ message: "Repair invoice generated", invoice });
   } catch (error) {
@@ -1115,6 +1208,160 @@ exports.getRepairDashboardStats = async (req, res) => {
     const tableData = await Invoice.find({ invoiceType: "REPAIR" }).sort({ updatedAt: -1 }).limit(50);
     res.json({ accepted, pending, paid, rejected, tableData });
   } catch (e) { res.status(500).json({ message: e.message }); }
+};
+// ── UPLOAD payment slip (customer) ────────────────────────────────────────────
+exports.uploadPaymentSlip = async (req, res) => {
+  try {
+    const { slipUrl } = req.body;
+    if (!slipUrl) return res.status(400).json({ message: "Slip URL required" });
+
+    const invoice = await Invoice.findById(req.params.invoiceId);
+    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+    if (invoice.status !== "ACCEPTED")
+      return res.status(400).json({ message: "Invoice is not awaiting payment" });
+
+    invoice.paymentSlipUrl = slipUrl;
+    invoice.paymentSlipUploadedAt = new Date();
+    invoice.status = "PAYMENT_UNDER_REVIEW";
+    invoice.paymentRejectionReason = null;
+    await invoice.save();
+
+    await createLog({
+      eventType:  "PAYMENT_SUBMITTED",
+      paymentType:"INVOICE",
+      orderId:    invoice.orderId?.toString() || "",
+      invoiceId:  invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      slipUrl,
+      performedBy: "Customer",
+    });
+
+    res.json({ message: "Payment slip uploaded successfully", invoice });
+  } catch (error) {
+    console.error("uploadPaymentSlip error:", error);
+    res.status(500).json({ message: "Failed to upload slip", error: error.message });
+  }
+};
+
+// ── GET invoices pending payment verification (installation) ──────────────────
+exports.getPaymentVerificationQueue = async (req, res) => {
+  try {
+    const invoices = await Invoice.find({
+      status: "PAYMENT_UNDER_REVIEW",
+      invoiceType: { $ne: "REPAIR" }
+    }).sort({ paymentSlipUploadedAt: 1 });
+    res.json(await attachOrderRef(invoices));
+  } catch (error) {
+    res.status(500).json({ message: "Failed", error: error.message });
+  }
+};
+
+// ── GET repair invoices pending payment verification ───────────────────────────
+exports.getRepairPaymentVerificationQueue = async (req, res) => {
+  try {
+    const invoices = await Invoice.find({
+      status: "PAYMENT_UNDER_REVIEW",
+      invoiceType: "REPAIR"
+    }).sort({ paymentSlipUploadedAt: 1 });
+    res.json(invoices);
+  } catch (error) {
+    res.status(500).json({ message: "Failed", error: error.message });
+  }
+};
+
+// ── APPROVE payment (finance) — moves invoice to PAID ──────────────────────────
+exports.approveInvoicePayment = async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+    if (invoice.status !== "PAYMENT_UNDER_REVIEW")
+      return res.status(400).json({ message: "Invoice not pending payment verification" });
+
+    invoice.status = "PAID";
+    invoice.paidAt = new Date();
+    await invoice.save();
+//-------------------------------------
+await syncFinanceStatus(invoice, "Finance Approved");
+//-----------------------------------
+    await createLog({
+      eventType: "INVOICE_PAID",
+      paymentType: "INVOICE",
+      orderId: invoice.orderId?.toString() || "",
+      invoiceId: invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      performedBy: "Finance Officer",
+    });
+
+if (invoice.customerEmail) {
+  const { sendPaymentApprovedEmail } = require("../shared/notification/invoiceEmail.service");
+  await sendPaymentApprovedEmail(
+    invoice.customerEmail,
+    invoice.customerName,
+    invoice.invoiceNumber,
+    invoice.grandTotal
+  );
+}
+
+    res.json({ message: "Payment approved", invoice });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to approve", error: error.message });
+  }
+};
+
+// ── REJECT payment slip (finance) — back to ACCEPTED, customer re-uploads ─────
+exports.rejectInvoicePayment = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    if (!reason) return res.status(400).json({ message: "Rejection reason required" });
+
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+    if (invoice.status !== "PAYMENT_UNDER_REVIEW")
+      return res.status(400).json({ message: "Invoice not pending payment verification" });
+
+    invoice.status = "ACCEPTED";
+    invoice.paymentRejectionReason = reason;
+    invoice.paymentSlipUrl = null;
+    await invoice.save();
+//----------------------------------------
+await syncFinanceStatus(invoice, "Finance Rejected");
+//----------------------------------------
+    await createLog({
+      eventType: "PAYMENT_REJECTED",
+      paymentType: "INVOICE",
+      orderId: invoice.orderId?.toString() || "",
+      invoiceId: invoice.invoiceNumber || invoice._id.toString(),
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerEmail: invoice.customerEmail,
+      amount: invoice.grandTotal || 0,
+      rejectionReason: reason,
+      performedBy: "Finance Officer",
+    });
+
+    // Reuse sendInvoiceAcceptedEmail's pattern — same re-upload link, same style
+    if (invoice.customerEmail) {
+      const { sendPaymentSlipRejectedEmail } = require("../shared/notification/invoiceEmail.service");
+      const reuploadLink = `${process.env.FRONTEND_URL || "http://localhost:4200"}/invoice/upload-payment?invoiceId=${invoice._id}`;
+      await sendPaymentSlipRejectedEmail(
+        invoice.customerEmail,
+        invoice.customerName,
+        invoice.invoiceNumber,
+        reason,
+        reuploadLink
+      );
+    }
+
+    res.json({ message: "Payment rejected", invoice });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to reject", error: error.message });
+  }
 };
 
 // ── CRON JOBS ─────────────────────────────────────────────────────────────────

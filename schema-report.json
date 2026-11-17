@@ -1,0 +1,7109 @@
+{
+  "database": "airlux",
+  "generatedAt": "2026-08-22T07:38:05.252Z",
+  "collections": [
+    {
+      "name": "tech_team_members",
+      "totalDocuments": 2,
+      "documentsScanned": 2,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089f1"
+        },
+        {
+          "field": "contactNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "+94770000003"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.805Z"
+        },
+        {
+          "field": "name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "Kasun Silva"
+        },
+        {
+          "field": "role",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "Lead"
+        },
+        {
+          "field": "teamId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ef"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.805Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "inspectiontickets",
+      "totalDocuments": 0,
+      "documentsScanned": 0,
+      "fields": [],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "configs",
+      "totalDocuments": 0,
+      "documentsScanned": 0,
+      "fields": [],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "key_1",
+          "key": {
+            "key": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "audit_logs",
+      "totalDocuments": 0,
+      "documentsScanned": 0,
+      "fields": [],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "warehouse_pick_requests",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b693f09ec22a4f008a23"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:59.590Z"
+        },
+        {
+          "field": "date",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20"
+        },
+        {
+          "field": "items",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "items[].confirmed",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "items[].name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\" (per meter)"
+        },
+        {
+          "field": "items[].qty",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 5
+        },
+        {
+          "field": "items[].sku",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PIPE-CU-025"
+        },
+        {
+          "field": "location",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Colombo"
+        },
+        {
+          "field": "requester",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Kasun Silva"
+        },
+        {
+          "field": "requestId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PRQ-0001"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "pending"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:59.590Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "requestId_1",
+          "key": {
+            "requestId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "inquiries",
+      "totalDocuments": 0,
+      "documentsScanned": 0,
+      "fields": [],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "inquiryRef_1",
+          "key": {
+            "inquiryRef": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "purchase_requests",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ec"
+        },
+        {
+          "field": "approvedBy",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.499Z"
+        },
+        {
+          "field": "decisionHistory",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "items",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "items[].estimatedTotal",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 170000
+        },
+        {
+          "field": "items[].inventoryId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ea"
+        },
+        {
+          "field": "items[].itemClass",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Unclassified"
+        },
+        {
+          "field": "items[].lineId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ed"
+        },
+        {
+          "field": "items[].manufacturerPartNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "items[].name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\" (per meter)"
+        },
+        {
+          "field": "items[].quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 200
+        },
+        {
+          "field": "items[].receivedQuantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "items[].sku",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PIPE-CU-025"
+        },
+        {
+          "field": "items[].subcategory",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Unclassified"
+        },
+        {
+          "field": "items[].supplierId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089dc"
+        },
+        {
+          "field": "items[].unit",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "meters"
+        },
+        {
+          "field": "items[].unitCost",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 850
+        },
+        {
+          "field": "notes",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "priority",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "normal"
+        },
+        {
+          "field": "rejectionReason",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "requestedBy",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Kasun Silva"
+        },
+        {
+          "field": "requestedById",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089ca"
+        },
+        {
+          "field": "requestId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PR-0001"
+        },
+        {
+          "field": "source",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "manual"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "pending-manager"
+        },
+        {
+          "field": "statusVersion",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "supplierId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089dc"
+        },
+        {
+          "field": "supplierName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "ColdChain Distributors (Pvt) Ltd"
+        },
+        {
+          "field": "totalEstimate",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 170000
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.499Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "requestId_1",
+          "key": {
+            "requestId": 1
+          },
+          "unique": true
+        },
+        {
+          "name": "poNumber_1",
+          "key": {
+            "poNumber": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "rma_cases",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b693f09ec22a4f008a21"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:59.435Z"
+        },
+        {
+          "field": "faultDescription",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Leak detected in joint"
+        },
+        {
+          "field": "inventoryId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ea"
+        },
+        {
+          "field": "itemName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\" (per meter)"
+        },
+        {
+          "field": "itemSku",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PIPE-CU-025"
+        },
+        {
+          "field": "reportedBy",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Kasun Silva"
+        },
+        {
+          "field": "rmaId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "RMA-0001"
+        },
+        {
+          "field": "serialNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "SN-987654321"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "reported"
+        },
+        {
+          "field": "type",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Single"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:59.435Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "rmaId_1",
+          "key": {
+            "rmaId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "tech_teams",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ef"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.646Z"
+        },
+        {
+          "field": "specialization",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Installations"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Available"
+        },
+        {
+          "field": "teamName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Colombo Installation Team A"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.646Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "inspection_reports",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f008a00"
+        },
+        {
+          "field": "contactNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "+94770000002"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.662Z"
+        },
+        {
+          "field": "customerName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Nadeesha Fernando"
+        },
+        {
+          "field": "elevatorAvailability",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "floorLevel",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Ground Floor"
+        },
+        {
+          "field": "inspectionDate",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20"
+        },
+        {
+          "field": "inspectorId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089d0"
+        },
+        {
+          "field": "inspectorName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Dilshan Silva"
+        },
+        {
+          "field": "orderId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089e8"
+        },
+        {
+          "field": "parkingAvailability",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Available"
+        },
+        {
+          "field": "photos",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "rooms",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "siteAddress",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "45 Negombo Road, Negombo"
+        },
+        {
+          "field": "siteStatus",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Ready"
+        },
+        {
+          "field": "siteType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Residential"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "SUBMITTED"
+        },
+        {
+          "field": "submittedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.659Z"
+        },
+        {
+          "field": "ticketId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089f5"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.662Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "maintenances",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f008a05"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.003Z"
+        },
+        {
+          "field": "customerId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        },
+        {
+          "field": "date",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.999Z"
+        },
+        {
+          "field": "isUnderWarranty",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "maintenanceType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Customer Initiated"
+        },
+        {
+          "field": "materialList",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "materialList[]._id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b691f09ec22a4f008a06"
+        },
+        {
+          "field": "materialList[].estimatedCost",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1700
+        },
+        {
+          "field": "materialList[].item",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\""
+        },
+        {
+          "field": "materialList[].quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 2
+        },
+        {
+          "field": "serviceReport",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "serviceReport.photos",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "New"
+        },
+        {
+          "field": "ticketId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "MS-0001-ACT"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.003Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "ticketId_1",
+          "key": {
+            "ticketId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "cartscenarios",
+      "totalDocuments": 0,
+      "documentsScanned": 0,
+      "fields": [],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "inventory",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ea"
+        },
+        {
+          "field": "available",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 500
+        },
+        {
+          "field": "binLocation",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "brand",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Generic"
+        },
+        {
+          "field": "category",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Piping"
+        },
+        {
+          "field": "compatibleModels",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.359Z"
+        },
+        {
+          "field": "isSerialized",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "itemClass",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Installation Materials"
+        },
+        {
+          "field": "location",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Warehouse"
+        },
+        {
+          "field": "manufacturerPartNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "maxStockLevel",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 100
+        },
+        {
+          "field": "name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\" (per meter)"
+        },
+        {
+          "field": "phase",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Not Applicable"
+        },
+        {
+          "field": "pricing",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "pricing.costPerUnit",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 850
+        },
+        {
+          "field": "pricing.profitMargin",
+          "types": [
+            "double"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0.25
+        },
+        {
+          "field": "pricing.sellingPricePerUnit",
+          "types": [
+            "double"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1062.5
+        },
+        {
+          "field": "refrigerants",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "reorderLevel",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 100
+        },
+        {
+          "field": "reserved",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 20
+        },
+        {
+          "field": "serialNumbers",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "sku",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PIPE-CU-025"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "normal"
+        },
+        {
+          "field": "subcategory",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Unclassified"
+        },
+        {
+          "field": "supplierId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089dc"
+        },
+        {
+          "field": "systemType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Not Applicable"
+        },
+        {
+          "field": "type",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Single"
+        },
+        {
+          "field": "unit",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "meters"
+        },
+        {
+          "field": "unitCost",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 850
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.359Z"
+        },
+        {
+          "field": "voltage",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "sku_1",
+          "key": {
+            "sku": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "asset_loans",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b692f09ec22a4f008a15"
+        },
+        {
+          "field": "assetTag",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "ASSET-0001"
+        },
+        {
+          "field": "checkedOutAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.394Z"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.396Z"
+        },
+        {
+          "field": "dueDate",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-27T08:10:58.394Z"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "on-loan"
+        },
+        {
+          "field": "technicianId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "TECH-01"
+        },
+        {
+          "field": "technicianName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Kasun Silva"
+        },
+        {
+          "field": "technicianUserId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089ca"
+        },
+        {
+          "field": "toolId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ea"
+        },
+        {
+          "field": "toolName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\" (per meter)"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.396Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "assetTag_1",
+          "key": {
+            "assetTag": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "products",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089e2"
+        },
+        {
+          "field": "averageRating",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "brand",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Airlux"
+        },
+        {
+          "field": "capacity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 12000
+        },
+        {
+          "field": "category",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Split AC"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.828Z"
+        },
+        {
+          "field": "description",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Inverter split-type air conditioner, ene..."
+        },
+        {
+          "field": "features",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[3 item(s)]"
+        },
+        {
+          "field": "image",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "https://example.com/images/splitcool-120..."
+        },
+        {
+          "field": "images",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "inStock",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Airlux SplitCool 12000BTU"
+        },
+        {
+          "field": "price",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 145000
+        },
+        {
+          "field": "reviewCount",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "reviews",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "specs",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[2 item(s)]"
+        },
+        {
+          "field": "specs[].key",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Energy Rating"
+        },
+        {
+          "field": "specs[].value",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "5 Star"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.828Z"
+        },
+        {
+          "field": "variants",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[3 item(s)]"
+        },
+        {
+          "field": "variants[].capacity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 9000
+        },
+        {
+          "field": "variants[].label",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "9000 BTU"
+        },
+        {
+          "field": "variants[].price",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 120000
+        },
+        {
+          "field": "warrantyInfo",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "warrantyInfo.comprehensive",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "1 year"
+        },
+        {
+          "field": "warrantyInfo.compressor",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "5 years"
+        },
+        {
+          "field": "warrantyInfo.covered",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[2 item(s)]"
+        },
+        {
+          "field": "warrantyInfo.notCovered",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[2 item(s)]"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "brand_1",
+          "key": {
+            "brand": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "category_1",
+          "key": {
+            "category": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "capacity_1",
+          "key": {
+            "capacity": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "price_1",
+          "key": {
+            "price": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "createdAt_-1",
+          "key": {
+            "createdAt": -1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "dispatch_orders",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b692f09ec22a4f008a17"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.568Z"
+        },
+        {
+          "field": "customer",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Nadeesha Fernando"
+        },
+        {
+          "field": "date",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20"
+        },
+        {
+          "field": "items",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "items[].confirmed",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "items[].name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\" (per meter)"
+        },
+        {
+          "field": "items[].qty",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 10
+        },
+        {
+          "field": "items[].sku",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PIPE-CU-025"
+        },
+        {
+          "field": "orderId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "DO-0001"
+        },
+        {
+          "field": "sourceOrderId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089e6"
+        },
+        {
+          "field": "sourceOrderType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Order"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "to-pack"
+        },
+        {
+          "field": "type",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Delivery"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.568Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "orderId_1",
+          "key": {
+            "orderId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "maintenance_schedules",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b691f09ec22a4f008a08"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.172Z"
+        },
+        {
+          "field": "customerId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        },
+        {
+          "field": "installationId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f0089f7"
+        },
+        {
+          "field": "services",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "services[]._id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b691f09ec22a4f008a09"
+        },
+        {
+          "field": "services[].date",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-11-18T08:10:57.169Z"
+        },
+        {
+          "field": "services[].serviceName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "1st Free Service"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Sent to Customer"
+        },
+        {
+          "field": "ticketId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "SCH-0001"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.172Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "ticketId_1",
+          "key": {
+            "ticketId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "procurements",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b692f09ec22a4f008a1b"
+        },
+        {
+          "field": "affectedWorkReference",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "binLocation",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "brand",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "condition",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Good"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.915Z"
+        },
+        {
+          "field": "inventoryId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ea"
+        },
+        {
+          "field": "invoiceNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "itemClass",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Unclassified"
+        },
+        {
+          "field": "itemName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\" (per meter)"
+        },
+        {
+          "field": "nonPoReason",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "orderLineId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 100
+        },
+        {
+          "field": "receiptMode",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "LEGACY"
+        },
+        {
+          "field": "receivedBy",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Ishara Jayasuriya"
+        },
+        {
+          "field": "receivedDate",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.914Z"
+        },
+        {
+          "field": "sku",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PIPE-CU-025"
+        },
+        {
+          "field": "sourceDocumentKey",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "sourceDocumentNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "subcategory",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Unclassified"
+        },
+        {
+          "field": "supplierId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089dc"
+        },
+        {
+          "field": "supplierName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "ColdChain Distributors (Pvt) Ltd"
+        },
+        {
+          "field": "supportingDocumentUrl",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "timestamp",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.914Z"
+        },
+        {
+          "field": "totalCost",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 85000
+        },
+        {
+          "field": "unit",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "meters"
+        },
+        {
+          "field": "unitCost",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 850
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.915Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "sourceDocumentKey_1",
+          "key": {
+            "sourceDocumentKey": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "receiptEventId_1",
+          "key": {
+            "receiptEventId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "config",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089da"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.302Z"
+        },
+        {
+          "field": "key",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "company_contact"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.302Z"
+        },
+        {
+          "field": "value",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "value.email",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "info@airlux.lk"
+        },
+        {
+          "field": "value.phone",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "+94112345678"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "key_1",
+          "key": {
+            "key": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "installations",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f0089f7"
+        },
+        {
+          "field": "assignedTeamId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ef"
+        },
+        {
+          "field": "assignedTeamName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Colombo Installation Team A"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.159Z"
+        },
+        {
+          "field": "customerId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        },
+        {
+          "field": "inspectionTicketId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089f5"
+        },
+        {
+          "field": "location",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "45 Negombo Road, Negombo"
+        },
+        {
+          "field": "materials",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "materials[]._id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f0089f8"
+        },
+        {
+          "field": "materials[].item",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\""
+        },
+        {
+          "field": "materials[].quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 6
+        },
+        {
+          "field": "orderId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089e8"
+        },
+        {
+          "field": "productType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Split AC"
+        },
+        {
+          "field": "serviceDate",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-27T08:10:56.157Z"
+        },
+        {
+          "field": "siteDetails",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "siteDetails.buildingType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Residential"
+        },
+        {
+          "field": "siteDetails.ceilingHeight",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "9ft"
+        },
+        {
+          "field": "siteDetails.floors",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 2
+        },
+        {
+          "field": "siteDetails.outdoorAccess",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "siteDetails.powerSupply",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Single Phase"
+        },
+        {
+          "field": "siteDetails.rooms",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 4
+        },
+        {
+          "field": "siteDetails.wallType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Brick"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Assigned"
+        },
+        {
+          "field": "units",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.159Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "service_tickets",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f0089fa"
+        },
+        {
+          "field": "assignedTechnicianId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089ca"
+        },
+        {
+          "field": "category",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "maintenance"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.331Z"
+        },
+        {
+          "field": "customerId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        },
+        {
+          "field": "description",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Customer requested first free service af..."
+        },
+        {
+          "field": "priority",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "medium"
+        },
+        {
+          "field": "requestType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Maintenance"
+        },
+        {
+          "field": "serviceFee",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "slaDueAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-09-03T08:10:56.328Z"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Assigned"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.331Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "bank_details",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089de"
+        },
+        {
+          "field": "accountName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Airlux Engineering (Pvt) Ltd"
+        },
+        {
+          "field": "accountNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "8001234567"
+        },
+        {
+          "field": "bankName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Commercial Bank"
+        },
+        {
+          "field": "branch",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Negombo"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.562Z"
+        },
+        {
+          "field": "currency",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "LKR"
+        },
+        {
+          "field": "type",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Current"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.562Z"
+        },
+        {
+          "field": "updatedBy",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68cf09ec22a4f0089c6"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "receipt_authorizations",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b693f09ec22a4f008a1f"
+        },
+        {
+          "field": "affectedWorkId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "affectedWorkReference",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "affectedWorkType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "NONE"
+        },
+        {
+          "field": "approvalComment",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "approvedByName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "authorizationNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "RA-0001"
+        },
+        {
+          "field": "authorizedQuantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 50
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:59.265Z"
+        },
+        {
+          "field": "estimatedTotal",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "explanation",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Emergency purchase of copper piping due ..."
+        },
+        {
+          "field": "financeComment",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "financeReference",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "financeReviewStatus",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "pending"
+        },
+        {
+          "field": "inventoryId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ea"
+        },
+        {
+          "field": "nonPoReason",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "LOCAL_PURCHASE"
+        },
+        {
+          "field": "receiptMode",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "NON_PO"
+        },
+        {
+          "field": "receivedQuantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "rejectionReason",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "requestedById",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089ca"
+        },
+        {
+          "field": "requestedByName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Kasun Silva"
+        },
+        {
+          "field": "sourceDocumentNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "SDN-12345"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "pending"
+        },
+        {
+          "field": "statusVersion",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "supplierId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089dc"
+        },
+        {
+          "field": "supplierName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "ColdChain Distributors (Pvt) Ltd"
+        },
+        {
+          "field": "supportingDocumentUrl",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "unitCost",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:59.265Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "authorizationNumber_1",
+          "key": {
+            "authorizationNumber": 1
+          },
+          "unique": true
+        },
+        {
+          "name": "supplierId_1_sourceDocumentNumber_1",
+          "key": {
+            "supplierId": 1,
+            "sourceDocumentNumber": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "repairs",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b691f09ec22a4f008a0b"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.335Z"
+        },
+        {
+          "field": "customerId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        },
+        {
+          "field": "location",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "45 Negombo Road, Negombo"
+        },
+        {
+          "field": "materials",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "materials[]._id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b691f09ec22a4f008a0c"
+        },
+        {
+          "field": "materials[].item",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\""
+        },
+        {
+          "field": "materials[].quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1
+        },
+        {
+          "field": "notes",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Leak fixed in joint."
+        },
+        {
+          "field": "orderId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089e6"
+        },
+        {
+          "field": "repairType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "minor"
+        },
+        {
+          "field": "serviceTicketId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f0089fa"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PENDING"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.335Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "service_reports",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b691f09ec22a4f008a0e"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.506Z"
+        },
+        {
+          "field": "customer",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "customer.address",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "45 Negombo Road, Negombo"
+        },
+        {
+          "field": "customer.email",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "nadeesha@example.com"
+        },
+        {
+          "field": "customer.name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Nadeesha Fernando"
+        },
+        {
+          "field": "customer.phone",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "+94770000002"
+        },
+        {
+          "field": "customerId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        },
+        {
+          "field": "finalStatus",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Completed"
+        },
+        {
+          "field": "location",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "45 Negombo Road, Negombo"
+        },
+        {
+          "field": "materialsUsed",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "materialsUsed[]._id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b691f09ec22a4f008a0f"
+        },
+        {
+          "field": "materialsUsed[].item",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Filter mesh"
+        },
+        {
+          "field": "materialsUsed[].quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1
+        },
+        {
+          "field": "productDetails",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "productDetails.description",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Regular cleaning service"
+        },
+        {
+          "field": "productDetails.detailedType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Airlux SplitCool 12000BTU"
+        },
+        {
+          "field": "productDetails.generalType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Split AC"
+        },
+        {
+          "field": "repairType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "MINOR"
+        },
+        {
+          "field": "scheduledDate",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.504Z"
+        },
+        {
+          "field": "submittedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.504Z"
+        },
+        {
+          "field": "technicianComment",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Cleaned filters and indoor coils. Operat..."
+        },
+        {
+          "field": "type",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "MAINTENANCE"
+        },
+        {
+          "field": "units",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.506Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "systemconfigs",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b77d1c304ac2d5969ec6"
+        },
+        {
+          "field": "businessRules",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "businessRules.amcContractMonths",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 12
+        },
+        {
+          "field": "businessRules.defaultWarrantyMonths",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 24
+        },
+        {
+          "field": "businessRules.logRetentionDays",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 30
+        },
+        {
+          "field": "businessRules.maxRescheduleAttempts",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 3
+        },
+        {
+          "field": "businessRules.paymentAutoCancelDays",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 14
+        },
+        {
+          "field": "businessRules.quotationApprovalThreshold",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1000000
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:14:53.883Z"
+        },
+        {
+          "field": "featureFlags",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "featureFlags.amcModuleEnabled",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "featureFlags.customerFeedbackEnabled",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "featureFlags.deliveryTrackingEnabled",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "featureFlags.warrantyModuleEnabled",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "logging",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "logging.enableActivityLogs",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "logging.enableErrorLogs",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "logging.enableSecurityLogs",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": true
+        },
+        {
+          "field": "logging.logLevel",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "INFO"
+        },
+        {
+          "field": "logging.logRetentionDays",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 30
+        },
+        {
+          "field": "maintenance",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "maintenance.endTime",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "maintenance.isActive",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "maintenance.message",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "System is under maintenance. Please try ..."
+        },
+        {
+          "field": "maintenance.reason",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "maintenance.scheduledEndTime",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "maintenance.scheduledStartEmailSentAt",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "maintenance.scheduledStartTime",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "maintenance.startTime",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "systemInfo",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "systemInfo.address",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "123 Galle Road, Colombo 03, Sri Lanka"
+        },
+        {
+          "field": "systemInfo.supportEmail",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "support@airlux.lk"
+        },
+        {
+          "field": "systemInfo.supportPhoneNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "+94 11 234 5678"
+        },
+        {
+          "field": "systemInfo.systemName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "AirLux"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T14:34:48.016Z"
+        },
+        {
+          "field": "updatedBy",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68cf09ec22a4f0089c6"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "installation_orders",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089e8"
+        },
+        {
+          "field": "additionalCharges",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 5000
+        },
+        {
+          "field": "consultationCompleted",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.239Z"
+        },
+        {
+          "field": "inspectionFee",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 5000
+        },
+        {
+          "field": "items",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "items[].name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Airlux SplitCool 12000BTU"
+        },
+        {
+          "field": "items[].price",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 145000
+        },
+        {
+          "field": "items[].productId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089e2"
+        },
+        {
+          "field": "items[].purchaseType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "buy_and_install"
+        },
+        {
+          "field": "items[].quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1
+        },
+        {
+          "field": "orderReference",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "ALX-BI-0001"
+        },
+        {
+          "field": "shippingDetails",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "shippingDetails.address",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "45 Negombo Road"
+        },
+        {
+          "field": "shippingDetails.city",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Negombo"
+        },
+        {
+          "field": "shippingDetails.email",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "nadeesha@example.com"
+        },
+        {
+          "field": "shippingDetails.firstName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Nadeesha"
+        },
+        {
+          "field": "shippingDetails.lastName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Fernando"
+        },
+        {
+          "field": "shippingDetails.phone",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "+94770000002"
+        },
+        {
+          "field": "shippingDetails.postalCode",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "11500"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Awaiting Inspection"
+        },
+        {
+          "field": "subtotal",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 145000
+        },
+        {
+          "field": "total",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 150000
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:55.239Z"
+        },
+        {
+          "field": "userId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "orderReference_1",
+          "key": {
+            "orderReference": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "activities",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b691f09ec22a4f008a13"
+        },
+        {
+          "field": "actionLabel",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "View Dispatch Order"
+        },
+        {
+          "field": "actionUrl",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "/warehouse/dispatch/DO-0001"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.846Z"
+        },
+        {
+          "field": "description",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Order ALX-BO-0001 has been dispatched vi..."
+        },
+        {
+          "field": "timestamp",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.845Z"
+        },
+        {
+          "field": "title",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Order Dispatched"
+        },
+        {
+          "field": "type",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "dispatch"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:57.846Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "invoices",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f0089fc"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.500Z"
+        },
+        {
+          "field": "customerAddress",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "45 Negombo Road, Negombo"
+        },
+        {
+          "field": "customerEmail",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "nadeesha@example.com"
+        },
+        {
+          "field": "customerId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        },
+        {
+          "field": "customerName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Nadeesha Fernando"
+        },
+        {
+          "field": "grandTotal",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 150000
+        },
+        {
+          "field": "invoiceDate",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.496Z"
+        },
+        {
+          "field": "invoiceNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "INV-0001"
+        },
+        {
+          "field": "invoiceType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "INSTALLATION"
+        },
+        {
+          "field": "items",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[2 item(s)]"
+        },
+        {
+          "field": "items[]._id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f0089fd"
+        },
+        {
+          "field": "items[].amount",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 145000
+        },
+        {
+          "field": "items[].description",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Unit + standard installation"
+        },
+        {
+          "field": "items[].itemName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Airlux SplitCool 12000BTU"
+        },
+        {
+          "field": "items[].no",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1
+        },
+        {
+          "field": "items[].qty",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1
+        },
+        {
+          "field": "items[].rate",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 145000
+        },
+        {
+          "field": "orderId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089e8"
+        },
+        {
+          "field": "sentAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.496Z"
+        },
+        {
+          "field": "serviceCharge",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "SENT"
+        },
+        {
+          "field": "subTotal",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 150000
+        },
+        {
+          "field": "ticketId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089f5"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.500Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "invoiceNumber_1",
+          "key": {
+            "invoiceNumber": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "inspectionreports",
+      "totalDocuments": 0,
+      "documentsScanned": 0,
+      "fields": [],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "users",
+      "totalDocuments": 9,
+      "documentsScanned": 9,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089d6"
+        },
+        {
+          "field": "additionalEmails",
+          "types": [
+            "array"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "address",
+          "types": [
+            "string"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "22 Parliament Road, Kotte"
+        },
+        {
+          "field": "authMethods",
+          "types": [
+            "array"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.024Z"
+        },
+        {
+          "field": "email",
+          "types": [
+            "string"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "priyantha@airlux.lk"
+        },
+        {
+          "field": "emailVerified",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "fullName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "Priyantha Bandara"
+        },
+        {
+          "field": "gender",
+          "types": [
+            "string"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "lastName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "loginAttempts",
+          "types": [
+            "int"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "notifications",
+          "types": [
+            "array"
+          ],
+          "presentIn": 8,
+          "presentPct": 89,
+          "sample": "[2 item(s)]"
+        },
+        {
+          "field": "notifications[]._id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 7,
+          "presentPct": 78,
+          "sample": "6a86cad0187344d38f8c4f3a"
+        },
+        {
+          "field": "notifications[].actionUrl",
+          "types": [
+            "string"
+          ],
+          "presentIn": 7,
+          "presentPct": 78,
+          "sample": ""
+        },
+        {
+          "field": "notifications[].createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 7,
+          "presentPct": 78,
+          "sample": "2026-08-20T09:37:20.286Z"
+        },
+        {
+          "field": "notifications[].message",
+          "types": [
+            "string"
+          ],
+          "presentIn": 7,
+          "presentPct": 78,
+          "sample": "The system is currently under maintenanc..."
+        },
+        {
+          "field": "notifications[].read",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 7,
+          "presentPct": 78,
+          "sample": false
+        },
+        {
+          "field": "notifications[].title",
+          "types": [
+            "string"
+          ],
+          "presentIn": 7,
+          "presentPct": 78,
+          "sample": "System Under Maintenance"
+        },
+        {
+          "field": "notifications[].type",
+          "types": [
+            "string"
+          ],
+          "presentIn": 7,
+          "presentPct": 78,
+          "sample": "general"
+        },
+        {
+          "field": "passwordHash",
+          "types": [
+            "string"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "$2a$10$1jo29zbKH2jA8a/ArBP7qezG.9uN4FBvk..."
+        },
+        {
+          "field": "phoneNumber",
+          "types": [
+            "string"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "+94770000014"
+        },
+        {
+          "field": "phoneVerified",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "profilePhoto",
+          "types": [
+            "string"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "role",
+          "types": [
+            "string"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "MANAGER"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 9,
+          "presentPct": 100,
+          "sample": "2026-08-20T22:29:01.384Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "email_1",
+          "key": {
+            "email": 1
+          },
+          "unique": true
+        },
+        {
+          "name": "phoneNumber_1",
+          "key": {
+            "phoneNumber": 1
+          },
+          "unique": true
+        },
+        {
+          "name": "googleUid_1",
+          "key": {
+            "googleUid": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "quarantine_items",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b693f09ec22a4f008a1d"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:59.089Z"
+        },
+        {
+          "field": "itemName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Defective Copper Piping 1/4\""
+        },
+        {
+          "field": "location",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 5
+        },
+        {
+          "field": "quarantineId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Q-0001"
+        },
+        {
+          "field": "reason",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Corroded surface"
+        },
+        {
+          "field": "source",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "manual"
+        },
+        {
+          "field": "sourceRefId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "quarantined"
+        },
+        {
+          "field": "unit",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "meters"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:59.089Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "quarantineId_1",
+          "key": {
+            "quarantineId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "servicerequests",
+      "totalDocuments": 0,
+      "documentsScanned": 0,
+      "fields": [],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "serviceRequestRef_1",
+          "key": {
+            "serviceRequestRef": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "installationorders",
+      "totalDocuments": 0,
+      "documentsScanned": 0,
+      "fields": [],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "orderReference_1",
+          "key": {
+            "orderReference": 1
+          },
+          "unique": true
+        },
+        {
+          "name": "orderId_1",
+          "key": {
+            "orderId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "job_material_requests",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f008a02"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.834Z"
+        },
+        {
+          "field": "items",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "items[]._id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f008a03"
+        },
+        {
+          "field": "items[].itemName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\""
+        },
+        {
+          "field": "items[].quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 6
+        },
+        {
+          "field": "items[].total",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 5100
+        },
+        {
+          "field": "items[].unitPrice",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 850
+        },
+        {
+          "field": "jobId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b690f09ec22a4f0089f7"
+        },
+        {
+          "field": "jobType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Installation"
+        },
+        {
+          "field": "requestedBy",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089ca"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "APPROVED"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:56.834Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "inspection_tickets",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a89260ac02b24d7095ce539"
+        },
+        {
+          "field": "approvedAt",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "customerId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        },
+        {
+          "field": "inspectedAt",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "inspectionFee",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 5000
+        },
+        {
+          "field": "orderId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089e8"
+        },
+        {
+          "field": "rejectedAt",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "rejectionReason",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "reminderSent",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "scheduledAt",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "scheduledDate",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "slipUploadedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-22T08:00:00.000Z"
+        },
+        {
+          "field": "slipUrl",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "data:image/png;base64,iVBORw0KGgoAAAANSU..."
+        },
+        {
+          "field": "startedAt",
+          "types": [
+            "null"
+          ],
+          "presentIn": 1,
+          "presentPct": 100
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PAYMENT_UNDER_REVIEW"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "carts",
+      "totalDocuments": 2,
+      "documentsScanned": 2,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "6a870e2d28134735b107267b"
+        },
+        {
+          "field": "additionalCharges",
+          "types": [
+            "int"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "2026-08-20T14:24:45.253Z"
+        },
+        {
+          "field": "items",
+          "types": [
+            "array"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "items[].product",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 50,
+          "sample": "6a86b68ef09ec22a4f0089e2"
+        },
+        {
+          "field": "items[].purchaseType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 50,
+          "sample": "buy_and_install"
+        },
+        {
+          "field": "items[].quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 50,
+          "sample": 1
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "2026-08-20T14:24:45.253Z"
+        },
+        {
+          "field": "userId",
+          "types": [
+            "string",
+            "objectId"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "demo-user"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "userId_1",
+          "key": {
+            "userId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "counters",
+      "totalDocuments": 2,
+      "documentsScanned": 2,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": "orderReference_BO"
+        },
+        {
+          "field": "seq",
+          "types": [
+            "int"
+          ],
+          "presentIn": 2,
+          "presentPct": 100,
+          "sample": 1
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "suppliers",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089dc"
+        },
+        {
+          "field": "address",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "120 Industrial Zone, Biyagama"
+        },
+        {
+          "field": "contactPerson",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Ruwan Bandara"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.432Z"
+        },
+        {
+          "field": "email",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "sales@coldchain.lk"
+        },
+        {
+          "field": "name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "ColdChain Distributors (Pvt) Ltd"
+        },
+        {
+          "field": "phone",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "+94112223344"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "active"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.432Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "name_1",
+          "key": {
+            "name": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "orders",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a89443e3089a9318cbcd9fd"
+        },
+        {
+          "field": "additionalCharges",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "consultationCompleted",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-22T06:30:00.000Z"
+        },
+        {
+          "field": "items",
+          "types": [
+            "array"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "[1 item(s)]"
+        },
+        {
+          "field": "items[].name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Airlux SplitCool 12000BTU"
+        },
+        {
+          "field": "items[].price",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 145000
+        },
+        {
+          "field": "items[].productId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089e2"
+        },
+        {
+          "field": "items[].purchaseType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "buy_only"
+        },
+        {
+          "field": "items[].quantity",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 1
+        },
+        {
+          "field": "orderReference",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "ALX-BO-1002"
+        },
+        {
+          "field": "orderType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Buy Only"
+        },
+        {
+          "field": "paymentSlip",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "/uploads/slips/ALX-BO-1002-slip.jpg"
+        },
+        {
+          "field": "paymentSlipUrl",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "uploads/slips/ALX-BO-1002-slip.jpg"
+        },
+        {
+          "field": "paymentStatus",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Under Review"
+        },
+        {
+          "field": "shippingDetails",
+          "types": [
+            "object"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "shippingDetails.address",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "45 Negombo Road"
+        },
+        {
+          "field": "shippingDetails.city",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Negombo"
+        },
+        {
+          "field": "shippingDetails.email",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "nadeesha@example.com"
+        },
+        {
+          "field": "shippingDetails.firstName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Nadeesha"
+        },
+        {
+          "field": "shippingDetails.lastName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Fernando"
+        },
+        {
+          "field": "shippingDetails.phone",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "+94770000002"
+        },
+        {
+          "field": "shippingDetails.postalCode",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "11500"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Under Review (Finance)"
+        },
+        {
+          "field": "subtotal",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 145000
+        },
+        {
+          "field": "total",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 145000
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-22T06:30:00.000Z"
+        },
+        {
+          "field": "userId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089c8"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "orderReference_1",
+          "key": {
+            "orderReference": 1
+          },
+          "unique": true
+        },
+        {
+          "name": "orderRef_1",
+          "key": {
+            "orderRef": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "leftover_returns",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b692f09ec22a4f008a19"
+        },
+        {
+          "field": "condition",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "good"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.740Z"
+        },
+        {
+          "field": "itemId",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ff09ec22a4f0089ea"
+        },
+        {
+          "field": "itemName",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Copper Piping 1/4\" (per meter)"
+        },
+        {
+          "field": "itemSku",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "PIPE-CU-025"
+        },
+        {
+          "field": "jobId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "JOB-0001"
+        },
+        {
+          "field": "movedToQuarantine",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "notes",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": ""
+        },
+        {
+          "field": "quantityReturned",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 2
+        },
+        {
+          "field": "restoredToStock",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": false
+        },
+        {
+          "field": "returnedBy",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Kasun Silva"
+        },
+        {
+          "field": "returnId",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "RET-0001"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:58.740Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "returnId_1",
+          "key": {
+            "returnId": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "charges",
+      "totalDocuments": 1,
+      "documentsScanned": 1,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "6a86b68ef09ec22a4f0089e0"
+        },
+        {
+          "field": "amount",
+          "types": [
+            "int"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": 5000
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.691Z"
+        },
+        {
+          "field": "description",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Charged for pre-installation site inspec..."
+        },
+        {
+          "field": "name",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "Standard Site Inspection Fee"
+        },
+        {
+          "field": "type",
+          "types": [
+            "string"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "FIXED"
+        },
+        {
+          "field": "updatedAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 1,
+          "presentPct": 100,
+          "sample": "2026-08-20T08:10:54.691Z"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "name_1",
+          "key": {
+            "name": 1
+          },
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "auditlogs",
+      "totalDocuments": 40,
+      "documentsScanned": 40,
+      "fields": [
+        {
+          "field": "__v",
+          "types": [
+            "int"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": 0
+        },
+        {
+          "field": "_id",
+          "types": [
+            "objectId"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "6a877f77b772ddb6b9ea506e"
+        },
+        {
+          "field": "action",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "LOGIN_SUCCESS"
+        },
+        {
+          "field": "actionCategory",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "LOGIN"
+        },
+        {
+          "field": "before",
+          "types": [
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100
+        },
+        {
+          "field": "changes",
+          "types": [
+            "object"
+          ],
+          "presentIn": 4,
+          "presentPct": 10,
+          "sample": "{...}"
+        },
+        {
+          "field": "changes.after",
+          "types": [
+            "object"
+          ],
+          "presentIn": 4,
+          "presentPct": 10,
+          "sample": "{...}"
+        },
+        {
+          "field": "changes.after.address",
+          "types": [
+            "object"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "{...}"
+        },
+        {
+          "field": "changes.after.address.newValue",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "123 Galle Road, Colombo 03, Sri Lanka"
+        },
+        {
+          "field": "changes.after.address.oldValue",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "567 Galle Road, Colombo 03, Sri Lanka"
+        },
+        {
+          "field": "changes.after.isActive",
+          "types": [
+            "object"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "{...}"
+        },
+        {
+          "field": "changes.after.isActive.newValue",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": true
+        },
+        {
+          "field": "changes.after.isActive.oldValue",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": false
+        },
+        {
+          "field": "changes.after.maintenanceType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "Instant"
+        },
+        {
+          "field": "changes.after.supportEmail",
+          "types": [
+            "object"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "{...}"
+        },
+        {
+          "field": "changes.after.supportEmail.newValue",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "support@airlux.lk"
+        },
+        {
+          "field": "changes.after.supportEmail.oldValue",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "support@airlux.com"
+        },
+        {
+          "field": "changes.after.supportPhoneNumber",
+          "types": [
+            "object"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "{...}"
+        },
+        {
+          "field": "changes.after.supportPhoneNumber.newValue",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "+94 11 234 5678"
+        },
+        {
+          "field": "changes.after.supportPhoneNumber.oldValue",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "+94 12 234 5678"
+        },
+        {
+          "field": "changes.after.systemName",
+          "types": [
+            "object"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "{...}"
+        },
+        {
+          "field": "changes.after.systemName.newValue",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "AirLux"
+        },
+        {
+          "field": "changes.after.systemName.oldValue",
+          "types": [
+            "string"
+          ],
+          "presentIn": 2,
+          "presentPct": 5,
+          "sample": "Test Change"
+        },
+        {
+          "field": "createdAt",
+          "types": [
+            "date"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "2026-08-20T22:28:07.826Z"
+        },
+        {
+          "field": "dataSize",
+          "types": [
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100
+        },
+        {
+          "field": "entity",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "User"
+        },
+        {
+          "field": "entityId",
+          "types": [
+            "objectId",
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089d2"
+        },
+        {
+          "field": "errorDetails",
+          "types": [
+            "object"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "errorDetails.affectedResource",
+          "types": [
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100
+        },
+        {
+          "field": "errorDetails.errorMessage",
+          "types": [
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100
+        },
+        {
+          "field": "errorDetails.errorType",
+          "types": [
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100
+        },
+        {
+          "field": "errorDetails.stackTrace",
+          "types": [
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100
+        },
+        {
+          "field": "ipAddress",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "::ffff:127.0.0.1"
+        },
+        {
+          "field": "logLevel",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "INFO"
+        },
+        {
+          "field": "logType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "ACTIVITY"
+        },
+        {
+          "field": "metadata",
+          "types": [
+            "object"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "{...}"
+        },
+        {
+          "field": "metadata.errorType",
+          "types": [
+            "string"
+          ],
+          "presentIn": 15,
+          "presentPct": 38,
+          "sample": "INVALID_CREDENTIALS"
+        },
+        {
+          "field": "metadata.loginIdentifier",
+          "types": [
+            "string"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "nuwan@airlux.lk"
+        },
+        {
+          "field": "metadata.loginMethod",
+          "types": [
+            "string"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "EMAIL"
+        },
+        {
+          "field": "metadata.rememberMe",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 21,
+          "presentPct": 53,
+          "sample": true
+        },
+        {
+          "field": "metadata.userEmail",
+          "types": [
+            "string",
+            "null"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "nuwan@airlux.lk"
+        },
+        {
+          "field": "metadata.userName",
+          "types": [
+            "string",
+            "null"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "Nuwan Jayewardene"
+        },
+        {
+          "field": "metadata.userPhone",
+          "types": [
+            "null",
+            "string"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "+94770000001"
+        },
+        {
+          "field": "metadata.userRole",
+          "types": [
+            "string"
+          ],
+          "presentIn": 21,
+          "presentPct": 53,
+          "sample": "SERVICE_TEAM"
+        },
+        {
+          "field": "module",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "AUTH"
+        },
+        {
+          "field": "performedBy",
+          "types": [
+            "objectId",
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "6a86b68df09ec22a4f0089d2"
+        },
+        {
+          "field": "performedByRole",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "SERVICE_TEAM"
+        },
+        {
+          "field": "reason",
+          "types": [
+            "null",
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "Patchs"
+        },
+        {
+          "field": "requestDetails",
+          "types": [
+            "object"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "{...}"
+        },
+        {
+          "field": "requestDetails.endpoint",
+          "types": [
+            "string"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "/api/auth/login"
+        },
+        {
+          "field": "requestDetails.method",
+          "types": [
+            "string"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "POST"
+        },
+        {
+          "field": "requestDetails.params",
+          "types": [
+            "object"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "{...}"
+        },
+        {
+          "field": "requestDetails.params.email",
+          "types": [
+            "string"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "nuwan@airlux.lk"
+        },
+        {
+          "field": "requestDetails.params.password",
+          "types": [
+            "string"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": "[REDACTED]"
+        },
+        {
+          "field": "requestDetails.params.rememberMe",
+          "types": [
+            "boolean"
+          ],
+          "presentIn": 36,
+          "presentPct": 90,
+          "sample": true
+        },
+        {
+          "field": "resource",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "PaymentSetting"
+        },
+        {
+          "field": "securityDetails",
+          "types": [
+            "object"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "{...}"
+        },
+        {
+          "field": "securityDetails.attemptCount",
+          "types": [
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100
+        },
+        {
+          "field": "securityDetails.riskLevel",
+          "types": [
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100
+        },
+        {
+          "field": "securityDetails.securityFlags",
+          "types": [
+            "array"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "[0 item(s)]"
+        },
+        {
+          "field": "status",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "SUCCESS"
+        },
+        {
+          "field": "statusCode",
+          "types": [
+            "null"
+          ],
+          "presentIn": 40,
+          "presentPct": 100
+        },
+        {
+          "field": "timestamp",
+          "types": [
+            "date"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "2026-08-20T22:28:07.826Z"
+        },
+        {
+          "field": "userAgent",
+          "types": [
+            "string"
+          ],
+          "presentIn": 40,
+          "presentPct": 100,
+          "sample": "Mozilla/5.0 (Windows NT 10.0; Win64; x64..."
+        }
+      ],
+      "indexes": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "createdAt_-1",
+          "key": {
+            "createdAt": -1
+          },
+          "unique": false
+        },
+        {
+          "name": "performedBy_1",
+          "key": {
+            "performedBy": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "performedByRole_1",
+          "key": {
+            "performedByRole": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "entity_1_entityId_1",
+          "key": {
+            "entity": 1,
+            "entityId": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "logType_1",
+          "key": {
+            "logType": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "module_1",
+          "key": {
+            "module": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "actionCategory_1",
+          "key": {
+            "actionCategory": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "status_1",
+          "key": {
+            "status": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "createdAt_-1_logType_1_module_1",
+          "key": {
+            "createdAt": -1,
+            "logType": 1,
+            "module": 1
+          },
+          "unique": false
+        },
+        {
+          "name": "performedBy_1_createdAt_-1",
+          "key": {
+            "performedBy": 1,
+            "createdAt": -1
+          },
+          "unique": false
+        },
+        {
+          "name": "performedByRole_1_createdAt_-1",
+          "key": {
+            "performedByRole": 1,
+            "createdAt": -1
+          },
+          "unique": false
+        }
+      ]
+    }
+  ]
+}

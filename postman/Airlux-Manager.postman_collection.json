@@ -1,0 +1,48 @@
+{
+  "info": {
+    "name": "AirLux Manager API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api" },
+    { "key": "token", "value": "" },
+    { "key": "ticketId", "value": "" },
+    { "key": "technicianId", "value": "" },
+    { "key": "orderId", "value": "" }
+  ],
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+  "item": [
+    { "name": "Dashboard", "request": { "method": "GET", "url": "{{baseUrl}}/manager/dashboard" } },
+    { "name": "Analytics - 30 days", "request": { "method": "GET", "url": "{{baseUrl}}/manager/analytics?period=30d" } },
+    { "name": "List Tickets", "request": { "method": "GET", "url": "{{baseUrl}}/manager/tickets?status=open&priority=high" } },
+    { "name": "List Assignable Technicians", "request": { "method": "GET", "url": "{{baseUrl}}/manager/technicians" } },
+    {
+      "name": "Assign Technician",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"assignedTechnicianId\": \"{{technicianId}}\"\n}" },
+        "url": "{{baseUrl}}/manager/tickets/{{ticketId}}"
+      }
+    },
+    {
+      "name": "Resolve Ticket",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"resolved\"\n}" },
+        "url": "{{baseUrl}}/manager/tickets/{{ticketId}}"
+      }
+    },
+    { "name": "Pending Purchase Approvals", "request": { "method": "GET", "url": "{{baseUrl}}/manager/orders?status=pending-approval" } },
+    {
+      "name": "Approve Purchase Request",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"decision\": \"approved\"\n}" },
+        "url": "{{baseUrl}}/manager/orders/{{orderId}}"
+      }
+    }
+  ]
+}

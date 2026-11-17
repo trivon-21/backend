@@ -1,15 +1,17 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
-const jobMaterialRequestSchema = new Schema(
-  {
+const jobMaterialRequestSchema = new Schema({
+    jobId: { type: Schema.Types.ObjectId, required: true },
+    jobType: { type: String, required: true },
     requestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-    jobId: { type: Schema.Types.ObjectId, refPath: 'jobType' },
-    jobType: { type: String, enum: ['Installation', 'Maintenance', 'Repair'] }, // NEW — needed for the polymorphic ref
-    items: [{ itemName: String, quantity: Number, unitPrice: Number, total: Number }],
-    status: { type: String, enum: ['PENDING', 'APPROVED', 'REJECTED'], default: 'PENDING' },
-  },
-  { timestamps: true, collection: 'job_material_requests' } 
-);
+    items: [{
+        itemName: { type: String },
+        quantity: { type: Number },
+        unitPrice: { type: Number, default: 0 },
+        total: { type: Number, default: 0 }
+    }],
+    status: { type: String, default: 'PENDING' }
+}, { timestamps: true, collection: 'job_material_requests' });
 
-module.exports = mongoose.model('JobMaterialRequest', jobMaterialRequestSchema);
+module.exports = mongoose.models.JobMaterialRequest || mongoose.model('JobMaterialRequest', jobMaterialRequestSchema);

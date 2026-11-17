@@ -2,6 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const mongoose = require('mongoose');
+const connectDB = require('../src/config/db');
 const NewRequest = require('../src/modules/shared/serviceRequest/newRequest.model');
 const Counter = require('../src/modules/shared/serviceRequest/counter.model');
 
@@ -33,8 +34,7 @@ async function syncCounter(counterId, highestSequence) {
 }
 
 async function run() {
-  await mongoose.connect(process.env.MONGO_URI);
-  console.log('Connected to MongoDB');
+  await connectDB();
 
   const prefixByType = {
     Repair: { counterId: 'repairSeq', prefix: 'RS-' },

@@ -119,3 +119,86 @@ exports.DEFAULT_AVAILABILITY_OPTIONS = Object.freeze({
   MAX_DAYS_TO_CHECK: AVAILABILITY_CONFIG.MAX_DAYS_TO_CHECK,
   INCLUDE_TODAY: AVAILABILITY_CONFIG.INCLUDE_TODAY
 });
+
+const TIME_SLOTS = [
+  "9:00 AM - 11:00 AM",
+  "11:00 AM - 1:00 PM",
+  "1:00 PM - 3:00 PM",
+  "3:00 PM - 5:00 PM"
+];
+
+exports.calculateAvailableTimeSlots = (teamJobs, options = {}) => {
+  if (!Array.isArray(teamJobs)) {
+    throw new TypeError('teamJobs must be an array');
+  }
+
+  const safeOptions = options && typeof options === 'object' ? options : {};
+  const {
+    maxSlots = 12, // 3 days worth of slots
+    maxDaysToCheck = AVAILABILITY_CONFIG.MAX_DAYS_TO_CHECK,
+    includeToday = AVAILABILITY_CONFIG.INCLUDE_TODAY
+  } = safeOptions;
+
+  const requestedSlots = toPositiveInteger(maxSlots, 12, 'maxSlots');
+  const daysLimit = toPositiveInteger(maxDaysToCheck, AVAILABILITY_CONFIG.MAX_DAYS_TO_CHECK, 'maxDaysToCheck');
+  const includeCurrentDay = Boolean(includeToday);
+
+  if (requestedSlots === 0 || daysLimit === 0) {
+    return [];
+  }
+
+  const availableSlots = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const busySlotsByDate = new Map();
+  for (const job of teamJobs) {
+    if (!job || typeof job !== 'object') continue;
+    
+    // We expect job to have timeSlot along with the date
+    const normalizedDate = normalizeDate(job.serviceDate || job.scheduledDate || job.date);
+    if (normalizedDate !== null) {
+      if (!busySlotsByDate.has(normalizedDate)) {
+        busySlotsByDate.set(normalizedDate, new Set());
+      }
+      
+      const slot = job.timeSlot || job.scheduledTimeSlot;
+      if (slot) {
+        busySlotsByDate.get(normalizedDate).add(slot);
+      } else {
+        // If no slot specified, it takes up the whole day? Or let's just consume one slot for legacy jobs
+        busySlotsByDate.get(normalizedDate).add("ALL");
+      }
+    }
+  }
+
+  let checkDate = new Date(today);
+  if (!includeCurrentDay) {
+    checkDate.setDate(checkDate.getDate() + 1);
+  }
+  
+  let daysChecked = 0;
+
+  while (availableSlots.length < requestedSlots && daysChecked < daysLimit) {
+    if (!isHoliday(checkDate)) {
+      const ts = checkDate.getTime();
+      const busySlots = busySlotsByDate.get(ts);
+      
+      if (!busySlots || !busySlots.has("ALL")) {
+        for (const slot of TIME_SLOTS) {
+          if (!busySlots || !busySlots.has(slot)) {
+            availableSlots.push({
+              date: new Date(checkDate).toISOString(),
+              timeSlot: slot
+            });
+            if (availableSlots.length >= requestedSlots) break;
+          }
+        }
+      }
+    }
+    checkDate.setDate(checkDate.getDate() + 1);
+    daysChecked += 1;
+  }
+
+  return availableSlots;
+};

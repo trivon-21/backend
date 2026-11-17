@@ -82,9 +82,11 @@ const productSchema = new mongoose.Schema({
     reviews: {
         type: [
             {
+                userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
                 userName: { type: String, required: true, trim: true },
                 rating: { type: Number, required: true, min: 1, max: 5 },
                 comment: { type: String, required: true, trim: true },
+                isVerifiedBuyer: { type: Boolean, default: true },
                 date: { type: Date, default: Date.now }
             }
         ],
@@ -109,7 +111,7 @@ productSchema.index({ price: 1 });
 productSchema.index({ createdAt: -1 });
 
 // Middleware to update averageRating and reviewCount before saving
-productSchema.pre('save', function(next) {
+productSchema.pre('save', function() {
     if (this.reviews && this.reviews.length > 0) {
         this.reviewCount = this.reviews.length;
         const total = this.reviews.reduce((sum, r) => sum + r.rating, 0);
@@ -118,7 +120,6 @@ productSchema.pre('save', function(next) {
         this.reviewCount = 0;
         this.averageRating = 0;
     }
-    next();
 });
 
 const Product = mongoose.model('Product', productSchema);

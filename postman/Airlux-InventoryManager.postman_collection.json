@@ -1,0 +1,1310 @@
+{
+  "info": {
+    "name": "Airlux — Inventory Manager API Tests",
+    "description": "Full test suite for the /api/inventory module (31 endpoints). Run top-to-bottom with the Collection Runner — requests chain via collection variables (token, itemId, loanId, orderRequestId, rmaId, quarantineId). All test data is prefixed 'PMTEST-' so it is easy to find and clean up. WARNING: POST/PATCH requests write real documents to whatever database the backend's .env points at.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api" },
+    { "key": "loginIdentifier", "value": "" },
+    { "key": "loginPassword", "value": "" },
+    { "key": "token", "value": "" },
+    { "key": "testSku", "value": "" },
+    { "key": "itemId", "value": "" },
+    { "key": "supplierName", "value": "" },
+    { "key": "supplierId", "value": "" },
+    { "key": "toolItemId", "value": "" },
+    { "key": "toolAssetTag", "value": "" },
+    { "key": "loanId", "value": "" },
+    { "key": "orderRequestId", "value": "" },
+    { "key": "rejectRequestId", "value": "" },
+    { "key": "rmaId", "value": "" },
+    { "key": "quarantineId", "value": "" },
+    { "key": "dispatchOrderId", "value": "" },
+    { "key": "materialRequestId", "value": "" },
+    { "key": "stockBefore", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "00 Setup & Auth",
+      "item": [
+        {
+          "name": "TC-01 Login (gets token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-01: 200 + token + user role returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.token).to.be.a('string').and.not.empty;",
+                  "  pm.expect(j.user).to.be.an('object');",
+                  "  pm.collectionVariables.set('token', j.token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{loginIdentifier}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "TC-02 No token -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-02: 401 Not authenticated', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().message).to.include('Not authenticated');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/list", "host": ["{{baseUrl}}"], "path": ["inventory", "list"] }
+          }
+        },
+        {
+          "name": "TC-03 Garbage token -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-03: 401 invalid token', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().message).to.include('Invalid or expired');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "not-a-real-token", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/list", "host": ["{{baseUrl}}"], "path": ["inventory", "list"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Dashboard & Activity",
+      "item": [
+        {
+          "name": "TC-04 GET dashboard",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-04: 200 + all 4 stat tiles + arrays', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.stats).to.have.keys(['materialReservations','dispatchQueue','assetHealth','stockAlerts']);",
+                  "  pm.expect(j.recentActivity).to.be.an('array');",
+                  "  pm.expect(j.reorderList).to.be.an('array');",
+                  "  pm.expect(j.status).to.eql('Operational');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/dashboard", "host": ["{{baseUrl}}"], "path": ["inventory", "dashboard"] }
+          }
+        },
+        {
+          "name": "TC-05 GET activity log",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-05: 200 + array of typed events', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j).to.be.an('array');",
+                  "  if (j.length) pm.expect(['return','dispatch','request','grn','alert']).to.include(j[0].type);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/activity", "host": ["{{baseUrl}}"], "path": ["inventory", "activity"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Inventory Items",
+      "item": [
+        {
+          "name": "TC-06 POST create zero-stock catalog item",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "exec": ["pm.collectionVariables.set('testSku', 'PMTEST-' + Date.now());"] }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-06: 201 + zero stock + id saved', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.sku).to.eql(pm.collectionVariables.get('testSku'));",
+                  "  pm.expect(j.available).to.eql(0);",
+                  "  pm.expect(j.reserved).to.eql(0);",
+                  "  pm.expect(j.status).to.eql('critical');",
+                  "  pm.expect(j.stockStatus).to.eql('out-of-stock');",
+                  "  pm.collectionVariables.set('itemId', j._id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PMTEST Copper Pipe 15mm\",\n  \"sku\": \"{{testSku}}\",\n  \"itemClass\": \"Installation Materials\",\n  \"subcategory\": \"Copper Tube / Line Set\",\n  \"brand\": \"TestBrand\",\n  \"type\": \"Single\",\n  \"reorderLevel\": 10,\n  \"maxStockLevel\": 40,\n  \"unit\": \"meters\",\n  \"unitCost\": 1200,\n  \"location\": \"Warehouse A\",\n  \"binLocation\": \"MAT-A01\",\n  \"systemType\": \"Universal\",\n  \"phase\": \"Not Applicable\",\n  \"compatibleModels\": [],\n  \"refrigerants\": [],\n  \"isSerialized\": false\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/item", "host": ["{{baseUrl}}"], "path": ["inventory", "item"] }
+          }
+        },
+        {
+          "name": "TC-07 POST duplicate SKU -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-07: 409 SKU already exists', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().message).to.include('SKU already exists');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PMTEST Duplicate\",\n  \"sku\": \"{{testSku}}\",\n  \"itemClass\": \"Installation Materials\",\n  \"subcategory\": \"Copper Tube / Line Set\",\n  \"brand\": \"TestBrand\",\n  \"type\": \"Single\",\n  \"unit\": \"meters\",\n  \"location\": \"Warehouse A\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/item", "host": ["{{baseUrl}}"], "path": ["inventory", "item"] }
+          }
+        },
+        {
+          "name": "TC-08 GET list contains new item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-08: 200 + array + created SKU present', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var skus = pm.response.json().map(function (i) { return i.sku; });",
+                  "  pm.expect(skus).to.include(pm.collectionVariables.get('testSku'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/list", "host": ["{{baseUrl}}"], "path": ["inventory", "list"] }
+          }
+        },
+        {
+          "name": "TC-09 GET single item by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-09: 200 + correct item', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()._id).to.eql(pm.collectionVariables.get('itemId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/item/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "item", "{{itemId}}"] }
+          }
+        },
+        {
+          "name": "TC-10 GET unknown id -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-10: 404 Item not found', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().message).to.include('Item not found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/item/64b000000000000000000000", "host": ["{{baseUrl}}"], "path": ["inventory", "item", "64b000000000000000000000"] }
+          }
+        },
+        {
+          "name": "TC-11 PATCH catalog master data",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-11: 200 + unitCost updated to 1500', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().unitCost).to.eql(1500);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"unitCost\": 1500,\n  \"location\": \"Warehouse B\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/item/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "item", "{{itemId}}"] }
+          }
+        },
+        {
+          "name": "TC-11A PATCH direct stock mutation -> 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('TC-11A: stock changes require stock workflow', function () {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('USE_STOCK_WORKFLOW');", "});"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"available\": 99\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/item/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "item", "{{itemId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Suppliers & Procurement",
+      "item": [
+        {
+          "name": "TC-12 POST create supplier",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "exec": ["pm.collectionVariables.set('supplierName', 'PMTEST-Supplier-' + Date.now());"] }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-12: 201 + supplier created active', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.name).to.eql(pm.collectionVariables.get('supplierName'));",
+                  "  pm.expect(j.status).to.eql('active');",
+                  "  pm.collectionVariables.set('supplierId', j._id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{supplierName}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/suppliers", "host": ["{{baseUrl}}"], "path": ["inventory", "suppliers"] }
+          }
+        },
+        {
+          "name": "TC-13 POST duplicate supplier -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-13: 400 Supplier already exists', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().message).to.include('Supplier already exists');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{supplierName}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/suppliers", "host": ["{{baseUrl}}"], "path": ["inventory", "suppliers"] }
+          }
+        },
+        {
+          "name": "TC-14 GET suppliers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-14: 200 + created supplier listed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var names = pm.response.json().map(function (s) { return s.name; });",
+                  "  pm.expect(names).to.include(pm.collectionVariables.get('supplierName'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/suppliers", "host": ["{{baseUrl}}"], "path": ["inventory", "suppliers"] }
+          }
+        },
+        {
+          "name": "TC-14A POST receive existing HVAC item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-14A: existing SKU stock increased and GRN returned', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.item._id).to.eql(pm.collectionVariables.get('itemId'));",
+                  "  pm.expect(j.item.available).to.eql(28);",
+                  "  pm.expect(j.procurement.invoiceNumber).to.eql('PMTEST-RECEIPT-001');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inventoryId\": \"{{itemId}}\",\n  \"quantity\": 3,\n  \"supplierId\": \"{{supplierId}}\",\n  \"invoiceNumber\": \"PMTEST-RECEIPT-001\",\n  \"condition\": \"Good\",\n  \"location\": \"Warehouse A\",\n  \"binLocation\": \"MAT-A02\",\n  \"unitCost\": 1250,\n  \"serialNumbers\": []\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/receipts", "host": ["{{baseUrl}}"], "path": ["inventory", "receipts"] }
+          }
+        },
+        {
+          "name": "TC-15 GET procurements (GRN from TC-14A receipt)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-15: 200 + GRN created by receipt', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var invoices = pm.response.json().map(function (p) { return p.invoiceNumber; });",
+                  "  pm.expect(invoices).to.include('PMTEST-RECEIPT-001');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/procurements", "host": ["{{baseUrl}}"], "path": ["inventory", "procurements"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Dispatch Orders & Material Requests",
+      "item": [
+        {
+          "name": "TC-16 GET orders (saves an orderId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-16: 200 + array', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j).to.be.an('array');",
+                  "  if (j.length) pm.collectionVariables.set('dispatchOrderId', j[0].orderId);",
+                  "  else console.log('No orders in DB — TC-17 will be a no-op (returns null).');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/orders", "host": ["{{baseUrl}}"], "path": ["inventory", "orders"] }
+          }
+        },
+        {
+          "name": "TC-17 PATCH order status (by orderId, data-dependent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-17: 200 (KNOWN QUIRK: body is null if orderId not found — no 404)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  if (j) pm.expect(j.status).to.eql('ready');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"ready\",\n  \"lastMovedAt\": \"{{$isoTimestamp}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/orders/{{dispatchOrderId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "orders", "{{dispatchOrderId}}"] }
+          }
+        },
+        {
+          "name": "TC-18 GET material requests (saves a requestId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-18: 200 + array', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j).to.be.an('array');",
+                  "  if (j.length) pm.collectionVariables.set('materialRequestId', j[0].requestId);",
+                  "  else console.log('No material requests in DB — TC-19 will be a no-op (returns null).');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/material-requests", "host": ["{{baseUrl}}"], "path": ["inventory", "material-requests"] }
+          }
+        },
+        {
+          "name": "TC-19 PATCH material request (by requestId, data-dependent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-19: 200 (null body if requestId not found — known quirk)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  if (j) pm.expect(j.status).to.eql('reserved');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"reserved\",\n  \"lastMovedAt\": \"{{$isoTimestamp}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/material-requests/{{materialRequestId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "material-requests", "{{materialRequestId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Asset Management (tool lending)",
+      "item": [
+        {
+          "name": "TC-20 GET technicians (external Dassana DB)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-20: 200 + array (may be empty — reads separate Dassana DB)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/technicians", "host": ["{{baseUrl}}"], "path": ["inventory", "technicians"] }
+          }
+        },
+        {
+          "name": "TC-20A POST receive serialized HVAC tool",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "exec": ["pm.collectionVariables.set('toolAssetTag', 'PMTEST-TAG-' + Date.now());"] }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-20A: serialized tool received', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.collectionVariables.set('toolItemId', pm.response.json().item._id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item\": {\n    \"name\": \"PMTEST Vacuum Pump\",\n    \"sku\": \"PMTEST-TOOL-{{$timestamp}}\",\n    \"itemClass\": \"Tools and Test Equipment\",\n    \"subcategory\": \"Vacuum Pump\",\n    \"brand\": \"Fieldpiece\",\n    \"type\": \"Single\",\n    \"reorderLevel\": 0,\n    \"maxStockLevel\": 2,\n    \"unit\": \"units\",\n    \"location\": \"Tool Store\",\n    \"isSerialized\": true\n  },\n  \"quantity\": 1,\n  \"serialNumbers\": [\"{{toolAssetTag}}\"],\n  \"supplierId\": \"{{supplierId}}\",\n  \"invoiceNumber\": \"PMTEST-TOOL-RECEIPT-{{$timestamp}}\",\n  \"condition\": \"Good\",\n  \"location\": \"Tool Store\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/receipts", "host": ["{{baseUrl}}"], "path": ["inventory", "receipts"] }
+          }
+        },
+        {
+          "name": "TC-21 POST check out tool",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var due = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);",
+                  "pm.collectionVariables.set('dueDate', due.toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-21: 201 + loan created, id saved', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.assetTag).to.eql(pm.collectionVariables.get('toolAssetTag'));",
+                  "  pm.collectionVariables.set('loanId', j._id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toolId\": \"{{toolItemId}}\",\n  \"toolName\": \"PMTEST Vacuum Pump\",\n  \"assetTag\": \"{{toolAssetTag}}\",\n  \"technicianId\": \"PMTEST-TECH-1\",\n  \"technicianName\": \"PMTEST Technician\",\n  \"dueDate\": \"{{dueDate}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/asset-loans", "host": ["{{baseUrl}}"], "path": ["inventory", "asset-loans"] }
+          }
+        },
+        {
+          "name": "TC-22 GET asset loans contains new loan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-22: 200 + loan listed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var ids = pm.response.json().map(function (l) { return l._id; });",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('loanId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/asset-loans", "host": ["{{baseUrl}}"], "path": ["inventory", "asset-loans"] }
+          }
+        },
+        {
+          "name": "TC-23 POST return tool (deletes loan, writes log)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-23: 200 + returned loan echoed back', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()._id).to.eql(pm.collectionVariables.get('loanId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/inventory/asset-loans/return/{{loanId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "asset-loans", "return", "{{loanId}}"] }
+          }
+        },
+        {
+          "name": "TC-24 GET return logs contains the return",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-24: 200 + returned asset tag in logs', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var tags = pm.response.json().map(function (r) { return r.assetTag; });",
+                  "  pm.expect(tags).to.include(pm.collectionVariables.get('toolAssetTag'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/asset-return-logs", "host": ["{{baseUrl}}"], "path": ["inventory", "asset-return-logs"] }
+          }
+        },
+        {
+          "name": "TC-25 POST return same loan again -> 500",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-25: 500 Failed to return tool (loan already deleted)', function () {",
+                  "  pm.response.to.have.status(500);",
+                  "  pm.expect(pm.response.json().message).to.include('Failed to return tool');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/inventory/asset-loans/return/{{loanId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "asset-loans", "return", "{{loanId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Purchase Order Requests",
+      "item": [
+        {
+          "name": "TC-26 POST create order request",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-26: 201 + ORD- id + totalEstimate auto-computed (2x1200 + 5x300 = 3900)', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.requestId).to.match(/^ORD-/);",
+                  "  pm.expect(j.totalEstimate).to.eql(3900);",
+                  "  pm.expect(j.status).to.eql('pending-approval');",
+                  "  pm.collectionVariables.set('orderRequestId', j.requestId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplierName\": \"PMTEST Supplier Co\",\n  \"status\": \"pending-approval\",\n  \"priority\": \"urgent\",\n  \"notes\": \"PMTEST order — safe to delete\",\n  \"items\": [\n    { \"name\": \"PMTEST Copper Pipe 15mm\", \"sku\": \"{{testSku}}\", \"quantity\": 2, \"unitCost\": 1200 },\n    { \"name\": \"PMTEST Solder Wire\", \"sku\": \"PMTEST-SOLDER\", \"quantity\": 5, \"unitCost\": 300 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/order-requests", "host": ["{{baseUrl}}"], "path": ["inventory", "order-requests"] }
+          }
+        },
+        {
+          "name": "TC-27 GET order requests contains it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-27: 200 + created request listed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var ids = pm.response.json().map(function (r) { return r.requestId; });",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('orderRequestId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/order-requests", "host": ["{{baseUrl}}"], "path": ["inventory", "order-requests"] }
+          }
+        },
+        {
+          "name": "TC-28 PATCH update items (total recomputed)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-28: 200 + totalEstimate recomputed to 3600 (3x1200)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().totalEstimate).to.eql(3600);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"name\": \"PMTEST Copper Pipe 15mm\", \"sku\": \"{{testSku}}\", \"quantity\": 3, \"unitCost\": 1200 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/order-requests/{{orderRequestId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "order-requests", "{{orderRequestId}}"] }
+          }
+        },
+        {
+          "name": "TC-29 PATCH approve (receipt remains separate)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-29: 200 + approved + approver + timestamp', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.status).to.eql('approved');",
+                  "  pm.expect(j.approvedBy).to.not.be.empty;",
+                  "  pm.expect(j.approvedAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/inventory/order-requests/{{orderRequestId}}/approve", "host": ["{{baseUrl}}"], "path": ["inventory", "order-requests", "{{orderRequestId}}", "approve"] }
+          }
+        },
+        {
+          "name": "TC-30 GET procurements has no synthetic receipt for approval",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-30: approval did not generate a goods receipt', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var pos = pm.response.json().map(function (p) { return p.poNumber; });",
+                  "  pm.expect(pos).to.not.include(pm.collectionVariables.get('orderRequestId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/procurements", "host": ["{{baseUrl}}"], "path": ["inventory", "procurements"] }
+          }
+        },
+        {
+          "name": "TC-31 POST second request (for rejection)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-31: 201 + second request created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.collectionVariables.set('rejectRequestId', pm.response.json().requestId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplierName\": \"PMTEST Supplier Co\",\n  \"status\": \"pending-approval\",\n  \"items\": [\n    { \"name\": \"PMTEST Reject Me\", \"sku\": \"PMTEST-REJECT\", \"quantity\": 1, \"unitCost\": 100 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/order-requests", "host": ["{{baseUrl}}"], "path": ["inventory", "order-requests"] }
+          }
+        },
+        {
+          "name": "TC-32 PATCH reject with reason",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-32: 200 + rejected + reason stored', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.status).to.eql('rejected');",
+                  "  pm.expect(j.rejectionReason).to.eql('Budget exceeded — PMTEST');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Budget exceeded — PMTEST\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/order-requests/{{rejectRequestId}}/reject", "host": ["{{baseUrl}}"], "path": ["inventory", "order-requests", "{{rejectRequestId}}", "reject"] }
+          }
+        },
+        {
+          "name": "TC-33 PATCH approve unknown id -> 500",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-33: 500 Order request not found', function () {",
+                  "  pm.response.to.have.status(500);",
+                  "  pm.expect(pm.response.json().message).to.include('not found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/inventory/order-requests/ORD-00000000-000000/approve", "host": ["{{baseUrl}}"], "path": ["inventory", "order-requests", "ORD-00000000-000000", "approve"] }
+          }
+        },
+        {
+          "name": "TC-34 GET suggested orders (low stock only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-34: 200 + only warning/critical items', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.response.json().forEach(function (i) {",
+                  "    pm.expect(['warning', 'critical']).to.include(i.status);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/suggested-orders", "host": ["{{baseUrl}}"], "path": ["inventory", "suggested-orders"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Returns, RMA & Quarantine",
+      "item": [
+        {
+          "name": "TC-35 GET item stock BEFORE return",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-35: 200 + stock snapshot saved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.collectionVariables.set('stockBefore', pm.response.json().available);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/item/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "item", "{{itemId}}"] }
+          }
+        },
+        {
+          "name": "TC-36 POST leftover return (good) restores stock",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-36: 201 + LR- id + restoredToStock true', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.returnId).to.match(/^LR-/);",
+                  "  pm.expect(j.restoredToStock).to.be.true;",
+                  "  pm.expect(j.movedToQuarantine).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"PMTEST-JOB-01\",\n  \"itemId\": \"{{itemId}}\",\n  \"itemName\": \"PMTEST Copper Pipe 15mm\",\n  \"itemSku\": \"{{testSku}}\",\n  \"quantityReturned\": 5,\n  \"condition\": \"good\",\n  \"unit\": \"units\",\n  \"notes\": \"PMTEST return — safe to delete\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/leftover-returns", "host": ["{{baseUrl}}"], "path": ["inventory", "leftover-returns"] }
+          }
+        },
+        {
+          "name": "TC-37 GET item stock AFTER = before + 5",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-37: available increased by exactly 5', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var before = Number(pm.collectionVariables.get('stockBefore'));",
+                  "  pm.expect(pm.response.json().available).to.eql(before + 5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/item/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "item", "{{itemId}}"] }
+          }
+        },
+        {
+          "name": "TC-38 POST leftover return (damaged) -> quarantine",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-38: 201 + movedToQuarantine true (auto QZ item created)', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.movedToQuarantine).to.be.true;",
+                  "  pm.expect(j.restoredToStock).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"PMTEST-JOB-02\",\n  \"itemName\": \"PMTEST Damaged Fitting\",\n  \"quantityReturned\": 2,\n  \"condition\": \"damaged\",\n  \"unit\": \"units\",\n  \"notes\": \"PMTEST damaged return\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/leftover-returns", "host": ["{{baseUrl}}"], "path": ["inventory", "leftover-returns"] }
+          }
+        },
+        {
+          "name": "TC-39 GET leftover returns lists both",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-39: 200 + both PMTEST jobs present', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var jobs = pm.response.json().map(function (r) { return r.jobId; });",
+                  "  pm.expect(jobs).to.include('PMTEST-JOB-01');",
+                  "  pm.expect(jobs).to.include('PMTEST-JOB-02');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/leftover-returns", "host": ["{{baseUrl}}"], "path": ["inventory", "leftover-returns"] }
+          }
+        },
+        {
+          "name": "TC-40 POST create RMA case",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-40: 201 + RMA- id + status reported', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.rmaId).to.match(/^RMA-/);",
+                  "  pm.expect(j.status).to.eql('reported');",
+                  "  pm.collectionVariables.set('rmaId', j.rmaId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serialNumber\": \"{{toolAssetTag}}\",\n  \"faultDescription\": \"Vacuum pump fault — PMTEST\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/rma-cases", "host": ["{{baseUrl}}"], "path": ["inventory", "rma-cases"] }
+          }
+        },
+        {
+          "name": "TC-41 PATCH RMA reported -> under-review (valid)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-41: 200 + status under-review', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.eql('under-review');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"under-review\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/rma-cases/{{rmaId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "rma-cases", "{{rmaId}}"] }
+          }
+        },
+        {
+          "name": "TC-42 PATCH RMA under-review -> closed (INVALID) -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-42: 400 invalid transition blocked', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().message).to.include('Invalid status transition');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"closed\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/rma-cases/{{rmaId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "rma-cases", "{{rmaId}}"] }
+          }
+        },
+        {
+          "name": "TC-43 PATCH RMA -> resolved (sets resolvedAt)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-43: 200 + resolved + resolvedAt + resolution', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.status).to.eql('resolved');",
+                  "  pm.expect(j.resolvedAt).to.be.a('string');",
+                  "  pm.expect(j.resolution).to.eql('Replaced under warranty — PMTEST');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"resolved\",\n  \"resolution\": \"Replaced under warranty — PMTEST\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/rma-cases/{{rmaId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "rma-cases", "{{rmaId}}"] }
+          }
+        },
+        {
+          "name": "TC-44 PATCH RMA -> closed (final)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-44: 200 + closed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.eql('closed');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"closed\"\n}" },
+            "url": { "raw": "{{baseUrl}}/inventory/rma-cases/{{rmaId}}", "host": ["{{baseUrl}}"], "path": ["inventory", "rma-cases", "{{rmaId}}"] }
+          }
+        },
+        {
+          "name": "TC-45 GET RMA cases lists it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-45: 200 + created RMA present', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var ids = pm.response.json().map(function (r) { return r.rmaId; });",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('rmaId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/rma-cases", "host": ["{{baseUrl}}"], "path": ["inventory", "rma-cases"] }
+          }
+        },
+        {
+          "name": "TC-46 POST manual quarantine item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-46: 201 + QZ- id + status quarantined', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.quarantineId).to.match(/^QZ-/);",
+                  "  pm.expect(j.status).to.eql('quarantined');",
+                  "  pm.collectionVariables.set('quarantineId', j.quarantineId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemName\": \"PMTEST Cracked Valve\",\n  \"quantity\": 3,\n  \"unit\": \"units\",\n  \"reason\": \"Visible cracks on housing — PMTEST\",\n  \"location\": \"QZ Shelf 1\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/inventory/quarantine", "host": ["{{baseUrl}}"], "path": ["inventory", "quarantine"] }
+          }
+        },
+        {
+          "name": "TC-47 GET quarantine lists active items",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-47: 200 + manual item present + all quarantined', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  var ids = j.map(function (q) { return q.quarantineId; });",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('quarantineId'));",
+                  "  j.forEach(function (q) { pm.expect(q.status).to.eql('quarantined'); });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/quarantine", "host": ["{{baseUrl}}"], "path": ["inventory", "quarantine"] }
+          }
+        },
+        {
+          "name": "TC-48 PATCH dispose quarantine item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-48: 200 + disposed + audit fields set', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.status).to.eql('disposed');",
+                  "  pm.expect(j.disposedAt).to.be.a('string');",
+                  "  pm.expect(j.disposedBy).to.not.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/inventory/quarantine/{{quarantineId}}/dispose", "host": ["{{baseUrl}}"], "path": ["inventory", "quarantine", "{{quarantineId}}", "dispose"] }
+          }
+        },
+        {
+          "name": "TC-49 PATCH dispose again -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-49: 400 already disposed', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().message).to.include('already disposed');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/inventory/quarantine/{{quarantineId}}/dispose", "host": ["{{baseUrl}}"], "path": ["inventory", "quarantine", "{{quarantineId}}", "dispose"] }
+          }
+        },
+        {
+          "name": "TC-50 GET returns summary (final shape check)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-50: 200 + summary reflects the test run', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.leftoverReturns.total).to.be.at.least(2);",
+                  "  pm.expect(j.leftoverReturns.restoredToStock).to.be.at.least(1);",
+                  "  pm.expect(j.leftoverReturns.movedToQuarantine).to.be.at.least(1);",
+                  "  pm.expect(j.rmaCases.total).to.be.at.least(1);",
+                  "  pm.expect(j.quarantine.disposed).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/inventory/returns-summary", "host": ["{{baseUrl}}"], "path": ["inventory", "returns-summary"] }
+          }
+        }
+      ]
+    }
+  ]
+}

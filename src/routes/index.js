@@ -17,18 +17,20 @@ const serviceReportRoutes = require('../modules/technician/technician.routes');
 const maintenanceRoutes = require('../modules/shared/maintenance/maintenance.routes');
 
 // origin/dev Modules
-const authMockRoutes = require('./auth.routes');
+const authRoutes = require('../modules/auth/auth.routes');
 const productRoutes = require('./product.routes');
 const cartRoutes = require('./cart.routes');
 const orderRoutes = require('./order.routes');
 const bankDetailRoutes = require('./bankDetail.routes');
 const cartScenarioRoutes = require('./cartScenario.routes');
 const configRoutes = require('./config.routes');
+const feedbackRoutes = require('./feedback.routes');
 const superAdminRoutes = require('../modules/super-admin/super-admin.routes');
 const customerModuleRoutes = require('../modules/customer/customer.routes');
 const salesRoutes = require('../modules/sales/sales.routes');
 const csaRoutes = require('../modules/csa/csa.routes');
 const financeRoutes = require('../modules/finance/finance.routes');
+const financeWorkflowRoutes = require('../modules/finance-workflow/finance-workflow.routes');
 const inspectionTeamRoutes = require('../modules/inspection-team/inspection_team.routes');
 const inventoryManagerRoutes = require('../modules/inventory-manager/inventory_manager.routes');
 const managerRoutes = require('../modules/manager/manager.routes');
@@ -42,6 +44,7 @@ const servicePaymentRoutes = require('../modules/finance/servicePayment.routes')
 const auditLogRoutes = require('../modules/finance/auditLog.routes');
 const financialReportRoutes = require('../modules/finance/financialReport.routes');
 const purchaseRequestRoutes = require('../modules/finance/purchaseRequest.routes');
+const maintenancePaymentRoutes = require('../modules/finance/maintenancePayment.routes');
 
 const { API_SEGMENTS } = require('../constants/enums');
 
@@ -61,11 +64,12 @@ router.use(API_SEGMENTS.MAINTENANCE, maintenanceRoutes);
 router.get(API_SEGMENTS.TASKS, serviceTeamTaskController.getTasks);
 router.get(API_SEGMENTS.TASKS_BY_ID, serviceTeamTaskController.getTaskById);
 router.patch(API_SEGMENTS.TASKS_STATUS, serviceTeamTaskController.updateTaskStatus);
+router.post('/tasks/:id/additional-service', serviceTeamTaskController.addAdditionalService);
 router.get(API_SEGMENTS.TEAM_DETAILS, serviceTeamMemberController.getTeamDetails);
 router.get(API_SEGMENTS.SERVICE_HISTORY, serviceHistoryController.getCustomerHistory);
 
 // Mount origin/dev routes
-router.use('/auth', authMockRoutes);
+router.use('/auth', authRoutes);
 router.use('/products', productRoutes);
 router.use('/scenarios', cartScenarioRoutes);
 router.use('/cart', cartRoutes);
@@ -73,11 +77,13 @@ router.use('/orders', orderRoutes);
 router.use('/admin', bankDetailRoutes);
 router.use('/checkout', bankDetailRoutes);
 router.use('/config', configRoutes);
+router.use('/feedback', feedbackRoutes);
 router.use('/super-admin', superAdminRoutes);
 router.use('/customer', customerModuleRoutes);
 router.use('/sales', salesRoutes);
 router.use('/csa', csaRoutes);
 router.use('/finance', financeRoutes);
+router.use('/finance-workflow', financeWorkflowRoutes);
 router.use('/inspection', inspectionTeamRoutes);
 router.use('/inventory', inventoryManagerRoutes);
 router.use('/manager', managerRoutes);
@@ -91,5 +97,6 @@ router.use('/service-payments', servicePaymentRoutes);
 router.use('/audit-logs', auditLogRoutes);
 router.use('/financial-report', financialReportRoutes);
 router.use('/purchase-requests', purchaseRequestRoutes);
+router.use('/maintenance-payments', maintenancePaymentRoutes);
 
 module.exports = router;

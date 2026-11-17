@@ -2,11 +2,64 @@ const Maintenance = require('./maintenance.model');
 const MaintenanceSchedule = require('./maintenanceSchedule.model');
 const Installation = require('../installation/installation.model');
 const ServiceRequest = require('../repair/repair.model');
+const TechTeamMember = require('../tech-teams/techTeamMember.model');
+const { sendMaintenanceScheduleEmail } = require('../notification/email.service');
+const mongoose = require('mongoose');
+
 const { 
   MAINTENANCE_SCHEDULE_STATUS, 
   MAINTENANCE_STATUS,
   INSTALLATION_MAINTENANCE_STATUS
 } = require('../../../constants/enums');
+
+const SCHEDULE_SERVICE_COUNT = 6;
+const MAX_SCHEDULE_YEARS = 3;
+
+const startOfDay = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const validateScheduleServices = async (schedule, services) => {
+  if (!Array.isArray(services) || services.length !== SCHEDULE_SERVICE_COUNT) {
+    return 'A complete six-service maintenance schedule is required.';
+  }
+
+  const installation = schedule.installationId
+    ? await Installation.findById(schedule.installationId).select('serviceDate createdAt').lean()
+    : null;
+  const installationDate = startOfDay(installation?.serviceDate || installation?.createdAt);
+  if (!installationDate) return 'The installation date is missing or invalid.';
+
+  const today = startOfDay(new Date());
+  const scheduleEndDate = new Date(installationDate);
+  scheduleEndDate.setFullYear(scheduleEndDate.getFullYear() + MAX_SCHEDULE_YEARS);
+  const dates = [];
+
+  for (let index = 0; index < services.length; index += 1) {
+    const service = services[index] || {};
+    const name = String(service.serviceName || '').trim();
+    const date = startOfDay(service.date);
+    if (!name) return `Service ${index + 1} must have a service name.`;
+    if (!date) return `${name} requires a valid date.`;
+    if (date < today) return `${name} cannot be scheduled in the past.`;
+    if (date < installationDate) return `${name} cannot be scheduled before the installation date.`;
+    if (date > scheduleEndDate) return `${name} must fall within the three-year maintenance period.`;
+    dates.push(date);
+  }
+
+  for (let index = 1; index < dates.length; index += 1) {
+    if (dates[index].getTime() === dates[index - 1].getTime()) {
+      return 'Each maintenance service must be scheduled on a different date.';
+    }
+    if (dates[index] < dates[index - 1]) {
+      return 'Maintenance service dates must be in chronological order.';
+    }
+  }
+  return null;
+};
 
 // A. Triggered automatically when an Installation status updates to 'Completed' (via DB hook)
 exports.handleInstallationCompletion = async (installationId) => {
@@ -34,17 +87,44 @@ exports.getAllSchedules = async (req, res) => {
 
     if (status && status !== 'All') query.status = status;
 
+    const schedules = await MaintenanceSchedule.find(query)
+      .populate('customerId', 'fullName email phoneNumber address')
+      .populate('installationId', 'productType location serviceDate createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    let mappedSchedules = schedules.map(sched => {
+      const customer = sched.customerId || {};
+      const installation = sched.installationId || {};
+      
+      const mapped = {
+        ...sched,
+        sentToCustomerAt: sched.sentToCustomerAt || (sched.status === 'Sent to Customer' ? sched.updatedAt : null),
+        customerName: customer.fullName || 'Unknown Customer',
+        customerEmail: customer.email || '-',
+        customerPhone: customer.phoneNumber || '-',
+        location: installation.location || customer.address || '-',
+        productType: installation.productType || 'AC System',
+        installationDate: installation.serviceDate || installation.createdAt || null,
+        services: (sched.services || []).map((srv, idx) => ({
+          ...srv,
+          underWarranty: idx < 4
+        }))
+      };
+      
+      return mapped;
+    });
+
     if (search) {
-      const searchRegex = new RegExp(search.trim(), 'i');
-      query.$or = [
-        { ticketId: searchRegex },
-        { fullName: searchRegex },
-        { location: searchRegex }
-      ];
+      const searchNormalized = search.trim().toLowerCase();
+      mappedSchedules = mappedSchedules.filter(sched => 
+        (sched.ticketId && sched.ticketId.toLowerCase().includes(searchNormalized)) ||
+        (sched.customerName && sched.customerName.toLowerCase().includes(searchNormalized)) ||
+        (sched.location && sched.location.toLowerCase().includes(searchNormalized))
+      );
     }
 
-    const schedules = await MaintenanceSchedule.find(query).sort({ createdAt: -1 }).lean();
-    res.json({ success: true, count: schedules.length, data: schedules });
+    res.json({ success: true, count: mappedSchedules.length, data: mappedSchedules });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -69,6 +149,9 @@ exports.saveDraft = async (req, res) => {
         message: `Cannot save draft: schedule is locked at status '${schedule.status}'.`
       });
     }
+
+    const validationError = await validateScheduleServices(schedule, services);
+    if (validationError) return res.status(400).json({ success: false, message: validationError });
 
     schedule.services = services;
     // Transition from 'New' to 'Draft Saved' on first save; keep 'Draft Saved' if already a draft
@@ -102,6 +185,9 @@ exports.sendScheduleToCsa = async (req, res) => {
       });
     }
 
+    const validationError = await validateScheduleServices(schedule, services || schedule.services);
+    if (validationError) return res.status(400).json({ success: false, message: validationError });
+
     if (services) schedule.services = services;
     schedule.status = MAINTENANCE_SCHEDULE_STATUS.SENT_TO_CSA;
     schedule.sentToCsaAt = Date.now();
@@ -125,7 +211,10 @@ exports.sendScheduleToCustomer = async (req, res) => {
     const { scheduleId } = req.params;
     const { customerNotes } = req.body;
 
-    const schedule = await MaintenanceSchedule.findById(scheduleId);
+    const schedule = await MaintenanceSchedule.findById(scheduleId)
+      .populate('customerId', 'fullName email phoneNumber address')
+      .populate('installationId', 'productType location serviceDate createdAt');
+
     if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
 
     // Guard: only allow sending to customer when schedule is already with CSA
@@ -147,11 +236,46 @@ exports.sendScheduleToCustomer = async (req, res) => {
       { new: true }
     );
 
-    await Installation.findByIdAndUpdate(updatedSchedule.installationId, { 
-      maintenanceStatus: INSTALLATION_MAINTENANCE_STATUS.SENT_TO_CUSTOMER 
-    });
+    const targetInstallationId = schedule.installationId?._id || schedule.installationId;
+    if (targetInstallationId) {
+      await Installation.findByIdAndUpdate(targetInstallationId, { 
+        maintenanceStatus: INSTALLATION_MAINTENANCE_STATUS.SENT_TO_CUSTOMER 
+      });
+    }
 
-    res.json({ success: true, message: 'Schedule marked as dispatched to customer.', data: updatedSchedule });
+    // Send maintenance schedule email to customer
+    const customer = schedule.customerId || {};
+    const installation = schedule.installationId || {};
+    const customerEmail = customer.email;
+
+    let emailResult = null;
+    if (customerEmail && customerEmail !== '-' && customerEmail.includes('@')) {
+      emailResult = await sendMaintenanceScheduleEmail({
+        email: customerEmail,
+        customerName: customer.fullName || 'Valued Customer',
+        ticketId: schedule.ticketId,
+        productType: installation.productType || 'AirLux AC Unit',
+        location: installation.location || customer.address || '—',
+        installationDate: installation.serviceDate || installation.createdAt || null,
+        services: (schedule.services || []).map((srv, idx) => ({
+          serviceName: srv.serviceName,
+          date: srv.date,
+          underWarranty: idx < 4
+        })),
+        customerNotes: customerNotes || ''
+      });
+    } else {
+      console.warn(`[sendScheduleToCustomer] No valid customer email found for ticket ${schedule.ticketId}`);
+    }
+
+    res.json({ 
+      success: true, 
+      message: emailResult?.success 
+        ? `Schedule sent to customer successfully. Email sent to ${customerEmail}.` 
+        : 'Schedule marked as dispatched to customer.', 
+      data: updatedSchedule,
+      emailSent: emailResult?.success || false
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -218,7 +342,9 @@ exports.getAllMaintenance = async (req, res) => {
     const mappedTickets = tickets.map(ticket => ({
       ...ticket,
       isCustomerInitiated: ticket.maintenanceType === 'Customer Initiated' || ticket.isCustomerInitiated || false,
-      maintenanceType: ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated')
+      maintenanceType: ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated'),
+      productType: ticket.productType || ticket.acUnitModel || ticket.category || ticket.repairType || '-',
+      assignedTeam: ticket.assignedTeamName || ticket.assignedTeam || (ticket.assignedTeamId ? ticket.assignedTeamId.teamName : 'Not Assigned')
     }));
 
     res.json({ success: true, count: mappedTickets.length, data: mappedTickets });
@@ -232,8 +358,12 @@ exports.getMaintenanceById = async (req, res) => {
   try {
     const { maintenanceId } = req.params;
     
+    const query = mongoose.Types.ObjectId.isValid(maintenanceId) 
+      ? { $or: [{ _id: maintenanceId }, { ticketId: maintenanceId }] }
+      : { ticketId: maintenanceId };
+
     // First try Maintenance collection
-    let ticket = await Maintenance.findById(maintenanceId)
+    let ticket = await Maintenance.findOne(query)
       .populate('customerId')
       .populate('assignedTeamId')
       .lean();
@@ -241,6 +371,20 @@ exports.getMaintenanceById = async (req, res) => {
     if (ticket) {
       ticket.isCustomerInitiated = ticket.maintenanceType === 'Customer Initiated' || ticket.isCustomerInitiated || false;
       ticket.maintenanceType = ticket.maintenanceType || (ticket.isCustomerInitiated ? 'Customer Initiated' : 'Company Initiated');
+      ticket.productType = ticket.productType || ticket.acUnitModel || ticket.category || ticket.repairType || '-';
+      ticket.assignedTeam = ticket.assignedTeamName || ticket.assignedTeam || (ticket.assignedTeamId ? ticket.assignedTeamId.teamName : 'Not Assigned');
+
+      // Fetch team members if a team is assigned
+      if (ticket.assignedTeamId && ticket.assignedTeamId._id) {
+        const members = await TechTeamMember.find({ teamId: ticket.assignedTeamId._id }).lean();
+        const lead = members.find(m => m.role === 'Lead');
+        const helpers = members.filter(m => m.role !== 'Lead');
+        ticket.assignedTeamData = {
+          teamLead: lead ? { name: lead.name, position: lead.role, contactNumber: lead.contactNumber } : null,
+          helpers: helpers.map(h => ({ name: h.name, position: h.role, contactNumber: h.contactNumber }))
+        };
+      }
+
       return res.json({ success: true, data: ticket });
     }
 
@@ -249,6 +393,7 @@ exports.getMaintenanceById = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
 // H. POST: Forward stock parameters from Materials view onwards to the Inventory Manager
 exports.sendMaterialListToInventoryManager = async (req, res) => {
@@ -282,7 +427,7 @@ exports.assignTeamToMaintenance = async (req, res) => {
     const maintenance = await Maintenance.findByIdAndUpdate(
       maintenanceId,
       {
-        status: MAINTENANCE_STATUS.SCHEDULED,
+        status: MAINTENANCE_STATUS.ASSIGNED,
         assignedTeamId: teamId,
         assignedTeam: teamName,
         updatedAt: Date.now()

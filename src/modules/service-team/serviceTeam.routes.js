@@ -8,6 +8,11 @@ router.use((req, res, next) => {
 	next();
 });
 const techTeamController = require('./serviceTeam.controller');
+const { protect } = require('../../middleware/protect');
+const { authorize } = require('../../middleware/role.middleware');
+
+router.use(protect);
+router.use(authorize(['MAIN_TECH', 'SUPER_ADMIN']));
 
 // Existing routes
 router.get('/', techTeamController.getAllTeamsWithMembers);

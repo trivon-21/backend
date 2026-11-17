@@ -1,0 +1,99 @@
+{
+  "info": {
+    "name": "AirLux Purchasing Workflow",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api" },
+    { "key": "inventoryToken", "value": "" },
+    { "key": "managerToken", "value": "" },
+    { "key": "financeToken", "value": "" },
+    { "key": "requestId", "value": "" },
+    { "key": "requestMongoId", "value": "" },
+    { "key": "lineId", "value": "" },
+    { "key": "authorizationId", "value": "" },
+    { "key": "supplierId", "value": "" },
+    { "key": "inventoryId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Create Purchase Draft",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{inventoryToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/inventory/order-requests",
+        "body": { "mode": "raw", "raw": "{\n  \"supplierId\": \"{{supplierId}}\",\n  \"supplierName\": \"HVAC Supplier\",\n  \"priority\": \"urgent\",\n  \"notes\": \"Required for scheduled repairs\",\n  \"items\": [{\n    \"inventoryId\": \"{{inventoryId}}\",\n    \"name\": \"Run Capacitor 35uF\",\n    \"sku\": \"CAP-35UF\",\n    \"quantity\": 5,\n    \"unitCost\": 1800,\n    \"itemClass\": \"Spare Parts\",\n    \"subcategory\": \"Capacitors, Contactors, Relays and Transformers\",\n    \"unit\": \"units\",\n    \"supplierId\": \"{{supplierId}}\"\n  }]\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Draft created with server-owned status', () => {", "  pm.response.to.have.status(201);", "  const body = pm.response.json();", "  pm.expect(body.status).to.eql('draft');", "  pm.collectionVariables.set('requestId', body.requestId);", "  pm.collectionVariables.set('requestMongoId', body._id);", "  pm.collectionVariables.set('lineId', body.items[0].lineId);", "});"] } }]
+    },
+    {
+      "name": "2. Submit to Manager",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{inventoryToken}}" }], "url": "{{baseUrl}}/inventory/order-requests/{{requestId}}/submit" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Moves to Manager queue', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().status).to.eql('pending-manager');", "});"] } }]
+    },
+    {
+      "name": "3. Manager Approves",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{managerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/manager/orders/{{requestMongoId}}",
+        "body": { "mode": "raw", "raw": "{ \"decision\": \"approved\", \"comment\": \"Operational requirement verified\", \"statusVersion\": 1 }" }
+      }
+    },
+    {
+      "name": "4. Issue PO",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{inventoryToken}}" }], "url": "{{baseUrl}}/inventory/order-requests/{{requestId}}/issue-po" }
+    },
+    {
+      "name": "5. Receive PO Line",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{inventoryToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/inventory/receipts",
+        "body": { "mode": "raw", "raw": "{\n  \"receiptMode\": \"PO\",\n  \"receiptEventId\": \"{{$guid}}\",\n  \"orderRequestId\": \"{{requestMongoId}}\",\n  \"orderLineId\": \"{{lineId}}\",\n  \"quantity\": 2,\n  \"sourceDocumentNumber\": \"DN-PO-001\",\n  \"invoiceNumber\": \"INV-PO-001\",\n  \"condition\": \"Good\",\n  \"serialNumbers\": []\n}" }
+      }
+    },
+    {
+      "name": "6. Request Emergency Non-PO Authorization",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{inventoryToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/inventory/receipt-authorizations",
+        "body": { "mode": "raw", "raw": "{\n  \"nonPoReason\": \"EMERGENCY_REPAIR\",\n  \"explanation\": \"Part required to prevent an SLA failure\",\n  \"inventoryId\": \"{{inventoryId}}\",\n  \"supplierId\": \"{{supplierId}}\",\n  \"authorizedQuantity\": 1,\n  \"unitCost\": 2500,\n  \"affectedWorkType\": \"TICKET\",\n  \"affectedWorkReference\": \"TKT-1042\",\n  \"sourceDocumentNumber\": \"LOCAL-2026-001\",\n  \"supportingDocumentUrl\": \"https://example.com/evidence/local-2026-001\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Authorization does not post stock', () => {", "  pm.response.to.have.status(201);", "  const body = pm.response.json();", "  pm.expect(body.status).to.eql('pending');", "  pm.expect(body.receivedQuantity).to.eql(0);", "  pm.collectionVariables.set('authorizationId', body._id);", "});"] } }]
+    },
+    {
+      "name": "7. Manager Approves Non-PO",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{managerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/manager/receipt-authorizations/{{authorizationId}}/decision",
+        "body": { "mode": "raw", "raw": "{ \"decision\": \"approved\", \"comment\": \"Emergency need and evidence verified\", \"statusVersion\": 0 }" }
+      }
+    },
+    {
+      "name": "8. Receive Approved Non-PO",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{inventoryToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/inventory/receipts",
+        "body": { "mode": "raw", "raw": "{\n  \"receiptMode\": \"NON_PO\",\n  \"receiptEventId\": \"{{$guid}}\",\n  \"receiptAuthorizationId\": \"{{authorizationId}}\",\n  \"quantity\": 1,\n  \"sourceDocumentNumber\": \"LOCAL-2026-001\",\n  \"condition\": \"Good\",\n  \"serialNumbers\": []\n}" }
+      }
+    },
+    {
+      "name": "9. Finance Reconciles Non-PO",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{financeToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/finance/non-po-receipts/{{authorizationId}}/reconcile",
+        "body": { "mode": "raw", "raw": "{ \"decision\": \"reconciled\", \"comment\": \"Receipt matched to payment\", \"financeReference\": \"PAY-2026-104\", \"statusVersion\": 2 }" }
+      }
+    },
+    {
+      "name": "Compatibility - Inventory Approval Is Gone",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{inventoryToken}}" }], "url": "{{baseUrl}}/inventory/order-requests/{{requestId}}/approve" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Old approval route is retired', () => pm.response.to.have.status(410));"] } }]
+    }
+  ]
+}

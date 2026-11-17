@@ -40,7 +40,31 @@ const lServiceReportSchema = new mongoose.Schema({
     default: "Pending",
   },
   submittedAt: { type: Date, default: null },
+  serviceReportId: { type: String, unique: true }
 }, { timestamps: true, strict: false });
+
+lServiceReportSchema.pre('save', async function (next) {
+  if (this.isNew && !this.serviceReportId) {
+    try {
+      const CounterModel = mongoose.model('Counter');
+      let counter = await CounterModel.findOneAndUpdate(
+        { _id: 'serviceReportId' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      if (!counter) {
+        await CounterModel.updateOne({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { upsert: true });
+        counter = { seq: 1000 };
+      } else if (counter.seq < 1000) {
+        counter = await CounterModel.findOneAndUpdate({ _id: 'serviceReportId' }, { $set: { seq: 1000 } }, { new: true });
+      }
+      this.serviceReportId = `SREP-${String(counter.seq).padStart(4, '0')}`;
+    } catch (err) {
+      return next(err);
+    }
+  }
+  next();
+});
 
 const ServiceReport = mongoose.models.ServiceReport || mongoose.model("ServiceReport", lServiceReportSchema, "service_reports");
 if (!mongoose.models.L_ServiceReport) {

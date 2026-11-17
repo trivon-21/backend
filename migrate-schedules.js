@@ -1,14 +1,12 @@
 const mongoose = require('mongoose');
 const path = require('path');
-const dns = require('dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']);
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
+const connectDB = require('./src/config/db');
 const { buildServiceTemplate, buildScheduleEndDate } = require('./src/modules/shared/maintenance/scheduleTemplate');
 
 async function migrate() {
-  await mongoose.connect(process.env.MONGO_URI);
-  console.log('Connected to MongoDB');
+  await connectDB();
 
   const db = mongoose.connection.db;
   const col = db.collection('MaintenanceSchedules');

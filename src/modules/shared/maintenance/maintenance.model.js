@@ -8,12 +8,22 @@ const maintenanceSchema = new Schema(
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     isUnderWarranty: { type: Boolean, default: true },
     date: { type: Date, required: true },
-    status: { type: String, enum: ['New', 'Finance Approved', 'Scheduled', 'In Progress', 'Completed'], default: 'New' },
+    status: {
+      type: String,
+      enum: ['New', 'Pending', 'Finance Approved', 'Finance Rejected', 'Sent to IM', 'Materials Ready', 'Assigned',
+        'In Progress', 'On Hold', 'Completed', 'Cancelled'],
+      default: 'New'
+    },
     materialList: [{ item: String, quantity: Number, estimatedCost: Number }],
     assignedTeamId: { type: Schema.Types.ObjectId, ref: 'TechTeam' },
     serviceReport: { technicianNotes: String, submittedAt: Date, photos: [String] },
+    paymentSlipUrl: { type: String, default: null },       // ← ADDED
+    paymentAmount: { type: Number, default: 0 },
+    description: String,
+    acUnitModel: String,
+    productType: String,
   },
-  { timestamps: true, collection: 'maintenances' }
+  { timestamps: true, collection: 'maintenances', strict: false }
 );
 
 module.exports = mongoose.model('Maintenance', maintenanceSchema);

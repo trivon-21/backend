@@ -4,11 +4,18 @@ const InspectionReport = require("./InspectionReport.model");
 const { sendArrivalEmail, sendReportToTechnician } = require("../shared/notification/email.service");
 
 const getOrderModel = () => {
-  try { return mongoose.model("Order"); }
-  catch {
-    const s = new mongoose.Schema({ orderRef: String, customer: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, itemName: String, quantity: Number, amount: Number, orderType: String }, { strict: false, timestamps: true });
-    return mongoose.model("Order", s);
-  }
+  const s = new mongoose.Schema({
+    orderReference: String,
+    userId:   mongoose.Schema.Types.ObjectId,
+    items: Array,
+    subtotal: Number, total: Number,
+    inspectionFee: Number,
+    status: String,
+    consultationCompleted: Boolean,
+  }, { strict: false, timestamps: true });
+
+  const modelName = "InstallationOrderInspectionTeamLookup";
+  return mongoose.models[modelName] || mongoose.model(modelName, s, "installation_orders");
 };
 
 const getUserModel = () => {
@@ -30,7 +37,7 @@ exports.getScheduledInspections = async (req, res) => {
       const user = await User.findById(t.customerId);
       return {
         _id: t._id,
-        orderId: order?.orderRef || t.orderId,
+        orderId: order?.orderReference || order?.orderRef || t.orderId,
         ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
         customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
         customerEmail: user?.email || "",
@@ -52,7 +59,7 @@ exports.getScheduledInspections = async (req, res) => {
 exports.startInspection = async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const { arrivalTime } = req.body;
+    const { arrivalTime, inspectorId } = req.body;
 
     if (!arrivalTime) return res.status(400).json({ message: "Arrival time is required" });
 
@@ -61,6 +68,7 @@ exports.startInspection = async (req, res) => {
 
     ticket.status = "ONGOING";
     ticket.startedAt = new Date();
+    if (inspectorId) ticket.assignedInspectorId = inspectorId; // additive — doesn't affect anything if not sent
     await ticket.save();
 
     const Order = getOrderModel();
@@ -72,7 +80,7 @@ exports.startInspection = async (req, res) => {
       await sendArrivalEmail(
         user.email,
         user.fullName || "Customer",
-        order?.orderRef || ticket.orderId.toString(),
+        order?.orderReference || order?.orderRef || ticket.orderId.toString(),
         ticket.scheduledDate,
         arrivalTime
       );
@@ -88,7 +96,10 @@ exports.startInspection = async (req, res) => {
 // ── GET ongoing inspections ───────────────────────────────────────────────────
 exports.getOngoingInspections = async (req, res) => {
   try {
-    const tickets = await InspectionTicket.find({ status: "ONGOING" }).sort({ startedAt: -1 });
+    const { inspectorId } = req.query;
+    const query = { status: "ONGOING" };
+    if (inspectorId) query.assignedInspectorId = inspectorId;
+    const tickets = await InspectionTicket.find(query).sort({ startedAt: -1 });
     const Order = getOrderModel();
     const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
@@ -97,7 +108,7 @@ exports.getOngoingInspections = async (req, res) => {
       const report = await InspectionReport.findOne({ ticketId: t._id });
       return {
         _id: t._id,
-        orderId: order?.orderRef || t.orderId,
+        orderId: order?.orderReference || order?.orderRef || t.orderId,
         ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
         customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
         customerEmail: user?.email || "",
@@ -133,10 +144,10 @@ exports.saveReport = async (req, res) => {
     let report = await InspectionReport.findOne({ ticketId });
 
     if (report) {
-      Object.assign(report, reportData);
+      Object.assign(report, { customerId: ticket.customerId }, reportData);
       await report.save();
     } else {
-      report = await InspectionReport.create({ ticketId, orderId: ticket.orderId, ...reportData });
+      report = await InspectionReport.create({ ticketId, orderId: ticket.orderId, customerId: ticket.customerId, ...reportData });
     }
 
     res.json({ message: "Report saved", report });
@@ -157,11 +168,11 @@ exports.recordReport = async (req, res) => {
 
     let report = await InspectionReport.findOne({ ticketId });
     if (report) {
-      Object.assign(report, reportData, { status: "RECORDED", recordedAt: new Date() });
+      Object.assign(report, { customerId: ticket.customerId }, reportData, { status: "RECORDED", recordedAt: new Date() });
       await report.save();
     } else {
       report = await InspectionReport.create({
-        ticketId, orderId: ticket.orderId, ...reportData,
+        ticketId, orderId: ticket.orderId, customerId: ticket.customerId, ...reportData,
         status: "RECORDED", recordedAt: new Date()
       });
     }
@@ -180,7 +191,10 @@ exports.recordReport = async (req, res) => {
 // ── GET completed inspections ─────────────────────────────────────────────────
 exports.getCompletedInspections = async (req, res) => {
   try {
-    const tickets = await InspectionTicket.find({ status: { $in: ["REPORT_RECORDED", "INSPECTED"] } }).sort({ inspectedAt: -1 });
+    const { inspectorId } = req.query;
+    const query = { status: { $in: ["REPORT_RECORDED", "INSPECTED"] } };
+    if (inspectorId) query.assignedInspectorId = inspectorId;
+    const tickets = await InspectionTicket.find(query).sort({ inspectedAt: -1 });
     const Order = getOrderModel();
     const User = getUserModel();
     const formatted = await Promise.all(tickets.map(async (t) => {
@@ -189,7 +203,7 @@ exports.getCompletedInspections = async (req, res) => {
       const report = await InspectionReport.findOne({ ticketId: t._id });
       return {
         _id: t._id,
-        orderId: order?.orderRef || t.orderId,
+        orderId: order?.orderReference || order?.orderRef || t.orderId,
         ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
         customerName: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
         inspectionDate: t.scheduledDate,
@@ -260,15 +274,22 @@ exports.submitReport = async (req, res) => {
 // ── GET dashboard stats ───────────────────────────────────────────────────────
 exports.getDashboardStats = async (req, res) => {
   try {
+    const { inspectorId } = req.query;
+    const inspectorFilter = inspectorId ? { assignedInspectorId: inspectorId } : {};
+
     const [ongoing, scheduled, completed, submitted] = await Promise.all([
-      InspectionTicket.countDocuments({ status: { $in: ["ONGOING", "REPORT_RECORDED"] } }),
-      InspectionTicket.countDocuments({ status: "INSPECTION_SCHEDULED" }),
-      InspectionTicket.countDocuments({ status: { $in: ["REPORT_RECORDED", "INSPECTED"] } }),
+      InspectionTicket.countDocuments({ status: { $in: ["ONGOING", "REPORT_RECORDED"] }, ...inspectorFilter }),
+      InspectionTicket.countDocuments({ status: "INSPECTION_SCHEDULED" }), // scheduled stays common to all
+      InspectionTicket.countDocuments({ status: { $in: ["REPORT_RECORDED", "INSPECTED"] }, ...inspectorFilter }),
       InspectionReport.countDocuments({ status: "SUBMITTED" }),
     ]);
 
     const allTickets = await InspectionTicket.find({
-      status: { $in: ["ONGOING", "REPORT_RECORDED", "INSPECTION_SCHEDULED", "INSPECTED"] }
+      status: { $in: ["ONGOING", "REPORT_RECORDED", "INSPECTION_SCHEDULED", "INSPECTED"] },
+      $or: [
+        { status: "INSPECTION_SCHEDULED" }, // scheduled tickets always visible
+        inspectorId ? { assignedInspectorId: inspectorId } : {},
+      ]
     }).sort({ updatedAt: -1 }).limit(20);
 
     const Order = getOrderModel();
@@ -279,7 +300,7 @@ exports.getDashboardStats = async (req, res) => {
       const user = await User.findById(t.customerId);
       return {
         _id: t._id,
-        orderId: order?.orderRef || t.orderId,
+        orderId: order?.orderReference || order?.orderRef || t.orderId,
         ticketId: `I-Tic-${t._id.toString().slice(-5).toUpperCase()}`,
         customer: user ? `${user.fullName} ${user.lastName}`.trim() : "Unknown",
         date: t.scheduledDate || t.updatedAt,
